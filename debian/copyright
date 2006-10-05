@@ -1,0 +1,102 @@
+This package was debianized by Paul Brossier <piem@altern.org> on
+Tue, 27 Jul 2004 00:29:57 +0200.
+
+It was downloaded from http://chuck.cs.princeton.edu/
+
+Upstream Authors:
+
+    Ge Wang (gewang@cs.princeton.edu)
+    Perry R. Cook (prc@cs.princeton.edu)
+
+    (See also the file THANKS and README)
+
+Lead Design:
+    Ge Wang
+    Perry Cook
+
+Lead Developers:
+    Ge Wang
+    Perry Cook
+    Ari Lazier (alazier@cs.princeton.edu)
+    Philip Davidson (philipd@alumni.princeton.edu)
+    Ananya Misra (amisra@cs.princeton.edu)
+
+Copyright:
+
+    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+
+License:
+
+    You are free to distribute this software under the terms of the GNU General
+    Public License. On Debian systems, the complete text of the GNU General
+    Public License can be found in the file `/usr/share/common-licenses/GPL'.
+
+---
+
+Copyright and download locations for the files src/rt{audio,midi,error}.{c,h}
+
+    RtAudio provides a common API (Application Programming Interface)
+    for realtime audio input/output across Linux (native ALSA, Jack,
+    and OSS), SGI, Macintosh OS X (CoreAudio), and Windows
+    (DirectSound and ASIO) operating systems.
+
+    RtAudio WWW site: http://music.mcgill.ca/~gary/rtaudio/
+
+    RtAudio: realtime audio i/o C++ classes
+    Copyright (c) 2001-2005 Gary P. Scavone
+
+    This class implements some common functionality for the realtime
+    MIDI input/output subclasses RtMidiIn and RtMidiOut.
+
+    RtMidi WWW site: http://music.mcgill.ca/~gary/rtmidi/
+
+    RtMidi: realtime MIDI i/o C++ classes
+    Copyright (c) 2003-2005 Gary P. Scavone
+
+License:
+
+    Permission is hereby granted, free of charge, to any person
+    obtaining a copy of this software and associated documentation files
+    (the "Software"), to deal in the Software without restriction,
+    including without limitation the rights to use, copy, modify, merge,
+    publish, distribute, sublicense, and/or sell copies of the Software,
+    and to permit persons to whom the Software is furnished to do so,
+    subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be
+    included in all copies or substantial portions of the Software.
+
+    Any person wishing to distribute modifications to the Software is
+    requested to send the modifications to the original developer so that
+    they can be incorporated into the canonical version.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+    EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+    MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+    IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR
+    ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+    CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+    WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+---
+
+Copyright and download location for the files src/util_sndfile.{c,h}
+
+    libsndfile Copyright (C) 1999-2004 Erik de Castro Lopo <erikd@mega-nerd.com>
+
+    Although libsndfile sources are included in chuck upstream sources, the
+    debian package for chuck uses the upstream version of sndfile, contained in
+    the libsndfile-dev package. The upstream version can be found at
+    http://www.mega-nerd.com/libsndfile/ .
+
+License:
+
+    You are free to distribute this software under the terms of the GNU General
+    Public License. On Debian systems, the complete text of the GNU General
+    Public License can be found in the file `/usr/share/common-licenses/LGPL'.
+
+---
+
+The files src/util_opsc.{cpp,h} were removed from the debian source package as
+they contain code licensed under terms uncompatible with the Debian Free
+Software Guidelines.
