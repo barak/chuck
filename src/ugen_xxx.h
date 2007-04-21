@@ -102,6 +102,33 @@ CK_DLL_TICK( gain_tick );
 CK_DLL_CTRL( gain_ctrl_value );
 CK_DLL_CGET( gain_cget_value );
 
+// dyno (Matt Hoffman + Graham Coleman)
+// TODO: add soft knee option
+CK_DLL_CTOR( dyno_ctor );
+CK_DLL_DTOR( dyno_dtor );
+CK_DLL_TICK( dyno_tick );
+CK_DLL_CTRL( dyno_ctrl_limit );
+CK_DLL_CTRL( dyno_ctrl_compress );
+CK_DLL_CTRL( dyno_ctrl_expand );
+CK_DLL_CTRL( dyno_ctrl_gate );
+CK_DLL_CTRL( dyno_ctrl_duck );
+CK_DLL_CTRL( dyno_ctrl_thresh );
+CK_DLL_CGET( dyno_cget_thresh );
+CK_DLL_CTRL( dyno_ctrl_attackTime );
+CK_DLL_CGET( dyno_cget_attackTime );
+CK_DLL_CTRL( dyno_ctrl_releaseTime );
+CK_DLL_CGET( dyno_cget_releaseTime );
+CK_DLL_CTRL( dyno_ctrl_ratio );
+CK_DLL_CGET( dyno_cget_ratio );
+CK_DLL_CTRL( dyno_ctrl_slopeBelow );
+CK_DLL_CGET( dyno_cget_slopeBelow );
+CK_DLL_CTRL( dyno_ctrl_slopeAbove );
+CK_DLL_CGET( dyno_cget_slopeAbove );
+CK_DLL_CTRL( dyno_ctrl_externalSideInput );
+CK_DLL_CGET( dyno_cget_externalSideInput );
+CK_DLL_CTRL( dyno_ctrl_sideInput );
+CK_DLL_CGET( dyno_cget_sideInput );
+
 // halfrect
 CK_DLL_TICK( halfrect_tick );
 
@@ -156,6 +183,60 @@ CK_DLL_CGET( sndbuf_cget_samples );
 CK_DLL_CGET( sndbuf_cget_length );
 CK_DLL_CGET( sndbuf_cget_channels );
 CK_DLL_CGET( sndbuf_cget_valueAt );
+
+// LiSa (Dan Trueman)
+CK_DLL_CTOR( LiSaMulti_ctor );
+CK_DLL_DTOR( LiSaMulti_dtor );
+CK_DLL_TICK( LiSaMulti_tick );
+CK_DLL_PMSG( LiSaMulti_pmsg );
+CK_DLL_CTRL( LiSaMulti_size );
+CK_DLL_CTRL( LiSaMulti_start_record );
+CK_DLL_CTRL( LiSaMulti_start_play );
+CK_DLL_CTRL( LiSaMulti_start_play0 );
+CK_DLL_CTRL( LiSaMulti_ctrl_rate );
+CK_DLL_CTRL( LiSaMulti_ctrl_rate0 );
+CK_DLL_CTRL( LiSaMulti_ctrl_pindex );
+CK_DLL_CGET( LiSaMulti_cget_pindex );
+CK_DLL_CTRL( LiSaMulti_ctrl_pindex0 );
+CK_DLL_CGET( LiSaMulti_cget_pindex0 );
+CK_DLL_CTRL( LiSaMulti_ctrl_rindex );
+CK_DLL_CGET( LiSaMulti_cget_rindex );
+CK_DLL_CTRL( LiSaMulti_ctrl_lstart );
+CK_DLL_CGET( LiSaMulti_cget_lstart );
+CK_DLL_CTRL( LiSaMulti_ctrl_lend );
+CK_DLL_CGET( LiSaMulti_cget_lend );
+CK_DLL_CTRL( LiSaMulti_ctrl_lstart0 );
+CK_DLL_CGET( LiSaMulti_cget_lstart0 );
+CK_DLL_CTRL( LiSaMulti_ctrl_lend0 );
+CK_DLL_CGET( LiSaMulti_cget_lend0 );
+CK_DLL_CTRL( LiSaMulti_ctrl_loop );
+CK_DLL_CGET( LiSaMulti_cget_loop );
+CK_DLL_CTRL( LiSaMulti_ctrl_bi );
+CK_DLL_CGET( LiSaMulti_cget_bi );
+CK_DLL_CTRL( LiSaMulti_ctrl_loop0 );
+CK_DLL_CGET( LiSaMulti_cget_loop0 );
+CK_DLL_CTRL( LiSaMulti_ctrl_bi0 );
+CK_DLL_CGET( LiSaMulti_cget_bi0 );
+CK_DLL_CTRL( LiSaMulti_ctrl_loop_end_rec );
+CK_DLL_CGET( LiSaMulti_cget_loop_end_rec );
+CK_DLL_CTRL( LiSaMulti_ctrl_looprec );
+CK_DLL_CGET( LiSaMulti_cget_looprec );
+CK_DLL_CTRL( LiSaMulti_ctrl_coeff );
+CK_DLL_CGET( LiSaMulti_cget_coeff );
+CK_DLL_CTRL( LiSaMulti_ctrl_clear );
+CK_DLL_CGET( LiSaMulti_cget_voice );
+CK_DLL_CTRL( LiSaMulti_ctrl_maxvoices );
+CK_DLL_CGET( LiSaMulti_cget_maxvoices );
+CK_DLL_CGET( LiSaMulti_cget_value );
+CK_DLL_CGET( LiSaMulti_cget_value0 );
+CK_DLL_CTRL( LiSaMulti_ctrl_track );
+CK_DLL_CGET( LiSaMulti_cget_track );
+// ramp stuff
+CK_DLL_CTRL( LiSaMulti_ctrl_rampup );
+CK_DLL_CTRL( LiSaMulti_ctrl_rampdown );
+CK_DLL_CTRL( LiSaMulti_ctrl_rampup0 );
+CK_DLL_CTRL( LiSaMulti_ctrl_rampdown0 );
+CK_DLL_CTRL( LiSaMulti_ctrl_rec_ramplen );
 
 
 

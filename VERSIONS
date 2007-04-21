@@ -1,4 +1,128 @@
 ---
+1.2.0.8
+  - (added) command line argument support
+            e.g. %> chuck foo.ck:1:hello bar:2.5:"with space"
+                 also works with OTF commands
+            e.g. %> chuck + foo:1:yo
+                 also works with Machine.add( ... )
+            e.g. // code
+                 Machine.add( "foo:1:2:yo" );
+            (see examples/basic/args.ck for accessing from code)
+  - (added) OS X: watchdog enabled
+            win32: watchdog implemented and enabled
+            (combats chuck infinite empty loop implosion)
+  - (added) OTF server/listener now ON by default...
+            to enable, specify --loop or --server
+            to disable, specify --standalone
+  - (added) new UGens:
+            --------
+            Dynamics: dynamics processor (compressor, expander, etc.)
+                  (author Matt Hoffman and Graham Coleman)
+                  (see examples/special/)
+
+            GenX: classic + new lookup table functions base class
+                  (author Dan Trueman, ported from RTCMix)
+                  (see examples/special/)
+
+                  float .lookup( float ) : lookup table value
+                  float[] .coeffs( float[] ) : load the table
+            Gen5 (extends GenX)
+            Gen7 (extends GenX)
+            Gen9 (extends GenX)
+            Gen10 (extends GenX)
+            Gen17 (extends GenX)
+            CurveTable (extends GenX)
+            WarpTable (extends GenX)
+
+            LiSa: (Li)ve (Sa)mpling!
+                  (author Dan Trueman, partly based on Dan's munger~)
+
+            --------
+  - (added) (prototype) string catenation
+            (for now will leak memory! use wisely!!!)
+            e.g. // expression
+                 "a" + "b"
+                 "a" + 45
+                 "a" + 5.1
+                 "postfix" +=> str;
+  - (added) string escape sequences
+            \0 \n \t \a \" \b \f \r \v \\
+            \nnn (3 digit octal ascii)
+  - (added) new Objects:
+            --------
+            StringTokenizer: uh string tokenizer (by whitespace)
+                (use to be hidden PRC object)
+                see examples/string/token.ck
+
+            ConsoleInput: interim console input (until file I/O)
+                (use to be hidden Skot object)
+                see examples/string/readline.ck
+
+            --------
+
+  - (api)   API additions
+            -------- (also see API modifications below)
+            ADSR: dur attackTime()
+                  dur decayTime()
+                  dur releaseTime()
+            WvOut: void closeFile()
+            Hid: void openTiltSensor()
+                 int read( int, int, HidMsg )
+            HidMsg: int isWheelMotion()
+                    (support for mouse scroll wheels)
+                    int key
+                    (cross-platform USB HID Keyboard Usage code)
+                    int ascii
+                    (ASCII value of key, where appropriate)
+            --------
+  - (api)   API modifications (sorry!)
+            --------
+            ADSR: float attackTime( float ) -> dur attackTime( dur )
+                  float decayTime( float ) -> dur decayTime( dur )
+                  float releaseTime( float ) -> dur releaseTime( dur )
+            --------
+  - (api) deprecated --> new classes
+    --------------------------
+       HidIn  -->  Hid
+
+  - (fixed) adc.last() now returns correct value (was returning 0)
+  - (fixed) array is now subclass of Object
+  - (fixed) accessing null array no longer crashes (instead: exception)
+  - (fixed) allow: 0 length float arrays
+  - (fixed) check for negative array size
+  - (fixed) accessing null map no longer crashes (instead: exception)
+  - (fixed) connecting null UGen references no longer crashes
+  - (fixed) trivial (null == null) no longer evaluated as string
+  - (fixed) strict (x,y) => z type checking
+  - (fixed) UGens no longer able to make duplicate connections
+  - (fixed) && now terminates early if an operand evaluates to 0
+            || terminates early if an operand evaluates to 1
+  - (fixed) bug accessing static members of built-in classes
+  - (fixed) OscSend.startMsg no longer silently fails when 
+            using a single string message specification
+  - (fixed) Math.atan2 now accepts the proper arguments
+  - (fixed) increased OTF command network fail-safe measures
+  - (fixed) STK BlitSquare now produces correct frequency
+            (applied fix from STK release)
+  - (fixed) no longer spontaneously crashes when HidIn and 
+            other event based input mechanisms are firing rapidly
+  - (fixed) using non-static variables from inside static functions
+  - (fixed) variables must be declared before being used
+
+
+---
+1.2.0.7b
+  - added: (all) HidIn.name() now returns meaningful device name
+  - fixed: (all) fixed STK Envelope bug
+  - fixed: (osx) mouse motion now correctly returns delta Y
+  - fixed: (win32) joystick hat messages now properly reported
+  - fixed: (win32) fixed bug where joysticks of same model/product
+           id would send messages through the same HidIn object
+  - fixed: (all) seg fault in OSCSend.startMsg() with single 
+           string message specification
+
+
+---
 1.2.0.7
   - (api) deprecated --> new classes
     --------------------------

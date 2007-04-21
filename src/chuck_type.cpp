@@ -55,8 +55,8 @@ Chuck_Type t_time( te_time, "time", NULL, sizeof(t_CKTIME) );
 Chuck_Type t_dur( te_dur, "dur", NULL, sizeof(t_CKTIME) );
 Chuck_Type t_null( te_null, "@null", NULL, sizeof(void *) );
 Chuck_Type t_function( te_function, "@function", &t_object, sizeof(void *) );
-Chuck_Type t_array( te_array, "@array", NULL, sizeof(void *) );
 Chuck_Type t_object( te_object, "Object", NULL, sizeof(void *) );
+Chuck_Type t_array( te_array, "@array", &t_object, sizeof(void *) );
 Chuck_Type t_string( te_string, "string", &t_object, sizeof(void *) );
 Chuck_Type t_event( te_event, "Event", &t_object, sizeof(void *) );
 Chuck_Type t_ugen( te_ugen, "UGen", &t_object, sizeof(void *) );
@@ -1221,11 +1221,12 @@ t_CKTYPE type_engine_check_op( Chuck_Env * env, ae_Operator op, a_Exp lhs, a_Exp
         return FALSE;
 
     // if lhs is multi-value, then check separately
-    if( (lhs->next && op != ae_op_chuck && !isa( right, &t_function)) || rhs->next )
+    if( (lhs->next && op != ae_op_chuck /*&& !isa( right, &t_function)*/ ) || rhs->next )
     {
         // TODO: implement this
         EM_error2( lhs->linepos, 
-            "multi-value binary operations not implemented..." );
+            "multi-value (%s) operation not supported/implemented...",
+            op2str(op));
         return NULL;
     }
 
@@ -1285,6 +1286,22 @@ t_CKTYPE type_engine_check_op( Chuck_Env * env, ae_Operator op, a_Exp lhs, a_Exp
     switch( op )
     {
     case ae_op_plus:
+    case ae_op_plus_chuck:
+        // take care of string
+        if( isa( left, &t_string ) )
+        {
+            // right is string or int/float
+            if( isa( right, &t_string ) || isa( right, &t_int )
+                || isa( right, &t_float ) )
+                break;
+        }
+        else if( isa( left, &t_string ) || isa( left, &t_int )
+                 || isa( left, &t_float ) )
+        {
+            // right is string
+            if( isa( right, &t_string ) )
+                break;
+        }
     case ae_op_minus:
     case ae_op_times:
     case ae_op_divide:
@@ -1293,7 +1310,6 @@ t_CKTYPE type_engine_check_op( Chuck_Env * env, ae_Operator op, a_Exp lhs, a_Exp
     //case ae_op_gt:
     //case ae_op_ge:
     case ae_op_percent:
-    case ae_op_plus_chuck:
     case ae_op_minus_chuck:
     case ae_op_times_chuck:
     case ae_op_divide_chuck:
@@ -1358,11 +1374,19 @@ t_CKTYPE type_engine_check_op( Chuck_Env * env, ae_Operator op, a_Exp lhs, a_Exp
         return type_engine_check_op_at_chuck( env, lhs, rhs );
 
     case ae_op_plus_chuck:
+        if( isa( left, &t_string ) && isa( right, &t_string ) ) return &t_string;
+        if( isa( left, &t_int ) && isa( right, &t_string ) ) return &t_string;
+        if( isa( left, &t_float ) && isa( right, &t_string ) ) return &t_string;
     case ae_op_plus:
         LR( te_int, te_int ) return &t_int;
         LR( te_float, te_float ) return &t_float;
         LR( te_dur, te_dur ) return &t_dur;
         COMMUTE( te_dur, te_time ) return &t_time;
+        if( isa( left, &t_string ) && isa( right, &t_string ) ) return &t_string;
+        if( isa( left, &t_string ) && isa( right, &t_int ) ) return &t_string;
+        if( isa( left, &t_string ) && isa( right, &t_float ) ) return &t_string;
+        if( isa( left, &t_int ) && isa( right, &t_string ) ) return &t_string;
+        if( isa( left, &t_float ) && isa( right, &t_string ) ) return &t_string;
     break;
 
     case ae_op_minus:
@@ -1403,11 +1427,14 @@ t_CKTYPE type_engine_check_op( Chuck_Env * env, ae_Operator op, a_Exp lhs, a_Exp
         LR( te_float, te_dur ) return &t_dur;
     break;
 
+    case ae_op_eq:
+        // null
+        // if( isa( left, &t_object ) && isa( right, &t_null ) ) return &t_int;
+        // if( isa( left, &t_null ) && isa( right, &t_object ) ) return &t_int;
     case ae_op_lt:
     case ae_op_gt:
     case ae_op_le:
     case ae_op_ge:
-    case ae_op_eq:
     case ae_op_neq:
         LR( te_int, te_int ) return &t_int;
         LR( te_float, te_float ) return &t_int;
@@ -1467,7 +1494,22 @@ t_CKTYPE type_engine_check_op_chuck( Chuck_Env * env, a_Exp lhs, a_Exp rhs,
                                      a_Exp_Binary binary )
 {
     t_CKTYPE left = lhs->type, right = rhs->type;
-    
+
+    // chuck to function
+    if( isa( right, &t_function ) )
+    {
+        // treat this function call
+        return type_engine_check_exp_func_call( env, rhs, lhs, binary->ck_func, binary->linepos );
+    }
+
+    // multi-value not supported beyond this for now
+    if( lhs->next || rhs->next )
+    {
+        EM_error2( lhs->linepos,
+            "multi-value (=>) operation not supported/implemented..." );
+        return NULL;
+    }
+
     // ugen => ugen
     if( isa( left, &t_ugen ) && isa( right, &t_ugen ) )
     {
@@ -1504,13 +1546,6 @@ t_CKTYPE type_engine_check_op_chuck( Chuck_Env * env, a_Exp lhs, a_Exp rhs,
         && rhs->s_type == ae_exp_primary && !strcmp( "now", S_name(rhs->primary.var) ) )
     {
         return right;
-    }
-
-    // chuck to function
-    if( isa( right, &t_function ) )
-    {
-        // treat this function call
-        return type_engine_check_exp_func_call( env, rhs, lhs, binary->ck_func, binary->linepos );
     }
 
     // implicit cast
@@ -1905,8 +1940,28 @@ t_CKTYPE type_engine_check_exp_primary( Chuck_Env * env, a_Exp_Primary exp )
                         v = type_engine_find_value( env, S_name(exp->var), TRUE, exp->linepos );
                     }
 
+                    // check
+                    if( v )
+                    {
+                        // inside a class
+                        if( env->class_def )
+                        {
+                            // inside a function definition
+                            if( env->func )
+                            {
+                                // if func static, v not
+                                if( env->func->def->static_decl == ae_key_static &&
+                                    v->is_member && !v->is_static )
+                                {
+                                    EM_error2( exp->linepos,
+                                        "non-static member '%s' used from static function...", S_name(exp->var) );
+                                    return NULL;
+                                }
+                            }
+                        }
+                    }
                     // error
-                    if( !v )
+                    else
                     {
                         // checking for class scope incorrect (thanks Robin Davies)
                         if( !env->class_def /* || env->class_scope > 0 */ )
@@ -1923,6 +1978,15 @@ t_CKTYPE type_engine_check_exp_primary( Chuck_Env * env, a_Exp_Primary exp )
                             return NULL;
                         }
                     }
+                }
+
+                // make sure v is legit as this point
+                if( !v->is_decl_checked )
+                {
+                    EM_error2( exp->linepos,
+                        "variable/member '%s' is used before declaration...",
+                        S_name(exp->var) );
+                    return NULL;
                 }
 
                 // the type
@@ -1944,6 +2008,11 @@ t_CKTYPE type_engine_check_exp_primary( Chuck_Env * env, a_Exp_Primary exp )
         
         // string
         case ae_primary_str:
+            // escape the thing
+            if( !escape_str( exp->str, exp->linepos ) )
+                return NULL;
+
+            // a string
             t = &t_string;
         break;
 
@@ -2406,6 +2475,9 @@ t_CKTYPE type_engine_check_exp_decl( Chuck_Env * env, a_Exp_Decl decl )
         {
             // do nothing?
         }
+
+        // mark the decl checked (see scan pass 2)
+        value->is_decl_checked = TRUE;
         
         // add the value, if we are not at class scope
         // (otherwise they should already have been added)
@@ -3986,7 +4058,8 @@ t_CKBOOL type_engine_compat_func( a_Func_Def lhs, a_Func_Def rhs, int pos, strin
 //       must be completed by type_engine_import_class_end()
 //-----------------------------------------------------------------------------
 Chuck_Type * type_engine_import_class_begin( Chuck_Env * env, Chuck_Type * type, 
-                                             Chuck_Namespace * where, f_ctor pre_ctor )
+                                             Chuck_Namespace * where,
+                                             f_ctor pre_ctor, f_dtor dtor )
 {
     Chuck_Value * value = NULL;
     Chuck_Type * type_type = NULL;
@@ -4019,10 +4092,29 @@ Chuck_Type * type_engine_import_class_begin( Chuck_Env * env, Chuck_Type * type,
         type->info->pre_ctor = new Chuck_VM_Code;
         // add pre_ctor
         type->info->pre_ctor->native_func = (t_CKUINT)pre_ctor;
+        // mark type as ctor
+        type->info->pre_ctor->native_func_type = Chuck_VM_Code::NATIVE_CTOR;
         // specify that we need this
         type->info->pre_ctor->need_this = TRUE;
         // no arguments to preconstructor other than self
         type->info->pre_ctor->stack_depth = sizeof(t_CKUINT);
+    }
+
+    // if destructor
+    if( dtor != 0 )
+    {
+        // flag it
+        type->has_destructor = TRUE;
+        // allocate vm code for dtor
+        type->info->dtor = new Chuck_VM_Code;
+        // add dtor
+        type->info->dtor->native_func = (t_CKUINT)dtor;
+        // mark type as dtor
+        type->info->dtor->native_func_type = Chuck_VM_Code::NATIVE_DTOR;
+        // specify that we need this
+        type->info->dtor->need_this = TRUE;
+        // no arguments to destructor other than self
+        type->info->dtor->stack_depth = sizeof(t_CKUINT);
     }
 
     // set the beginning of the data segment after parent
@@ -4083,7 +4175,7 @@ Chuck_Type * type_engine_import_class_begin( Chuck_Env * env, Chuck_Type * type,
 Chuck_Type * type_engine_import_class_begin( Chuck_Env * env, const char * name, 
                                              const char * parent_str,
                                              Chuck_Namespace * where, 
-                                             f_ctor pre_ctor )
+                                             f_ctor pre_ctor, f_dtor dtor )
 {
     // which namespace
     Chuck_Type * parent = NULL;
@@ -4110,7 +4202,7 @@ Chuck_Type * type_engine_import_class_begin( Chuck_Env * env, const char * name,
     where->type.add( name, type );
 
     // do the rest
-    if( !type_engine_import_class_begin( env, type, where, pre_ctor ) )
+    if( !type_engine_import_class_begin( env, type, where, pre_ctor, dtor ) )
         goto error;
 
     // done
@@ -4138,14 +4230,15 @@ cleanup:
 //-----------------------------------------------------------------------------
 Chuck_Type * type_engine_import_ugen_begin( Chuck_Env * env, const char * name, 
                                             const char * parent, Chuck_Namespace * where,
-                                            f_ctor pre_ctor, f_tick tick, f_pmsg pmsg,
+                                            f_ctor pre_ctor, f_dtor dtor,
+                                            f_tick tick, f_pmsg pmsg,
                                             t_CKUINT num_ins, t_CKUINT num_outs )
 {
     Chuck_Type * type = NULL;
     Chuck_UGen_Info * info = NULL;
 
     // construct class
-    if( !(type = type_engine_import_class_begin( env, name, parent, where, pre_ctor ) ) )
+    if( !(type = type_engine_import_class_begin( env, name, parent, where, pre_ctor, dtor ) ) )
         return FALSE;
 
     // make sure parent is ugen
@@ -4228,6 +4321,8 @@ t_CKBOOL type_engine_import_mfun( Chuck_Env * env, Chuck_DL_Func * mfun )
 
     // make into func_def
     func_def = make_dll_as_fun( mfun, FALSE );
+    if( !func_def )
+        return FALSE;
     
     // add the function to class
     if( !type_engine_scan1_func_def( env, func_def ) )
@@ -4363,7 +4458,7 @@ t_CKBOOL type_engine_import_svar( Chuck_Env * env, const char * type,
     if( !path )
     {
         // error
-        EM_error2( 0, "... during mvar import '%s.%s'...", 
+        EM_error2( 0, "... during svar import '%s.%s'...", 
             env->class_def->c_name(), name );
         return FALSE;
     }
@@ -4698,7 +4793,11 @@ a_Arg_List make_dll_arg_list( Chuck_DL_Func * dl_fun )
     a_Type_Decl type_decl = NULL;
     a_Var_Decl var_decl = NULL;
     a_Id_List type_path = NULL;
+    a_Id_List name_path = NULL;
+    a_Array_Sub array_sub = NULL;
     Chuck_DL_Value * arg = NULL;
+    t_CKUINT array_depth = 0;
+    t_CKUINT array_depth2 = 0;
     t_CKINT i = 0;
 
     // loop backwards
@@ -4708,7 +4807,7 @@ a_Arg_List make_dll_arg_list( Chuck_DL_Func * dl_fun )
         arg = dl_fun->args[i];
 
         // path
-        type_path = str2list( arg->type );
+        type_path = str2list( arg->type, array_depth );
         if( !type_path )
         {
             // error
@@ -4724,8 +4823,29 @@ a_Arg_List make_dll_arg_list( Chuck_DL_Func * dl_fun )
         assert( type_decl );
 
         // var
-        // TODO: arrays
-        var_decl = new_var_decl( (char *)arg->name.c_str(), NULL, 0 );
+        name_path = str2list( arg->name, array_depth2 );
+
+        
+        // sanity
+        if( array_depth && array_depth2 )
+        {
+            // error
+            EM_error2( 0, "array subscript specified incorrectly for built-in module" );
+            // TODO: cleanup
+            return NULL;
+        }
+
+        // TODO: arrays?
+        if( array_depth2 ) array_depth = array_depth2;
+        if( array_depth )
+        {
+            array_sub = new_array_sub( NULL, 0 );
+        
+            for( int i = 1; i < array_depth; i++ )
+                array_sub = prepend_array_sub( array_sub, NULL, 0 );
+        }
+
+        var_decl = new_var_decl( (char *)arg->name.c_str(), array_sub, 0 );
 
         // make new arg
         arg_list = prepend_arg_list( type_decl, var_decl, arg_list, 0 );
@@ -4750,13 +4870,14 @@ a_Func_Def make_dll_as_fun( Chuck_DL_Func * dl_fun, t_CKBOOL is_static )
     a_Type_Decl type_decl = NULL;
     const char * name = NULL;
     a_Arg_List arg_list = NULL;
+    t_CKUINT array_depth = 0;
 
     // fun decl TODO: fix this
     func_decl = ae_key_func;
     // static decl TODO: allow abstract
     static_decl = is_static ? ae_key_static : ae_key_instance;
     // path
-    type_path = str2list( dl_fun->type );
+    type_path = str2list( dl_fun->type, array_depth );
     if( !type_path )
     {
         // error
@@ -4778,6 +4899,20 @@ a_Func_Def make_dll_as_fun( Chuck_DL_Func * dl_fun, t_CKBOOL is_static )
         delete_id_list( type_path );
         type_path = NULL;
         goto error;
+    }
+    
+    // array types
+    // this allows us to define built-in functions that return array types
+    // however doing this without garbage collection is probably a bad idea
+    // -spencer
+    if( array_depth )
+    {
+        a_Array_Sub array_sub = new_array_sub( NULL, 0 );
+        
+        for( int i = 1; i < array_depth; i++ )
+            array_sub = prepend_array_sub( array_sub, NULL, 0 );
+        
+        type_decl = add_type_decl_array( type_decl, array_sub, 0 );
     }
 
     // name of the function
@@ -4896,16 +5031,43 @@ t_CKBOOL type_engine_add_dll( Chuck_Env * env, Chuck_DLL * dll, const string & d
             // add to vector
             the_funs.push_back( fun );
         }
-
+        
         // loop over member data
+        // ignored for now... -spencer
         for( j = 0; j < cl->mvars.size(); j++ )
         {
         }
-
+        
+        // the next few lines take static member variables defined by the DLL
+        // and creates a list of corresponding declarations to add to the 
+        // class definition
+        // -spencer
+        
+        // static member variable declarations
+        a_Stmt_List svar_decls = NULL;
+        
         // loop over static data
         for( j = 0; j < cl->svars.size(); j++ )
         {
+            // get type
+            a_Id_List path = str2list( cl->svars[j]->type.c_str() );
+            // make type decl
+            a_Type_Decl type_decl = new_type_decl( path, FALSE, 0 );
+            // make var decl
+            a_Var_Decl var_decl = new_var_decl( cl->svars[j]->name.c_str(), NULL, 0 );
+            // make var decl list
+            a_Var_Decl_List var_decl_list = new_var_decl_list( var_decl, 0 );
+            // make exp decl
+            a_Exp exp_decl = new_exp_decl( type_decl, var_decl_list, TRUE, 0 );
+            // add addr
+            var_decl->addr = (void *)cl->svars[j]->static_addr;
+            // prepend exp stmt to stmt list
+            svar_decls = prepend_stmt_list( new_stmt_from_expression( exp_decl, 0 ), svar_decls, 0 );
         }
+
+        // if there are any declarations, prepend them to body
+        if( svar_decls )
+            body = prepend_class_body( new_section_stmt( svar_decls, 0 ), body, 0 );
         
         // go through funs backwards, and prepend
         for( t_CKINT k = (t_CKINT)the_funs.size() - 1; k >= 0; k-- )
@@ -4913,7 +5075,7 @@ t_CKBOOL type_engine_add_dll( Chuck_Env * env, Chuck_DLL * dll, const string & d
             // add to body
             body = prepend_class_body( new_section_func_def( the_funs[k], 0 ), body, 0 );
         }
-
+        
         // construct class
         def = new_class_def( ae_key_public, name, ext, body, 0 );
         // set where to add
@@ -4959,4 +5121,131 @@ const char * howmuch2str( te_HowMuch how_much )
 {
     if( how_much < 0 || how_much > te_do_no_classes ) return "[INVALID]";
     else return g_howmuch[how_much];
+}
+
+
+
+
+// table of escape characters
+static char g_escape[256];
+static t_CKBOOL g_escape_ready = FALSE;
+
+//-----------------------------------------------------------------------------
+// name: escape_table()
+// desc: ...
+//-----------------------------------------------------------------------------
+void escape_table( )
+{
+    // escape
+    g_escape['\''] = '\'';
+    g_escape['"'] = '"';
+    g_escape['\\'] = '\\';
+    g_escape['a'] = (char)7; // audible bell
+    g_escape['b'] = (char)8; // back space
+    g_escape['f'] = (char)12; // form feed
+    g_escape['n'] = (char)10; // new line
+    g_escape['r'] = (char)13; // carriage return
+    g_escape['t'] = (char)9; // horizontal tab
+    g_escape['v'] = (char)11; // vertical tab
+
+    // done
+    g_escape_ready = TRUE;
+}
+
+
+//-----------------------------------------------------------------------------
+// name: escape_str()
+// desc: ...
+//-----------------------------------------------------------------------------
+t_CKBOOL escape_str( char * str_lit, int linepos )
+{
+    // create if not yet
+    if( !g_escape_ready )
+        escape_table( );
+
+    // write pointer
+    char * str = str_lit;
+    // unsigned because we index array of 256
+    unsigned char c, c2, c3;
+
+    // iterate
+    while( *str_lit )
+    {
+        // if \ encountered
+        if( *str_lit == '\\' )
+        {
+            // advance pointer
+            str_lit++;
+
+            // make sure next char
+            if( *str_lit == '\0' )
+            {
+                EM_error2( linepos, "invalid: string ends with escape charactor '\\'" );
+                return FALSE;
+            }
+
+            // next characters
+            c = *(str_lit);
+            c2 = *(str_lit+1);
+
+            // is octal?
+            if( c >= '0' && c <= '7' )
+            {
+                // look at next
+                if( c == '0' && ( c2 < '0' || c2 > '7' ) )
+                    *str++ = '\0';
+                else
+                {
+                    // get next
+                    c3 = *(str_lit+2);
+
+                    // all three should be within range
+                    if( c2 >= '0' && c2 <= '7' && c3 >= '0' && c3 <= '7' )
+                    {
+                        // ascii value
+                        *str++ = (c-'0') * 64 + (c2-'0') * 8 + (c3-'0');
+                        // advance pointer
+                        str_lit += 2;
+                    }
+                    else
+                    {
+                        EM_error2( linepos, "malformed octal escape sequence '\\%c%c%c'", c, c2, c3 );
+                        return FALSE;
+                    }
+                }
+            }
+            else if( c == 'x' ) // is hex?
+            {
+                EM_error2( linepos, "hex escape sequence not (yet) supported (use octal!)");
+                return FALSE;
+            }
+            else // is other?
+            {
+                // lookup
+                if( g_escape[(int)c] )
+                    *str++ = g_escape[c];
+                else // error
+                {
+                    EM_error2( linepos, "unrecognized escape sequence '\\%c'", c );
+                    return FALSE;
+                }
+            }
+        }
+        else
+        {
+            // char
+            *str++ = *str_lit;
+        }
+
+        // advance pointer
+        str_lit++;
+    }
+
+    // make sure
+    assert( str <= str_lit );
+
+    // terminate
+    *str = '\0';
+
+    return TRUE;
 }

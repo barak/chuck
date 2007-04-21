@@ -1,10 +1,18 @@
 // launch with r.ck
 
+// name
+"localhost" => string hostname;
+6449 => int port;
+
+// check command line
+if( me.args() ) me.arg(0) => hostname;
+if( me.args() > 1 ) me.arg(1) => Std.atoi => port;
+
 // send object
 OscSend xmit;
 
-// aim the transmitter at our local port 6449
-xmit.setHost( "localhost", 6449 );
+// aim the transmitter
+xmit.setHost( hostname, port );
 
 // infinite time loop
 while( true )

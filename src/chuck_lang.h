@@ -89,23 +89,29 @@ CK_DLL_MFUN( ugen_cget_gain );
 CK_DLL_MFUN( ugen_numChannels );
 CK_DLL_MFUN( ugen_cget_numChannels );
 CK_DLL_MFUN( ugen_chan );
+CK_DLL_MFUN( ugen_connected );
 
 
 //-----------------------------------------------------------------------------
 // shred API
 //-----------------------------------------------------------------------------
 CK_DLL_CTOR( shred_ctor );
-CK_DLL_DTOR( shred_dtor ); // 
+CK_DLL_DTOR( shred_dtor );
 CK_DLL_MFUN( shred_exit );
 CK_DLL_MFUN( shred_clone );
 CK_DLL_MFUN( shred_id );
 CK_DLL_MFUN( shred_yield );
+CK_DLL_MFUN( shred_numArgs );
+CK_DLL_MFUN( shred_getArg );
 
 
 //-----------------------------------------------------------------------------
 // array API
 //-----------------------------------------------------------------------------
-CK_DLL_MFUN( array_capacity );
+CK_DLL_CTOR( array_ctor );
+CK_DLL_DTOR( array_dtor );
+CK_DLL_MFUN( array_set_capacity );
+CK_DLL_MFUN( array_get_capacity );
 CK_DLL_MFUN( array_size );
 CK_DLL_MFUN( array_push_back );
 CK_DLL_MFUN( array_pop_back );
@@ -114,7 +120,6 @@ CK_DLL_MFUN( array_pop_font );
 CK_DLL_MFUN( array_find );
 CK_DLL_MFUN( array_erase );
 CK_DLL_MFUN( array_clear );
-CK_DLL_MFUN( array_recap );
 
 
 //-----------------------------------------------------------------------------
@@ -131,7 +136,14 @@ CK_DLL_MFUN( event_can_wait );
 //-----------------------------------------------------------------------------
 // string API
 //-----------------------------------------------------------------------------
+CK_DLL_CTOR( string_ctor );
+CK_DLL_DTOR( string_dtor );
 CK_DLL_MFUN( string_length );
+CK_DLL_MFUN( string_upper );
+CK_DLL_MFUN( string_lower );
+CK_DLL_MFUN( string_ltrim );
+CK_DLL_MFUN( string_rtrim );
+CK_DLL_MFUN( string_trim );
 CK_DLL_MFUN( string_set_at );
 CK_DLL_MFUN( string_get_at );
 
@@ -225,6 +237,7 @@ CK_DLL_MFUN( HidMsg_is_button_down );
 CK_DLL_MFUN( HidMsg_is_button_up );
 CK_DLL_MFUN( HidMsg_is_mouse_motion );
 CK_DLL_MFUN( HidMsg_is_hat_motion );
+CK_DLL_MFUN( HidMsg_is_wheel_motion );
 
 //-----------------------------------------------------------------------------
 // HidIn API
@@ -235,12 +248,18 @@ CK_DLL_MFUN( HidIn_open );
 CK_DLL_MFUN( HidIn_open_joystick );
 CK_DLL_MFUN( HidIn_open_mouse );
 CK_DLL_MFUN( HidIn_open_keyboard );
+CK_DLL_MFUN( HidIn_open_tiltsensor );
 CK_DLL_MFUN( HidIn_good );
 CK_DLL_MFUN( HidIn_num );
 CK_DLL_MFUN( HidIn_name );
 CK_DLL_MFUN( HidIn_printerr );
 CK_DLL_MFUN( HidIn_recv );
+CK_DLL_MFUN( HidIn_read );
+CK_DLL_MFUN( HidIn_send );
 CK_DLL_MFUN( HidIn_can_wait );
+CK_DLL_SFUN( HidIn_read_tilt_sensor );
+CK_DLL_SFUN( HidIn_start_cursor_track );
+CK_DLL_SFUN( HidIn_stop_cursor_track );
 
 
 //-----------------------------------------------------------------------------

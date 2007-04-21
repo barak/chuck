@@ -57,8 +57,16 @@ int setenv( const char *n, const char *v, int i )
 
 #endif
 
+// for ConsoleInput and StringTokenizer
+#include <sstream>
+#include <iostream>
+#include "util_thread.h"
+using namespace std;
+
+
 // KBHit
 CK_DLL_CTOR( KBHit_ctor );
+CK_DLL_DTOR( KBHit_dtor );
 CK_DLL_MFUN( KBHit_on );
 CK_DLL_MFUN( KBHit_off );
 CK_DLL_MFUN( KBHit_state );
@@ -69,13 +77,34 @@ CK_DLL_MFUN( KBHit_can_wait );
 
 static t_CKUINT KBHit_offset_data = 0;
 
+// Skot functions
+CK_DLL_CTOR( Skot_ctor );
+CK_DLL_DTOR( Skot_dtor );
+CK_DLL_MFUN( Skot_prompt );
+CK_DLL_MFUN( Skot_prompt2 );
+CK_DLL_MFUN( Skot_more );
+CK_DLL_MFUN( Skot_getLine );
+CK_DLL_MFUN( Skot_can_wait );
+
+static t_CKUINT Skot_offset_data = 0;
+
+// StrTok functions
+CK_DLL_CTOR( StrTok_ctor );
+CK_DLL_DTOR( StrTok_dtor );
+CK_DLL_MFUN( StrTok_set );
+CK_DLL_MFUN( StrTok_reset );
+CK_DLL_MFUN( StrTok_more );
+CK_DLL_MFUN( StrTok_next );
+CK_DLL_MFUN( StrTok_next2 );
+CK_DLL_MFUN( StrTok_get );
+CK_DLL_MFUN( StrTok_get2 );
+CK_DLL_MFUN( StrTok_size );
+
+static t_CKUINT StrTok_offset_data = 0;
+
 #ifdef AJAY
 
-#include <sstream>
-#include <iostream>
 #include <fstream>
-#include "util_thread.h"
-using namespace std;
 
 // VCR functions
 CK_DLL_CTOR( VCR_ctor );
@@ -90,29 +119,6 @@ CK_DLL_MFUN( VCR_size );
 CK_DLL_MFUN( VCR_name );
 
 static t_CKUINT VCR_offset_data = 0;
-
-// Skot functions
-CK_DLL_CTOR( Skot_ctor );
-CK_DLL_MFUN( Skot_prompt );
-CK_DLL_MFUN( Skot_prompt2 );
-CK_DLL_MFUN( Skot_more );
-CK_DLL_MFUN( Skot_getLine );
-CK_DLL_MFUN( Skot_can_wait );
-
-static t_CKUINT Skot_offset_data = 0;
-
-// StrTok functions
-CK_DLL_CTOR( StrTok_ctor );
-CK_DLL_MFUN( StrTok_set );
-CK_DLL_MFUN( StrTok_reset );
-CK_DLL_MFUN( StrTok_more );
-CK_DLL_MFUN( StrTok_next );
-CK_DLL_MFUN( StrTok_next2 );
-CK_DLL_MFUN( StrTok_get );
-CK_DLL_MFUN( StrTok_get2 );
-CK_DLL_MFUN( StrTok_size );
-
-static t_CKUINT StrTok_offset_data = 0;
 
 // Cereal functions
 CK_DLL_CTOR( Cereal_ctor );
@@ -249,7 +255,8 @@ DLL_QUERY libstd_query( Chuck_DL_Query * QUERY )
     // KBHit
     // begin class (KBHit)
     if( !type_engine_import_class_begin( env, "KBHit", "Event",
-                                         env->global(), KBHit_ctor ) )
+                                         env->global(), KBHit_ctor,
+                                         KBHit_dtor ) )
         return FALSE;
 
     // add member variable
@@ -289,6 +296,98 @@ DLL_QUERY libstd_query( Chuck_DL_Query * QUERY )
 
     // start it
     KBHitManager::init();
+
+
+    // register deprecate
+    type_engine_register_deprecate( env, "Skot", "ConsoleInput" );
+
+    // begin class (Skot)
+    if( !type_engine_import_class_begin( env, "ConsoleInput", "Event",
+                                         env->global(), Skot_ctor,
+                                         Skot_dtor ) )
+        return FALSE;
+
+    // add member variable
+    Skot_offset_data = type_engine_import_mvar( env, "int", "@Skot_data", FALSE );
+    if( Skot_offset_data == CK_INVALID_OFFSET ) goto error;
+
+    // add prompt()
+    func = make_new_mfun( "Event", "prompt", Skot_prompt );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add prompt()
+    func = make_new_mfun( "Event", "prompt", Skot_prompt2 );
+    func->add_arg( "string", "what" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add ready()
+    func = make_new_mfun( "int", "more", Skot_more );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add getString()
+    func = make_new_mfun( "string", "getLine", Skot_getLine );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add can_wait()
+    func = make_new_mfun( "int", "can_wait", Skot_can_wait );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // end class
+    type_engine_import_class_end( env );
+
+
+    // register deprecate
+    type_engine_register_deprecate( env, "PRC", "StringTokenizer" );
+
+    // begin class (StrTok)
+    if( !type_engine_import_class_begin( env, "StringTokenizer", "Object",
+                                         env->global(), StrTok_ctor,
+                                         StrTok_dtor ) )
+        return FALSE;
+
+    // add member variable
+    StrTok_offset_data = type_engine_import_mvar( env, "int", "@StrTok_data", FALSE );
+    if( StrTok_offset_data == CK_INVALID_OFFSET ) goto error;
+
+    // add set()
+    func = make_new_mfun( "void", "set", StrTok_set );
+    func->add_arg( "string", "line" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add reset()
+    func = make_new_mfun( "void", "reset", StrTok_reset );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add more()
+    func = make_new_mfun( "int", "more", StrTok_more );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add next()
+    func = make_new_mfun( "string", "next", StrTok_next );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add get()
+    func = make_new_mfun( "string", "next", StrTok_next2 );
+    func->add_arg( "string", "out" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add get()
+    func = make_new_mfun( "string", "get", StrTok_get );
+    func->add_arg( "int", "index" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add get()
+    func = make_new_mfun( "string", "get", StrTok_get2 );
+    func->add_arg( "int", "index" );
+    func->add_arg( "string", "out" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add size()
+    func = make_new_mfun( "int", "size", StrTok_size );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // end class
+    type_engine_import_class_end( env );
 
 
 #ifdef AJAY
@@ -345,89 +444,6 @@ DLL_QUERY libstd_query( Chuck_DL_Query * QUERY )
     // end the class import
     type_engine_import_class_end( env );
 
-
-    // begin class (Skot)
-    if( !type_engine_import_class_begin( env, "Skot", "Event",
-                                         env->global(), Skot_ctor ) )
-        return FALSE;
-
-    // add member variable
-    Skot_offset_data = type_engine_import_mvar( env, "int", "@Skot_data", FALSE );
-    if( Skot_offset_data == CK_INVALID_OFFSET ) goto error;
-
-    // add prompt()
-    func = make_new_mfun( "Event", "prompt", Skot_prompt );
-    if( !type_engine_import_mfun( env, func ) ) goto error;
-
-    // add prompt()
-    func = make_new_mfun( "Event", "prompt", Skot_prompt2 );
-    func->add_arg( "string", "what" );
-    if( !type_engine_import_mfun( env, func ) ) goto error;
-
-    // add ready()
-    func = make_new_mfun( "int", "more", Skot_more );
-    if( !type_engine_import_mfun( env, func ) ) goto error;
-
-    // add getString()
-    func = make_new_mfun( "string", "getLine", Skot_getLine );
-    if( !type_engine_import_mfun( env, func ) ) goto error;
-
-    // add can_wait()
-    func = make_new_mfun( "int", "can_wait", Skot_can_wait );
-    if( !type_engine_import_mfun( env, func ) ) goto error;
-
-    // end class
-    type_engine_import_class_end( env );
-
-
-    // begin class (StrTok)
-    if( !type_engine_import_class_begin( env, "PRC", "Object",
-                                         env->global(), StrTok_ctor ) )
-        return FALSE;
-
-    // add member variable
-    StrTok_offset_data = type_engine_import_mvar( env, "int", "@StrTok_data", FALSE );
-    if( StrTok_offset_data == CK_INVALID_OFFSET ) goto error;
-
-    // add set()
-    func = make_new_mfun( "void", "set", StrTok_set );
-    func->add_arg( "string", "line" );
-    if( !type_engine_import_mfun( env, func ) ) goto error;
-
-    // add reset()
-    func = make_new_mfun( "void", "reset", StrTok_reset );
-    if( !type_engine_import_mfun( env, func ) ) goto error;
-
-    // add more()
-    func = make_new_mfun( "int", "more", StrTok_more );
-    if( !type_engine_import_mfun( env, func ) ) goto error;
-
-    // add next()
-    func = make_new_mfun( "string", "next", StrTok_next );
-    if( !type_engine_import_mfun( env, func ) ) goto error;
-
-    // add get()
-    func = make_new_mfun( "string", "next", StrTok_next2 );
-    func->add_arg( "string", "out" );
-    if( !type_engine_import_mfun( env, func ) ) goto error;
-
-    // add get()
-    func = make_new_mfun( "string", "get", StrTok_get );
-    func->add_arg( "int", "index" );
-    if( !type_engine_import_mfun( env, func ) ) goto error;
-
-    // add get()
-    func = make_new_mfun( "string", "get", StrTok_get2 );
-    func->add_arg( "int", "index" );
-    func->add_arg( "string", "out" );
-    if( !type_engine_import_mfun( env, func ) ) goto error;
-
-    // add size()
-    func = make_new_mfun( "int", "size", StrTok_size );
-    if( !type_engine_import_mfun( env, func ) ) goto error;
-
-    // end class
-    type_engine_import_class_end( env );
 
 #if defined(__PLATFORM_WIN32__)
     // begin class (Cereal)
@@ -699,7 +715,7 @@ XThread * KBHitManager::the_thread;
 #define BUFFER_SIZE 1024
 
 
-#ifndef __PLATFORM_WIN32__
+#if !defined(__PLATFORM_WIN32__) || defined(__WINDOWS_PTHREAD__)
 static void * kb_loop( void * )
 #else
 static unsigned int __stdcall kb_loop( void * )
@@ -905,6 +921,13 @@ CK_DLL_CTOR( KBHit_ctor )
 }
 
 
+// dtor
+CK_DLL_DTOR( KBHit_dtor )
+{
+    delete (KBHit *)OBJ_MEMBER_INT(SELF, KBHit_offset_data);
+    OBJ_MEMBER_INT(SELF, KBHit_offset_data) = 0;
+}
+
 // on
 CK_DLL_MFUN( KBHit_on )
 {
@@ -958,6 +981,355 @@ CK_DLL_MFUN( KBHit_can_wait )
 {
     KBHit * kb = (KBHit *)(OBJ_MEMBER_INT(SELF, KBHit_offset_data));
     RETURN->v_int = kb->empty();
+}
+
+
+
+
+class LineEvent : public Chuck_Event
+{
+public:
+    LineEvent( Chuck_Event * SELF );
+    ~LineEvent();
+
+public:
+    void prompt( const string & what = "" );
+    t_CKBOOL more();
+    string getLine();
+    t_CKBOOL can_wait();
+    void enqueue( const string & line )
+    { m_q.push( line ); }
+
+    Chuck_Event * SELF;
+
+protected:
+    queue<string> m_q;
+};
+
+// global variables
+t_CKBOOL g_le_launched = FALSE;
+t_CKBOOL g_le_wait = TRUE;
+// CHUCK_THREAD g_tid_le = 0;
+extern CHUCK_THREAD g_tid_whatever;
+map<LineEvent *, LineEvent *> g_le_map;
+XMutex g_le_mutex;
+string g_le_what;
+extern Chuck_VM * g_vm;
+
+void * le_cb( void * p )
+{
+    char line[2048];
+    map<LineEvent *, LineEvent *>::iterator iter;
+    LineEvent * le = NULL;
+
+    // loop
+    while( true )
+    {
+        // wait
+        while( g_le_wait )
+            usleep( 10000 );
+
+        // check
+        if( !g_vm ) break;
+
+        // do the prompt
+        cout << g_le_what;
+        cout.flush();
+        if( !cin.getline( line, 2048 ) ) break;
+
+        // lock
+        g_le_mutex.acquire();
+        // go through
+        for( iter = g_le_map.begin(); iter != g_le_map.end(); iter++ )
+        {
+            // get the line event
+            le = (*iter).first;
+            // add to its queue
+            le->enqueue( line );
+            // broadcast it
+            le->SELF->queue_broadcast();
+        }
+        // unlock
+        g_le_mutex.release();
+
+        // reset wait
+        g_le_wait = TRUE;
+    }
+    
+    return NULL;
+}
+
+
+LineEvent::LineEvent( Chuck_Event * SELF )
+{
+    // launch the cb
+    if( !g_le_launched )
+    {
+#if !defined(__PLATFORM_WIN32__) || defined(__WINDOWS_PTHREAD__)
+        pthread_create( &g_tid_whatever, NULL, le_cb, NULL );
+#else
+        g_tid_whatever = CreateThread( NULL, 0, (LPTHREAD_START_ROUTINE)le_cb, NULL, 0, 0 );
+#endif
+        g_le_launched = TRUE;
+    }
+
+    // lock
+    g_le_mutex.acquire();
+    // add
+    g_le_map[this] = this;
+    this->SELF = SELF;
+    // unlock
+    g_le_mutex.release();
+}
+
+LineEvent::~LineEvent()
+{
+    // do nothing
+}
+
+void LineEvent::prompt( const string & what )
+{
+    // set what
+    g_le_what = what;
+    if( g_le_what != "" ) g_le_what += " ";
+    // signal
+    g_le_wait = FALSE;
+}
+
+t_CKBOOL LineEvent::more()
+{
+    // more
+    return m_q.size() > 0;
+}
+
+string LineEvent::getLine()
+{
+    string ret;
+
+    // lock
+    g_le_mutex.acquire();
+    // get next line
+    if( m_q.size() )
+    {
+        // get it
+        ret = m_q.front();
+        // dequeue it
+        m_q.pop();
+    }
+    else
+    {
+        ret = "[ERROR -> getLine() called on empty Skot]";
+    }
+    // unlock
+    g_le_mutex.release();
+
+    return ret;
+}
+
+t_CKBOOL LineEvent::can_wait()
+{
+    return !more();
+}
+
+
+// Skot
+CK_DLL_CTOR( Skot_ctor )
+{
+    LineEvent * le = new LineEvent((Chuck_Event *)SELF);
+    OBJ_MEMBER_INT(SELF, Skot_offset_data) = (t_CKINT)le;
+}
+
+CK_DLL_DTOR( Skot_dtor )
+{
+    delete (LineEvent *)OBJ_MEMBER_INT(SELF, Skot_offset_data);
+    OBJ_MEMBER_INT(SELF, Skot_offset_data) = 0;
+}
+
+CK_DLL_MFUN( Skot_prompt )
+{
+    LineEvent * le = (LineEvent *)OBJ_MEMBER_INT(SELF, Skot_offset_data);
+    le->prompt();
+    RETURN->v_int = (t_CKINT)(SELF);
+}
+
+CK_DLL_MFUN( Skot_prompt2 )
+{
+    LineEvent * le = (LineEvent *)OBJ_MEMBER_INT(SELF, Skot_offset_data);
+    const char * v = GET_CK_STRING(ARGS)->str.c_str();
+    le->prompt( v );
+    RETURN->v_int = (t_CKINT)(SELF);
+}
+
+CK_DLL_MFUN( Skot_more )
+{
+    LineEvent * le = (LineEvent *)OBJ_MEMBER_INT(SELF, Skot_offset_data);
+    RETURN->v_int = le->more();
+}
+
+CK_DLL_MFUN( Skot_getLine )
+{
+    LineEvent * le = (LineEvent *)OBJ_MEMBER_INT(SELF, Skot_offset_data);
+    // TODO: memory leak
+    Chuck_String * a = (Chuck_String *)instantiate_and_initialize_object( &t_string, NULL );
+    a->str = le->getLine();
+    RETURN->v_string = a;
+}
+
+CK_DLL_MFUN( Skot_can_wait )
+{
+    LineEvent * le = (LineEvent *)OBJ_MEMBER_INT(SELF, Skot_offset_data);
+    RETURN->v_int = le->can_wait();
+}
+
+
+// StrTok
+class StrTok
+{
+public:
+    StrTok();
+    ~StrTok();
+
+public:
+    void set( const string & line );
+    void reset();
+    t_CKBOOL more();
+    string next();
+    string get( t_CKINT index );
+    t_CKINT size();
+
+protected:
+    istringstream * m_ss;
+    string m_next;
+    vector<string> m_tokens;
+    vector<string>::size_type m_index;
+};
+
+StrTok::StrTok()
+{
+    m_ss = NULL;
+    m_index = 0;
+}
+
+StrTok::~StrTok()
+{
+    SAFE_DELETE( m_ss );
+}
+
+void StrTok::set( const string & line )
+{
+    string s;
+
+    // delete
+    SAFE_DELETE( m_ss );
+    // alloc
+    m_ss = new istringstream( line );
+    // read
+    reset();
+    m_tokens.clear();
+    while( (*m_ss) >> s )
+        m_tokens.push_back( s );    
+}
+
+void StrTok::reset()
+{
+    m_index = 0;
+}
+
+t_CKBOOL StrTok::more()
+{
+    return m_index < m_tokens.size();
+}
+
+string StrTok::next()
+{
+    if( !more() ) return "";
+    return m_tokens[m_index++];
+}
+
+string StrTok::get( t_CKINT index )
+{
+    if( index >= (t_CKINT)m_tokens.size() ) return "";
+    return m_tokens[index];
+}
+
+t_CKINT StrTok::size()
+{
+    return (t_CKINT)m_tokens.size();
+}
+
+CK_DLL_CTOR( StrTok_ctor )
+{
+    StrTok * tokens = new StrTok;
+    OBJ_MEMBER_INT(SELF, StrTok_offset_data) = (t_CKINT)tokens;
+}
+
+CK_DLL_DTOR( StrTok_dtor )
+{
+    delete (StrTok *)OBJ_MEMBER_INT(SELF, StrTok_offset_data);
+    OBJ_MEMBER_INT(SELF, StrTok_offset_data) = 0;
+}
+
+CK_DLL_MFUN( StrTok_set )
+{
+    StrTok * tokens = (StrTok *)OBJ_MEMBER_INT(SELF, StrTok_offset_data);
+    Chuck_String * s = GET_CK_STRING(ARGS);
+    if( s ) tokens->set( s->str );
+    else tokens->set( "" );
+}
+
+CK_DLL_MFUN( StrTok_reset )
+{
+    StrTok * tokens = (StrTok *)OBJ_MEMBER_INT(SELF, StrTok_offset_data);
+    tokens->reset();
+}
+
+CK_DLL_MFUN( StrTok_more )
+{
+    StrTok * tokens = (StrTok *)OBJ_MEMBER_INT(SELF, StrTok_offset_data);
+    RETURN->v_int = (t_CKINT)tokens->more();
+}
+
+CK_DLL_MFUN( StrTok_next )
+{
+    StrTok * tokens = (StrTok *)OBJ_MEMBER_INT(SELF, StrTok_offset_data);
+    Chuck_String * a = (Chuck_String *)instantiate_and_initialize_object( &t_string, NULL );
+    a->str = tokens->next();
+    RETURN->v_string = a;
+}
+
+CK_DLL_MFUN( StrTok_next2 )
+{
+    StrTok * tokens = (StrTok *)OBJ_MEMBER_INT(SELF, StrTok_offset_data);
+    Chuck_String * a = GET_CK_STRING(ARGS);
+    string s = tokens->next();
+    if( a ) a->str = s;
+    RETURN->v_string = a;
+}
+
+CK_DLL_MFUN( StrTok_get )
+{
+    StrTok * tokens = (StrTok *)OBJ_MEMBER_INT(SELF, StrTok_offset_data);
+    t_CKINT index = GET_NEXT_INT(ARGS);
+    Chuck_String * a = (Chuck_String *)instantiate_and_initialize_object( &t_string, NULL );
+    string s = tokens->get( index );
+    a->str = s;
+    RETURN->v_string = a;
+}
+
+CK_DLL_MFUN( StrTok_get2 )
+{
+    StrTok * tokens = (StrTok *)OBJ_MEMBER_INT(SELF, StrTok_offset_data);
+    t_CKINT index = GET_NEXT_INT(ARGS);
+    Chuck_String * a = GET_NEXT_STRING(ARGS);
+    string s = tokens->get( index );
+    if( a ) a->str = s;
+    RETURN->v_string = a;
+}
+
+CK_DLL_MFUN( StrTok_size )
+{
+    StrTok * tokens = (StrTok *)OBJ_MEMBER_INT(SELF, StrTok_offset_data);
+    RETURN->v_int = tokens->size();
 }
 
 
@@ -1230,341 +1602,6 @@ CK_DLL_MFUN( VCR_name )
 {
     ColumnReader * vcr = (ColumnReader*)OBJ_MEMBER_INT(SELF, VCR_offset_data);
     RETURN->v_string = &(vcr->s);
-}
-
-
-class LineEvent : public Chuck_Event
-{
-public:
-    LineEvent( Chuck_Event * SELF );
-    ~LineEvent();
-
-public:
-    void prompt( const string & what = "" );
-    t_CKBOOL more();
-    string getLine();
-    t_CKBOOL can_wait();
-    void enqueue( const string & line )
-    { m_q.push( line ); }
-
-    Chuck_Event * SELF;
-
-protected:
-    queue<string> m_q;
-};
-
-// global variables
-t_CKBOOL g_le_launched = FALSE;
-t_CKBOOL g_le_wait = TRUE;
-// CHUCK_THREAD g_tid_le = 0;
-extern CHUCK_THREAD g_tid_whatever;
-map<LineEvent *, LineEvent *> g_le_map;
-XMutex g_le_mutex;
-string g_le_what;
-extern Chuck_VM * g_vm;
-
-void * le_cb( void * p )
-{
-    char line[2048];
-    map<LineEvent *, LineEvent *>::iterator iter;
-    LineEvent * le = NULL;
-
-    // loop
-    while( true )
-    {
-        // wait
-        while( g_le_wait )
-            usleep( 10000 );
-
-        // check
-        if( !g_vm ) break;
-
-        // do the prompt
-        cout << g_le_what;
-        cout.flush();
-        if( !cin.getline( line, 2048 ) ) break;
-
-        // lock
-        g_le_mutex.acquire();
-        // go through
-        for( iter = g_le_map.begin(); iter != g_le_map.end(); iter++ )
-        {
-            // get the line event
-            le = (*iter).first;
-            // add to its queue
-            le->enqueue( line );
-            // broadcast it
-            le->SELF->queue_broadcast();
-        }
-        // unlock
-        g_le_mutex.release();
-
-        // reset wait
-        g_le_wait = TRUE;
-    }
-    
-    return NULL;
-}
-
-
-LineEvent::LineEvent( Chuck_Event * SELF )
-{
-    // launch the cb
-    if( !g_le_launched )
-    {
-#ifndef __PLATFORM_WIN32__
-        pthread_create( &g_tid_whatever, NULL, le_cb, NULL );
-#else
-        g_tid_whatever = CreateThread( NULL, 0, (LPTHREAD_START_ROUTINE)le_cb, NULL, 0, 0 );
-#endif
-        g_le_launched = TRUE;
-    }
-
-    // lock
-    g_le_mutex.acquire();
-    // add
-    g_le_map[this] = this;
-    this->SELF = SELF;
-    // unlock
-    g_le_mutex.release();
-}
-
-LineEvent::~LineEvent()
-{
-    // do nothing
-}
-
-void LineEvent::prompt( const string & what )
-{
-    // set what
-    g_le_what = what;
-    if( g_le_what != "" ) g_le_what += " ";
-    // signal
-    g_le_wait = FALSE;
-}
-
-t_CKBOOL LineEvent::more()
-{
-    // more
-    return m_q.size() > 0;
-}
-
-string LineEvent::getLine()
-{
-    string ret;
-
-    // lock
-    g_le_mutex.acquire();
-    // get next line
-    if( m_q.size() )
-    {
-        // get it
-        ret = m_q.front();
-        // dequeue it
-        m_q.pop();
-    }
-    else
-    {
-        ret = "[ERROR -> getLine() called on empty Skot]";
-    }
-    // unlock
-    g_le_mutex.release();
-
-    return ret;
-}
-
-t_CKBOOL LineEvent::can_wait()
-{
-    return !more();
-}
-
-
-// Skot
-CK_DLL_CTOR( Skot_ctor )
-{
-    LineEvent * le = new LineEvent((Chuck_Event *)SELF);
-    OBJ_MEMBER_INT(SELF, Skot_offset_data) = (t_CKINT)le;
-}
-
-CK_DLL_MFUN( Skot_prompt )
-{
-    LineEvent * le = (LineEvent *)OBJ_MEMBER_INT(SELF, Skot_offset_data);
-    le->prompt();
-    RETURN->v_int = (t_CKINT)(SELF);
-}
-
-CK_DLL_MFUN( Skot_prompt2 )
-{
-    LineEvent * le = (LineEvent *)OBJ_MEMBER_INT(SELF, Skot_offset_data);
-    const char * v = GET_CK_STRING(ARGS)->str.c_str();
-    le->prompt( v );
-    RETURN->v_int = (t_CKINT)(SELF);
-}
-
-CK_DLL_MFUN( Skot_more )
-{
-    LineEvent * le = (LineEvent *)OBJ_MEMBER_INT(SELF, Skot_offset_data);
-    RETURN->v_int = le->more();
-}
-
-CK_DLL_MFUN( Skot_getLine )
-{
-    LineEvent * le = (LineEvent *)OBJ_MEMBER_INT(SELF, Skot_offset_data);
-    // TODO: memory leak
-    Chuck_String * a = (Chuck_String *)instantiate_and_initialize_object( &t_string, NULL );
-    a->str = le->getLine();
-    RETURN->v_string = a;
-}
-
-CK_DLL_MFUN( Skot_can_wait )
-{
-    LineEvent * le = (LineEvent *)OBJ_MEMBER_INT(SELF, Skot_offset_data);
-    RETURN->v_int = le->can_wait();
-}
-
-
-// StrTok
-class StrTok
-{
-public:
-    StrTok();
-    ~StrTok();
-
-public:
-    void set( const string & line );
-    void reset();
-    t_CKBOOL more();
-    string next();
-    string get( t_CKINT index );
-    t_CKINT size();
-
-protected:
-    istringstream * m_ss;
-    string m_next;
-    vector<string> m_tokens;
-    vector<string>::size_type m_index;
-};
-
-StrTok::StrTok()
-{
-    m_ss = NULL;
-    m_index = 0;
-}
-
-StrTok::~StrTok()
-{
-    SAFE_DELETE( m_ss );
-}
-
-void StrTok::set( const string & line )
-{
-    string s;
-
-    // delete
-    SAFE_DELETE( m_ss );
-    // alloc
-    m_ss = new istringstream( line );
-    // read
-    reset();
-    m_tokens.clear();
-    while( (*m_ss) >> s )
-        m_tokens.push_back( s );    
-}
-
-void StrTok::reset()
-{
-    m_index = 0;
-}
-
-t_CKBOOL StrTok::more()
-{
-    return m_index < m_tokens.size();
-}
-
-string StrTok::next()
-{
-    if( !more() ) return "";
-    return m_tokens[m_index++];
-}
-
-string StrTok::get( t_CKINT index )
-{
-    if( index >= (t_CKINT)m_tokens.size() ) return "";
-    return m_tokens[index];
-}
-
-t_CKINT StrTok::size()
-{
-    return (t_CKINT)m_tokens.size();
-}
-
-CK_DLL_CTOR( StrTok_ctor )
-{
-    StrTok * tokens = new StrTok;
-    OBJ_MEMBER_INT(SELF, StrTok_offset_data) = (t_CKINT)tokens;
-}
-
-CK_DLL_MFUN( StrTok_set )
-{
-    StrTok * tokens = (StrTok *)OBJ_MEMBER_INT(SELF, StrTok_offset_data);
-    Chuck_String * s = GET_CK_STRING(ARGS);
-    if( s ) tokens->set( s->str );
-    else tokens->set( "" );
-}
-
-CK_DLL_MFUN( StrTok_reset )
-{
-    StrTok * tokens = (StrTok *)OBJ_MEMBER_INT(SELF, StrTok_offset_data);
-    tokens->reset();
-}
-
-CK_DLL_MFUN( StrTok_more )
-{
-    StrTok * tokens = (StrTok *)OBJ_MEMBER_INT(SELF, StrTok_offset_data);
-    RETURN->v_int = (t_CKINT)tokens->more();
-}
-
-CK_DLL_MFUN( StrTok_next )
-{
-    StrTok * tokens = (StrTok *)OBJ_MEMBER_INT(SELF, StrTok_offset_data);
-    Chuck_String * a = (Chuck_String *)instantiate_and_initialize_object( &t_string, NULL );
-    a->str = tokens->next();
-    RETURN->v_string = a;
-}
-
-CK_DLL_MFUN( StrTok_next2 )
-{
-    StrTok * tokens = (StrTok *)OBJ_MEMBER_INT(SELF, StrTok_offset_data);
-    Chuck_String * a = GET_CK_STRING(ARGS);
-    string s = tokens->next();
-    if( a ) a->str = s;
-    RETURN->v_string = a;
-}
-
-CK_DLL_MFUN( StrTok_get )
-{
-    StrTok * tokens = (StrTok *)OBJ_MEMBER_INT(SELF, StrTok_offset_data);
-    t_CKINT index = GET_NEXT_INT(ARGS);
-    Chuck_String * a = (Chuck_String *)instantiate_and_initialize_object( &t_string, NULL );
-    string s = tokens->get( index );
-    a->str = s;
-    RETURN->v_string = a;
-}
-
-CK_DLL_MFUN( StrTok_get2 )
-{
-    StrTok * tokens = (StrTok *)OBJ_MEMBER_INT(SELF, StrTok_offset_data);
-    t_CKINT index = GET_NEXT_INT(ARGS);
-    Chuck_String * a = GET_NEXT_STRING(ARGS);
-    string s = tokens->get( index );
-    if( a ) a->str = s;
-    RETURN->v_string = a;
-}
-
-CK_DLL_MFUN( StrTok_size )
-{
-    StrTok * tokens = (StrTok *)OBJ_MEMBER_INT(SELF, StrTok_offset_data);
-    RETURN->v_int = tokens->size();
 }
 
 

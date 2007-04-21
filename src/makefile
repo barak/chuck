@@ -6,7 +6,7 @@ current:
 
 install:
 	cp $(wildcard chuck chuck.oss chuck.exe) $(DESTDIR)/$(PREFIX)
-	chmod 755 $(DESTDIR)/$(PREFIX)/$(wildcard chuck chuck.oss chuck.exe)
+	chmod 755 $(DESTDIR)/$(PREFIX)/$(wildcard chuck chuck.alsa chuck.oss chuck.exe)
 
 osx:
 	-make -f makefile.osx
@@ -37,4 +37,4 @@ osx-rl:
 	-make -f makefile.rl
 
 clean:
-	rm -f *.o chuck.tab.c chuck.tab.h chuck.yy.c chuck.output $(wildcard chuck chuck.oss chuck.exe)
+	rm -f *.o chuck.tab.c chuck.tab.h chuck.yy.c chuck.output $(wildcard chuck chuck.alsa chuck.oss chuck.exe)

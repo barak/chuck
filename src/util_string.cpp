@@ -102,3 +102,205 @@ string toupper( const string & str )
 
     return s;
 }
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: trim()
+// desc: ...
+//-----------------------------------------------------------------------------
+string trim( const string & val )
+{
+    // two ends
+    t_CKINT start = 0;
+    t_CKINT end = val.length() - 1;
+
+    // left trim
+    for( start = 0; start < end; start++ )
+    {
+        // non-white space
+        if( val[start] != ' ' && val[start] != '\t' )
+            break;
+    }
+
+    // if start > end, then all white space
+    if( start > end ) return "";
+
+    // right trim
+    for( ; end >= start; end-- )
+    {
+        // non-white space
+        if( val[end] != ' ' && val[end] != '\t' )
+            break;
+    }
+
+    // cannot be
+    assert( end >= start );
+
+    // return
+    return val.substr( start, end - start + 1 );
+}
+
+
+
+//-----------------------------------------------------------------------------
+// name: ltrim()
+// desc: ...
+//-----------------------------------------------------------------------------
+string ltrim( const string & val )
+{
+    // two ends
+    t_CKINT start = 0;
+    t_CKINT end = val.length() - 1;
+
+    // left trim
+    for( start = 0; start < end; start++ )
+    {
+        // non-white space
+        if( val[start] != ' ' && val[start] != '\t' )
+            break;
+    }
+
+    // if start > end, then all white space
+    if( start > end ) return "";
+
+    // return
+    return val.substr( start, end - start + 1 );
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: rtrim()
+// desc: ...
+//-----------------------------------------------------------------------------
+string rtrim( const string & val )
+{
+    // two ends
+    t_CKINT start = 0;
+    t_CKINT end = val.length() - 1;
+
+    // right trim
+    for( ; end >= start; end-- )
+    {
+        // non-white space
+        if( val[end] != ' ' && val[end] != '\t' )
+            break;
+    }
+
+    // if end < start, then all white space
+    if( end < start ) return "";
+
+    // return
+    return val.substr( start, end - start + 1 );
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: extract_args()
+// desc: extract argument from format filename:arg1:arg2:etc
+//-----------------------------------------------------------------------------
+t_CKBOOL extract_args( const string & token, 
+                       string & filename, vector<string> & args )
+{
+    // clear vector
+    args.clear();
+    // clear filename
+    filename = "";
+
+    // last : found pos
+    t_CKINT prev_pos = 0;
+    // curr : pos
+    t_CKINT i = 0;
+
+    // copy and trim
+    string s = trim( token );
+
+    // detect
+    t_CKBOOL scan = FALSE;
+    t_CKBOOL ret = TRUE;
+    char * buf = NULL;
+    char * mask = NULL;
+    for( i = 0; i < s.length(); i++ )
+        if( s[i] == '\\' )
+        {
+            scan = TRUE;
+            break;
+        }
+
+    // mad...
+    if( scan )
+    {
+        buf = new char[s.length()+1];
+        mask = new char[s.length()];
+        t_CKINT len = 0;
+
+        // loop through
+        for( i = 0; i < s.length(); i++ )
+        {
+            // zero
+            mask[len] = 0;
+
+            // escape
+            if( s[i] == '\\' && (i+1) < s.length() && s[i+1] == ':' )
+            {
+                i++;
+                mask[len] = 1;
+            }
+
+            // add
+            buf[len++] = s[i];
+        }
+
+        // end
+        buf[len] = '\0';
+
+        // copy
+        s = buf;
+    }
+
+    // loop through
+    for( i = 0; i < s.length(); i++ )
+    {
+        // look for :
+        if( s[i] == ':' && ( !mask || !mask[i] ) )
+        {
+            // sanity
+            if( i == 0 )
+            {
+                ret = FALSE;
+                goto done;
+            }
+
+            // copy
+            if( filename == "" )
+                filename = s.substr( prev_pos, i - prev_pos );
+            else
+                args.push_back( s.substr( prev_pos, i - prev_pos ) );
+
+            // update
+            prev_pos = i + 1;
+        }
+    }
+
+    // get the remainder, if any
+    if( prev_pos < s.length() )
+    {
+        // copy
+        if( filename == "" )
+            filename = s.substr( prev_pos, s.length() - prev_pos );
+        else
+            args.push_back( s.substr( prev_pos, s.length() - prev_pos ) );
+    }
+
+done:
+    // reclaim
+    SAFE_DELETE_ARRAY( buf );
+    SAFE_DELETE_ARRAY( mask );
+
+    return ret;
+}

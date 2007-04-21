@@ -4,6 +4,8 @@
 
 // which mouse
 0 => int device;
+// get from command line
+if( me.args() ) me.arg(0) => Std.atoi => device;
 
 // modulator to carrier
 SinOsc m => SinOsc c => Envelope e => dac;
@@ -32,12 +34,12 @@ int count;
 set( base, a0, a1, a2 );
 
 // hid objects
-HidIn hi;
+Hid hi;
 HidMsg msg;
 
 // try
 if( !hi.openMouse( device ) ) me.exit();
-<<< "mouse ready...", "" >>>;
+<<< "mouse '" + hi.name() + "' ready...", "" >>>;
 
 // infinite time loop
 while( true )

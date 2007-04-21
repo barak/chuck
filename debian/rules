@@ -28,9 +28,9 @@ build: build-stamp
 
 build-stamp: configure-stamp 
 	dh_testdir
-	#cd src && $(MAKE) linux-alsa CFLAGS="$(CFLAGS)" 
-	#cp -a src/chuck chuck.alsa
-	#cd src && $(MAKE) clean
+	cd src && $(MAKE) linux-alsa CFLAGS="$(CFLAGS)" 
+	cp -a src/chuck chuck.alsa
+	cd src && $(MAKE) clean
 	cd src && $(MAKE) linux-oss  CFLAGS="$(CFLAGS)" CHUCK_DEBUG=y
 	cp -a src/chuck chuck.oss
 	cd src && $(MAKE) clean
@@ -52,7 +52,7 @@ install: build
 	dh_clean -k -Xchuck
 	dh_installdirs
 	cd src && $(MAKE) install DESTDIR=$(CURDIR)/debian/chuck
-	#dh_install chuck.alsa usr/bin
+	dh_install chuck.alsa usr/bin
 	dh_install chuck.oss usr/bin
 
 binary-indep: build install

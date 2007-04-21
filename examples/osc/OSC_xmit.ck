@@ -1,10 +1,18 @@
 // launch with OSC_recv.ck
 
+// hostname and port
+"localhost" => string hostname;
+6449 => int port;
+
+// get command line
+if( me.args() ) me.arg(0) => hostname;
+if( me.args() > 1 ) me.arg(1) => Std.atoi => port;
+
 // the sender
 OscSend xmit;
 
-// aim the transmitter at our local port 6449
-xmit.setHost( "localhost", 6449 );
+// aim the transmitter
+xmit.setHost( hostname, port );
 
 // stuff
 0.0 => float running;

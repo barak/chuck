@@ -32,6 +32,7 @@
 //-----------------------------------------------------------------------------
 #include "chuck_globals.h"
 #include "chuck_bbq.h"
+#include "chuck_errmsg.h"
 #include "ugen_stk.h"
 #include "ulib_std.h"
 #include "hidio_sdl.h"
@@ -40,7 +41,7 @@
 
 
 // current version
-const char CK_VERSION[] = "1.2.0.7 (dracula)";
+const char CK_VERSION[] = "1.2.0.8 (dracula)";
 
 // global virtual machine
 Chuck_VM * g_vm = NULL;
@@ -59,6 +60,8 @@ t_CKBOOL g_do_watchdog = FALSE;
 // countermeasure
 #ifdef __MACOSX_CORE__
 t_CKUINT g_watchdog_countermeasure_priority = 10;
+#elif defined(__PLATFORM_WIN32__) && !defined(__WINDOWS_PTHREAD__)
+t_CKUINT g_watchdog_countermeasure_priority = THREAD_PRIORITY_LOWEST;
 #else
 t_CKUINT g_watchdog_countermeasure_priority = 0;
 #endif
@@ -74,6 +77,10 @@ CHUCK_THREAD g_tid_whatever = 0;
 //-----------------------------------------------------------------------------
 extern "C" void all_detach()
 {
+    // log
+    EM_log( CK_LOG_INFO, "detaching all resources..." );
+    // push
+    EM_pushlog();
     // close stk file handles
     stk_detach( 0, NULL );
     // close midi file handles
@@ -82,6 +89,8 @@ extern "C" void all_detach()
     KBHitManager::shutdown();
     // shutdown HID
     HidInManager::cleanup();
+    // pop
+    EM_poplog();
 }
 
 

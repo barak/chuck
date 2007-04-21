@@ -28,7 +28,9 @@
 //
 // author: Ge Wang (gewang@cs.princeton.edu)
 //         Perry R. Cook (prc@cs.princeton.edu)
+// additional contributors:
 //         Ananya Misra (amisra@cs.princeton.edu)
+//         Spencer Salazar (salazar@cs.princeton.edu)
 // date: version 1.1.x.x - Autumn 2002
 //       version 1.2.x.x - Autumn 2004
 //-----------------------------------------------------------------------------
@@ -46,6 +48,7 @@
 #include "chuck_console.h"
 #include "chuck_globals.h"
 
+#include "util_string.h"
 #include "util_thread.h"
 #include "util_network.h"
 #include "hidio_sdl.h"
@@ -62,9 +65,9 @@
 #if defined(__MACOSX_CORE__)
   t_CKINT g_priority = 80;
   t_CKINT g_priority_low = 60;
-#elif defined(__PLATFORM_WIN32__)
-  t_CKINT g_priority = 10;
-  t_CKINT g_priority_low = 5;
+#elif defined(__PLATFORM_WIN32__) && !defined(__WINDOWS_PTHREAD__)
+  t_CKINT g_priority = THREAD_PRIORITY_HIGHEST;
+  t_CKINT g_priority_low = THREAD_PRIORITY_HIGHEST;
 #else
   t_CKINT g_priority = 0x7fffffff;
   t_CKINT g_priority_low = 0x7fffffff;
@@ -105,7 +108,7 @@ extern "C" void signal_int( int sig_num )
         }
 
         // things don't work so good on windows...
-#ifndef __PLATFORM_WIN32__
+#if !defined(__PLATFORM_WIN32__) || defined(__WINDOWS_PTHREAD__)
         // pthread_kill( g_tid_otf, 2 );
         if( g_tid_otf ) pthread_cancel( g_tid_otf );
         if( g_tid_whatever ) pthread_cancel( g_tid_whatever );
@@ -119,7 +122,7 @@ extern "C" void signal_int( int sig_num )
         // ck_close( g_sock );
     }
 
-#ifndef __PLATFORM_WIN32__
+#if !defined(__PLATFORM_WIN32__) || defined(__WINDOWS_PTHREAD__)
     // pthread_join( g_tid_otf, NULL );
 #endif
     
@@ -254,12 +257,12 @@ void version()
 void usage()
 {
     fprintf( stderr, "usage: chuck --[options|commands] [+-=^] file1 file2 file3 ...\n" );
-    fprintf( stderr, "   [options] = halt|loop|audio|silent|dump|nodump|about|\n" );
+    fprintf( stderr, "   [options] = halt|loop|audio|silent|dump|nodump|server|about|\n" );
     fprintf( stderr, "               srate<N>|bufsize<N>|bufnum<N>|dac<N>|adc<N>|\n" );
     fprintf( stderr, "               remote<hostname>|port<N>|verbose<N>|probe|\n" );
     fprintf( stderr, "               channels<N>|out<N>|in<N>|shell|empty|level<N>|\n" );
     fprintf( stderr, "               blocking|callback|deprecate:{stop|warn|ignore}\n" );
-    fprintf( stderr, "   [commands] = add|remove|replace|status|time|kill\n" );
+    fprintf( stderr, "   [commands] = add|remove|replace|removeall|status|time|kill\n" );
     fprintf( stderr, "   [+-=^] = shortcuts for add, remove, replace, status\n" );
     version();
 }
@@ -295,13 +298,20 @@ int main( int argc, char ** argv )
     t_CKBOOL enable_shell = FALSE;
     t_CKBOOL no_vm = FALSE;
     t_CKBOOL load_hid = FALSE;
+    t_CKBOOL enable_server = TRUE;
+    t_CKBOOL do_watchdog = TRUE;
     t_CKINT  log_level = CK_LOG_CORE;
     t_CKINT  deprecate_level = 1; // warn
 
-#ifdef __MACOSX_CORE__
-    t_CKBOOL do_watchdog = FALSE;
+    string   filename = "";
+    vector<string> args;
+
+#if defined(__MACOSX_CORE__)
+    do_watchdog = TRUE;
+#elif defined(__PLATFORM_WIN32__) && !defined(__WINDOWS_PTHREAD__)
+    do_watchdog = TRUE;
 #else
-    t_CKBOOL do_watchdog = FALSE;
+    do_watchdog = FALSE;
 #endif
 
     t_CKUINT files = 0;
@@ -329,7 +339,11 @@ int main( int argc, char ** argv )
             else if( !strcmp(argv[i], "--halt") || !strcmp(argv[i], "-t") )
                 vm_halt = TRUE;
             else if( !strcmp(argv[i], "--loop") || !strcmp(argv[i], "-l") )
-                vm_halt = FALSE;
+            {   vm_halt = FALSE; enable_server = TRUE; }
+            else if( !strcmp(argv[i], "--server") )
+                enable_server = TRUE;
+            else if( !strcmp(argv[i], "--standalone") )
+                enable_server = FALSE;
             else if( !strcmp(argv[i], "--callback") )
                 block = FALSE;
             else if( !strcmp(argv[i], "--blocking") )
@@ -428,7 +442,11 @@ int main( int argc, char ** argv )
             {
                 // boost log level
                 g_otf_log = CK_LOG_CORE;
+                // flag
                 int is_otf = FALSE;
+                // log level
+                EM_setlog( log_level );
+                // do it
                 if( otf_send_cmd( argc, argv, i, g_host, g_port, &is_otf ) )
                     exit( 0 );
                     
@@ -481,21 +499,21 @@ int main( int argc, char ** argv )
         exit( 1 );
     }
 
-	// shell initialization without vm
-	if( enable_shell && no_vm )
-	{
+    // shell initialization without vm
+    if( enable_shell && no_vm )
+    {
         // instantiate
         g_shell = new Chuck_Shell;
         // initialize
         if( !init_shell( g_shell, new Chuck_Console, NULL ) )
             exit( 1 );
         // no vm is needed, just start running the shell now
-		g_shell->run();
+        g_shell->run();
         // clean up
-		SAFE_DELETE( g_shell );
+        SAFE_DELETE( g_shell );
         // done
-		exit( 0 );
-	}
+        exit( 0 );
+    }
 
     // make sure vm
     if( no_vm )
@@ -503,7 +521,7 @@ int main( int argc, char ** argv )
         fprintf( stderr, "[chuck]: '--empty' can only be used with shell...\n" );
         exit( 1 );
     }
-	
+    
     // allocate the vm - needs the type system
     vm = g_vm = new Chuck_VM;
     if( !vm->initialize( enable_audio, vm_halt, srate, buffer_size,
@@ -543,9 +561,9 @@ int main( int argc, char ** argv )
     signal( SIGPIPE, signal_pipe );
 #endif
 
-	// shell initialization
-	if( enable_shell )
-	{
+    // shell initialization
+    if( enable_shell )
+    {
         // instantiate
         g_shell = new Chuck_Shell;
         // initialize
@@ -580,13 +598,22 @@ int main( int argc, char ** argv )
             continue;
         }
 
+        // parse out command line arguments
+        if( !extract_args( argv[i], filename, args ) )
+        {
+            // error
+            fprintf( stderr, "[chuck]: malformed filename with argument list...\n" );
+            fprintf( stderr, "    -->  '%s'", argv[i] );
+            return 1;
+        }
+
         // log
-        EM_log( CK_LOG_FINE, "compiling '%s'...", argv[i] );
+        EM_log( CK_LOG_FINE, "compiling '%s'...", filename.c_str() );
         // push indent
         EM_pushlog();
 
         // parse, type-check, and emit
-        if( !compiler->go( argv[i], NULL ) )
+        if( !compiler->go( filename, NULL ) )
             return 1;
 
         // get the code
@@ -599,7 +626,13 @@ int main( int argc, char ** argv )
                 count == 1 ? "instance" : "instances" );
 
         // spork it
-        while( count-- ) shred = vm->spork( code, NULL );
+        while( count-- )
+        {
+            // spork
+            shred = vm->spork( code, NULL );
+            // add args
+            shred->args = args;
+        }
 
         // pop indent
         EM_poplog();
@@ -626,30 +659,39 @@ int main( int argc, char ** argv )
         }
     }
 
-    // log
-    EM_log( CK_LOG_SYSTEM, "starting listener on port: %d...", g_port );
-
-    // start tcp server
-    g_sock = ck_tcp_create( 1 );
-    if( !g_sock || !ck_bind( g_sock, g_port ) || !ck_listen( g_sock, 10 ) )
+    // server
+    if( enable_server )
     {
-        fprintf( stderr, "[chuck]: cannot bind to tcp port %i...\n", g_port );
-        ck_close( g_sock );
-        g_sock = NULL;
+        // log
+        EM_log( CK_LOG_SYSTEM, "starting listener on port: %d...", g_port );
+
+        // start tcp server
+        g_sock = ck_tcp_create( 1 );
+        if( !g_sock || !ck_bind( g_sock, g_port ) || !ck_listen( g_sock, 10 ) )
+        {
+            fprintf( stderr, "[chuck]: cannot bind to tcp port %i...\n", g_port );
+            ck_close( g_sock );
+            g_sock = NULL;
+        }
+        else
+        {
+    #if !defined(__PLATFORM_WIN32__) || defined(__WINDOWS_PTHREAD__)
+            pthread_create( &g_tid_otf, NULL, otf_cb, NULL );
+    #else
+            g_tid_otf = CreateThread( NULL, 0, (LPTHREAD_START_ROUTINE)otf_cb, NULL, 0, 0 );
+    #endif
+        }
     }
     else
     {
-#ifndef __PLATFORM_WIN32__
-        pthread_create( &g_tid_otf, NULL, otf_cb, NULL );
-#else
-        g_tid_otf = CreateThread( NULL, 0, (LPTHREAD_START_ROUTINE)otf_cb, NULL, 0, 0 );
-#endif
+        // log
+        EM_log( CK_LOG_SYSTEM, "OTF server/listener: OFF" );
     }
 
     // start shell on separate thread
     if( enable_shell )
     {
-#ifndef __PLATFORM_WIN32__
+#if !defined(__PLATFORM_WIN32__) || defined(__WINDOWS_PTHREAD__)
         pthread_create( &g_tid_shell, NULL, shell_cb, g_shell );
 #else
         g_tid_shell = CreateThread( NULL, 0, (LPTHREAD_START_ROUTINE)shell_cb, g_shell, 0, 0 );
@@ -667,11 +709,11 @@ int main( int argc, char ** argv )
     // free the compiler
     SAFE_DELETE( compiler );
 
-	// wait for the shell, if it is running
-	// does the VM reset its priority to normal before exiting?
-	if( enable_shell )
-		while( g_shell != NULL )
-			usleep(10000);
+    // wait for the shell, if it is running
+    // does the VM reset its priority to normal before exiting?
+    if( enable_shell )
+        while( g_shell != NULL )
+            usleep(10000);
 
     return 0;
 }

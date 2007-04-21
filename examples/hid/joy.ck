@@ -1,11 +1,16 @@
 // make HidIn and HidMsg
-HidIn hi;
+Hid hi;
 HidMsg msg;
 
-// open joystick 0, exit on fail
-if( !hi.openJoystick( 0 ) ) me.exit();
+// which joystick
+0 => int device;
+// get from command line
+if( me.args() ) me.arg(0) => Std.atoi => device;
 
-<<< "joystick ready", "" >>>;
+// open joystick 0, exit on fail
+if( !hi.openJoystick( device ) ) me.exit();
+
+<<< "joystick '" + hi.name() + "' ready", "" >>>;
 
 // infinite event loop
 while( true )
@@ -16,7 +21,28 @@ while( true )
     // messages received
     while( hi.recv( msg ) )
     {
-        // print for now
-        <<< msg.type, msg.which, msg.idata, msg.fdata >>>;
+        // joystick axis motion
+        if( msg.isAxisMotion() )
+        {
+            <<< "joystick axis", msg.which, ":", msg.axisPosition >>>;
+        }
+        
+        // joystick button down
+        else if( msg.isButtonDown() )
+        {
+            <<< "joystick button", msg.which, "down" >>>;
+        }
+        
+        // joystick button up
+        else if( msg.isButtonUp() )
+        {
+            <<< "joystick button", msg.which, "up" >>>;
+        }
+        
+        // joystick hat/POV switch/d-pad motion
+        else if( msg.isHatMotion() )
+        {
+            <<< "joystick hat", msg.which, ":", msg.idata >>>;
+        }
     }
 }
