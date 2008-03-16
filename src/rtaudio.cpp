@@ -50,6 +50,7 @@
 #include "chuck_errmsg.h"
 #include "digiio_rtaudio.h"
 #include <stdio.h>
+#include <climits>
 // old
 // #include "RtAudio.h"
 // #include <iostream>

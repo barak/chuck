@@ -41,6 +41,7 @@
 #include "chuck_stats.h"
 #endif
 
+#include <algorithm>
 #include <string>
 #include <map>
 #include <vector>
