@@ -1105,7 +1105,7 @@ void Chuck_Instr_Reg_Push_Maybe::execute( Chuck_VM * vm, Chuck_VM_Shred * shred 
 //-----------------------------------------------------------------------------
 void Chuck_Instr_Reg_Push_Deref::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
 {
-    if( m_size == 4 ) // ISSUE: 64-bit
+    if( m_size == sz_UINT )
     {
         t_CKUINT *& reg_sp = (t_CKUINT *&)shred->reg->sp;
         push_( reg_sp, *((t_CKUINT *)m_val) );
@@ -2526,12 +2526,12 @@ void Chuck_Instr_Func_Call::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
     Chuck_VM_Code * func = (Chuck_VM_Code *)*reg_sp;
     // get the local stack depth - caller local variables
     t_CKUINT local_depth = *(reg_sp+1);
-    // convert to number of 4-byte words, extra partial word counts as additional word
-    local_depth = ( local_depth >> 2 ) + ( local_depth & 0x3 ? 1 : 0 );
+    // convert to number of int words, extra partial word counts as additional word
+    local_depth = ( local_depth / sz_UINT ) + ( local_depth & 0x3 ? 1 : 0 );
     // get the stack depth of the callee function args
-    t_CKUINT stack_depth = ( func->stack_depth >> 2 ) + ( func->stack_depth & 0x3 ? 1 : 0 );
+    t_CKUINT stack_depth = ( func->stack_depth / sz_UINT ) + ( func->stack_depth & 0x3 ? 1 : 0 );
     // get the previous stack depth - caller function args
-    t_CKUINT prev_stack = ( *(mem_sp-1) >> 2 ) + ( *(mem_sp-1) & 0x3 ? 1 : 0 );
+    t_CKUINT prev_stack = ( *(mem_sp-1) / sz_UINT ) + ( *(mem_sp-1) & 0x3 ? 1 : 0 );
 
     // jump the sp
     mem_sp += prev_stack + local_depth;
@@ -2605,13 +2605,13 @@ void Chuck_Instr_Func_Call_Member::execute( Chuck_VM * vm, Chuck_VM_Shred * shre
     // MOVED TO BELOW: f_mfun f = (f_mfun)func->native_func;
     // get the local stack depth - caller local variables
     t_CKUINT local_depth = *(reg_sp+1);
-    // convert to number of 4-byte words, extra partial word counts as additional word
-    local_depth = ( local_depth >> 2 ) + ( local_depth & 0x3 ? 1 : 0 );
+    // convert to number of int words, extra partial word counts as additional word
+    local_depth = ( local_depth / sz_UINT ) + ( local_depth & 0x3 ? 1 : 0 );
     // get the stack depth of the callee function args
-    t_CKUINT stack_depth = ( func->stack_depth >> 2 ) + ( func->stack_depth & 0x3 ? 1 : 0 );
+    t_CKUINT stack_depth = ( func->stack_depth / sz_UINT ) + ( func->stack_depth & 0x3 ? 1 : 0 );
     // UNUSED: get the previous stack depth - caller function args
-    // UNUSED: t_CKUINT prev_stack = ( *(mem_sp-1) >> 2 ) + ( *(mem_sp-1) & 0x3 ? 1 : 0 );
-    // the amount to push in 4-byte words
+    // UNUSED: t_CKUINT prev_stack = ( *(mem_sp-1) / sz_UINT ) + ( *(mem_sp-1) & 0x3 ? 1 : 0 );
+    // the amount to push in int words
     t_CKUINT push = local_depth;
     // push the mem stack passed the current function variables and arguments
     mem_sp += push;
@@ -2661,12 +2661,12 @@ void Chuck_Instr_Func_Call_Member::execute( Chuck_VM * vm, Chuck_VM_Shred * shre
     mem_sp -= push;
     
     // push the return
-    if( m_val == 4 ) // ISSUE: 64-bit
+    if( m_val == sz_UINT )
     {
         // push the return args
         push_( reg_sp, retval.v_uint );
     }
-    else if( m_val == 8 ) // ISSUE: 64-bit
+    else if( m_val == sz_FLOAT )
     {
         // push the return args
         t_CKFLOAT *& sp_double = (t_CKFLOAT *&)reg_sp;
@@ -2703,13 +2703,13 @@ void Chuck_Instr_Func_Call_Static::execute( Chuck_VM * vm, Chuck_VM_Shred * shre
     f_sfun f = (f_sfun)func->native_func;
     // get the local stack depth - caller local variables
     t_CKUINT local_depth = *(reg_sp+1);
-    // convert to number of 4-byte words, extra partial word counts as additional word
-    local_depth = ( local_depth >> 2 ) + ( local_depth & 0x3 ? 1 : 0 );
+    // convert to number of int words, extra partial word counts as additional word
+    local_depth = ( local_depth / sz_UINT ) + ( local_depth & 0x3 ? 1 : 0 );
     // get the stack depth of the callee function args
-    t_CKUINT stack_depth = ( func->stack_depth >> 2 ) + ( func->stack_depth & 0x3 ? 1 : 0 );
+    t_CKUINT stack_depth = ( func->stack_depth / sz_UINT ) + ( func->stack_depth & 0x3 ? 1 : 0 );
     // UNUSED: get the previous stack depth - caller function args
-    // UNUSED: t_CKUINT prev_stack = ( *(mem_sp-1) >> 2 ) + ( *(mem_sp-1) & 0x3 ? 1 : 0 );    
-    // the amount to push in 4-byte words
+    // UNUSED: t_CKUINT prev_stack = ( *(mem_sp-1) / sz_UINT ) + ( *(mem_sp-1) & 0x3 ? 1 : 0 );    
+    // the amount to push in int words
     t_CKUINT push = local_depth;
     // push the mem stack passed the current function variables and arguments
     mem_sp += push;
@@ -2747,12 +2747,12 @@ void Chuck_Instr_Func_Call_Static::execute( Chuck_VM * vm, Chuck_VM_Shred * shre
     mem_sp -= push;
 
     // push the return
-    if( m_val == 4 ) // ISSUE: 64-bit
+    if( m_val == sz_UINT ) // ISSUE: 64-bit
     {
         // push the return args
         push_( reg_sp, retval.v_uint );
     }
-    else if( m_val == 8 ) // ISSUE: 64-bit
+    else if( m_val == sz_FLOAT ) // ISSUE: 64-bit
     {
         // push the return args
         t_CKFLOAT *& sp_double = (t_CKFLOAT *&)reg_sp;
@@ -2985,7 +2985,7 @@ void Chuck_Instr_Array_Init::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
     t_CKUINT *& reg_sp = (t_CKUINT *&)shred->reg->sp;
 
     // allocate the array
-    if( m_type_ref->size == 4 ) // ISSUE: 64-bit
+    if( m_type_ref->size == sz_INT ) // ISSUE: 64-bit
     {
         // pop the values
         pop_( reg_sp, m_length );
@@ -3003,10 +3003,10 @@ void Chuck_Instr_Array_Init::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
         // push the pointer
         push_( reg_sp, (t_CKUINT)array );
     }
-    else if( m_type_ref->size == 8 ) // ISSUE: 64-bit
+    else if( m_type_ref->size == sz_FLOAT ) // ISSUE: 64-bit
     {
         // pop the values
-        pop_( reg_sp, 2 * m_length );
+        pop_( reg_sp, (sz_FLOAT / sz_INT) * m_length );
         // instantiate array
         Chuck_Array8 * array = new Chuck_Array8( m_length );
         // problem
@@ -3114,7 +3114,7 @@ Chuck_Object * do_alloc_array( t_CKINT * capacity, const t_CKINT * top,
     if( capacity >= top )
     {
         // check size
-        if( size == 4 ) // ISSUE: 64-bit
+        if( size == sz_INT ) // ISSUE: 64-bit
         {
             Chuck_Array4 * base = new Chuck_Array4( is_obj, *capacity );
             if( !base ) goto out_of_memory;
@@ -3312,8 +3312,7 @@ void Chuck_Instr_Array_Access::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
     // check pointer
     if( !(*sp) ) goto null_pointer;
 
-    // 4 or 8
-    if( m_size == 4 ) // ISSUE: 64-bit
+    if( m_size == sz_INT ) // ISSUE: 64-bit
     {
         // get array
         Chuck_Array4 * arr = (Chuck_Array4 *)(*sp);
@@ -3335,7 +3334,7 @@ void Chuck_Instr_Array_Access::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
             push_( sp, val );
         }
     }
-    else if( m_size == 8 ) // ISSUE: 64-bit
+    else if( m_size == sz_FLOAT ) // ISSUE: 64-bit
     {
         // get array
         Chuck_Array8 * arr = (Chuck_Array8 *)(*sp);
@@ -3404,8 +3403,7 @@ void Chuck_Instr_Array_Map_Access::execute( Chuck_VM * vm, Chuck_VM_Shred * shre
     // check pointer
     if( !(*sp) ) goto null_pointer;
 
-    // 4 or 8
-    if( m_size == 4 ) // ISSUE: 64-bit
+    if( m_size == sz_INT ) // ISSUE: 64-bit
     {
         // get array
         Chuck_Array4 * arr = (Chuck_Array4 *)(*sp);
@@ -3427,7 +3425,7 @@ void Chuck_Instr_Array_Map_Access::execute( Chuck_VM * vm, Chuck_VM_Shred * shre
             push_( sp, val );
         }
     }
-    else if( m_size == 8 ) // ISSUE: 64-bit
+    else if( m_size == sz_FLOAT ) // ISSUE: 64-bit
     {
         // get array
         Chuck_Array8 * arr = (Chuck_Array8 *)(*sp);
@@ -3522,8 +3520,7 @@ void Chuck_Instr_Array_Access_Multi::execute( Chuck_VM * vm, Chuck_VM_Shred * sh
         }
     }
 
-    // 4 or 8
-    if( m_size == 4 ) // ISSUE: 64-bit
+    if( m_size == sz_INT ) // ISSUE: 64-bit
     {
         // get arry
         Chuck_Array4 * arr = base;
@@ -3545,7 +3542,7 @@ void Chuck_Instr_Array_Access_Multi::execute( Chuck_VM * vm, Chuck_VM_Shred * sh
             push_( sp, val );
         }
     }
-    else if( m_size == 8 ) // ISSUE: 64-bit
+    else if( m_size == sz_FLOAT ) // ISSUE: 64-bit
     {
         // get array
         Chuck_Array8 * arr = (Chuck_Array8 *)(base);
@@ -3626,9 +3623,8 @@ void Chuck_Instr_Dot_Member_Data::execute( Chuck_VM * vm, Chuck_VM_Shred * shred
     }
     else
     {
-        // 4 or 8
-        if( m_size == 4 ) { push_( sp, *((t_CKUINT *)data) ); } // ISSUE: 64-bit
-        else if( m_size == 8 ) { push_float( sp, *((t_CKFLOAT *)data) ); } // ISSUE: 64-bit
+        if( m_size == sz_UINT ) { push_( sp, *((t_CKUINT *)data) ); } // ISSUE: 64-bit
+        else if( m_size == sz_FLOAT ) { push_float( sp, *((t_CKFLOAT *)data) ); } // ISSUE: 64-bit
         else assert( FALSE );
     }
 
@@ -3717,9 +3713,8 @@ void Chuck_Instr_Dot_Static_Data::execute( Chuck_VM * vm, Chuck_VM_Shred * shred
     }
     else
     {
-        // 4 or 8
-        if( m_size == 4 ) { push_( sp, *((t_CKUINT *)data) ); } // ISSUE: 64-bit
-        else if( m_size == 8 ) { push_float( sp, *((t_CKFLOAT *)data) ); } // ISSUE: 64-bit
+        if( m_size == sz_UINT ) { push_( sp, *((t_CKUINT *)data) ); } // ISSUE: 64-bit
+        else if( m_size == sz_FLOAT ) { push_float( sp, *((t_CKFLOAT *)data) ); } // ISSUE: 64-bit
         else assert( FALSE );
     }
 }
@@ -3744,9 +3739,8 @@ void Chuck_Instr_Dot_Static_Import_Data::execute( Chuck_VM * vm, Chuck_VM_Shred 
     }
     else
     {
-        // 4 or 8
-        if( m_size == 4 ) { push_( sp, *((t_CKUINT *)m_addr) ); } // ISSUE: 64-bit
-        else if( m_size == 8 ) { push_float( sp, *((t_CKFLOAT *)m_addr) ); } // ISSUE: 64-bit
+        if( m_size == sz_UINT ) { push_( sp, *((t_CKUINT *)m_addr) ); } // ISSUE: 64-bit
+        else if( m_size == sz_FLOAT ) { push_float( sp, *((t_CKFLOAT *)m_addr) ); } // ISSUE: 64-bit
         else assert( FALSE );
     }
 }
@@ -4110,27 +4104,37 @@ Chuck_Instr_Hack::~Chuck_Instr_Hack()
 void Chuck_Instr_Hack::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
 {
     // look at the type
-    if( m_type_ref->size == 4 ) // ISSUE: 64-bit
+    switch (m_type_ref->xid) {
+    case te_int:
+    case te_uint:
     {
         t_CKINT * sp = (t_CKINT *)shred->reg->sp;
-        if( !isa( m_type_ref, &t_string ) )
-            // print it
-            fprintf( stderr, "%d :(%s)\n", *(sp-1), m_type_ref->c_name() );
-        else
-            fprintf( stderr, "\"%s\" : (%s)\n", ((Chuck_String *)*(sp-1))->str.c_str(), m_type_ref->c_name() );
+	// print it
+	fprintf( stderr, "%d :(%s)\n", *(sp-1), m_type_ref->c_name() );
+	break;
     }
-    else if( m_type_ref->size == 8 ) // ISSUE: 64-bit
+    case te_string:
+    {
+        t_CKINT * sp = (t_CKINT *)shred->reg->sp;
+	// print it
+        fprintf( stderr, "\"%s\" : (%s)\n", ((Chuck_String *)*(sp-1))->str.c_str(), m_type_ref->c_name() );
+	break;
+    }
+    case te_single:
+    case te_float:
+    case te_double:
+    case te_time:
+    case te_dur:
     {
         t_CKFLOAT * sp = (t_CKFLOAT *)shred->reg->sp;
         // print it
         fprintf( stderr, "%f :(%s)\n", *(sp-1), m_type_ref->c_name() );
+	break;
     }
-    else if( m_type_ref->size == 0 )
-    {
+    default:
         fprintf( stderr, "... :(%s)\n", m_type_ref->c_name() );
+	break;
     }
-    else
-        assert( FALSE );
 
     // flush
     fflush( stderr );
@@ -4186,37 +4190,48 @@ void Chuck_Instr_Gack::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
         Chuck_Type * type = m_type_refs[i];
 
         // look at the type
-        if( type->size == 4 ) // ISSUE: 64-bit
-        {
+	switch (type->xid) {
+	case te_int:
+	case te_uint:
+	{
             t_CKINT * sp = (t_CKINT *)the_sp;
-            if( !isa( type, &t_string ) )
-            {
-                if( isa( type, &t_object ) )
-                    // print it
-                    fprintf( stderr, "0x%x ", *(sp) );
-                else
-                    // print it
-                    fprintf( stderr, "%d ", *(sp) );
-            }
-            else
-                fprintf( stderr, "%s ", ((Chuck_String *)*(sp))->str.c_str() );
-
-            the_sp += 4;
-        }
-        else if( type->size == 8 ) // ISSUE: 64-bit
-        {
+	    // print it
+	    fprintf( stderr, "%d ", *(sp) );
+            the_sp += sz_INT;
+	    break;
+	}
+	case te_object:
+	{
+            t_CKINT * sp = (t_CKINT *)the_sp;
+	    // print it
+	    fprintf( stderr, "0x%x ", *(sp) );
+            the_sp += sz_INT;
+	    break;
+	}
+	case te_string:
+	{
+            t_CKINT * sp = (t_CKINT *)the_sp;
+	    // print it
+	    fprintf( stderr, "%s ", ((Chuck_String *)*(sp))->str.c_str() );
+            the_sp += sz_INT;
+	    break;
+	}
+	case te_single:
+	case te_float:
+	case te_double:
+	case te_time:
+	case te_dur:
+	{
             t_CKFLOAT * sp = (t_CKFLOAT *)the_sp;
             // print it
             fprintf( stderr, "%f ", *(sp) );
-
-            the_sp += 8;
-        }
-        else if( type->size == 0 )
-        {
+            the_sp += sz_FLOAT;
+            break;
+	}
+	default:
             fprintf( stderr, "... " );
-        }
-        else
-            assert( FALSE );
+	    break;
+	}
     }
 
     fprintf( stderr, "\n" );

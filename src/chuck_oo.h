@@ -152,8 +152,8 @@ public:
 
 
 
-#define CHUCK_ARRAY4_DATASIZE 4
-#define CHUCK_ARRAY8_DATASIZE 8
+#define CHUCK_ARRAY4_DATASIZE sz_INT
+#define CHUCK_ARRAY8_DATASIZE sz_FLOAT
 //-----------------------------------------------------------------------------
 // name: struct Chuck_Array
 // desc: native ChucK arrays ( virtual base class )

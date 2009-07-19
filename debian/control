@@ -8,6 +8,7 @@ Standards-Version: 3.7.2
 Package: chuck
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
+Suggests: jackd
 Description: Concurrent, On-the-fly Audio Programming Language
  ChucK is a new audio programming language for real-time synthesis,
  composition, and performance, which runs on commodity operating systems.

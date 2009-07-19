@@ -371,9 +371,9 @@ t_CKBOOL emit_engine_emit_stmt( Chuck_Emitter * emit, a_Stmt stmt, t_CKBOOL pop 
                     // if decl, then expect only one word per var
                     if( exp->s_type == ae_exp_decl )
                         emit->append( new Chuck_Instr_Reg_Pop_Word3( exp->decl.num_var_decls ) );
-                    else if( exp->type->size == 4 ) // ISSUE: 64-bit
+                    else if( exp->type->size == sz_INT ) // ISSUE: 64-bit
                         emit->append( new Chuck_Instr_Reg_Pop_Word );
-                    else if( exp->type->size == 8 ) // ISSUE: 64-bit
+                    else if( exp->type->size == sz_FLOAT ) // ISSUE: 64-bit
                         emit->append( new Chuck_Instr_Reg_Pop_Word2 );
                     else
                     {
@@ -606,9 +606,9 @@ t_CKBOOL emit_engine_emit_for( Chuck_Emitter * emit, a_Stmt_For stmt )
             return FALSE;
 
         // HACK!
-        if( stmt->c3->type->size == 8 ) // ISSUE: 64-bit
+        if( stmt->c3->type->size == sz_FLOAT ) // ISSUE: 64-bit
             emit->append( new Chuck_Instr_Reg_Pop_Word2 );
-        else if( stmt->c3->type->size == 4 ) // ISSUE: 64-bit
+        else if( stmt->c3->type->size == sz_INT ) // ISSUE: 64-bit
             emit->append( new Chuck_Instr_Reg_Pop_Word );
         else if( stmt->c3->type->size != 0 )
         {
@@ -1027,8 +1027,7 @@ t_CKBOOL emit_engine_emit_loop( Chuck_Emitter * emit, a_Stmt_Loop stmt )
     emit->code->stack_break.push_back( NULL );
 
     // push the value of the loop counter
-    // TODO: get rid of hard code 4
-    emit->append( new Chuck_Instr_Reg_Push_Deref( (t_CKUINT)counter, 4 ) ); // ISSUE: 64-bit
+    emit->append( new Chuck_Instr_Reg_Push_Deref( (t_CKUINT)counter, sz_INT ) );
 
     // get the type, taking cast into account
     Chuck_Type * type = stmt->cond->cast_to ? stmt->cond->cast_to : stmt->cond->type;
@@ -2122,9 +2121,9 @@ t_CKBOOL emit_engine_emit_op_at_chuck( Chuck_Emitter * emit, a_Exp lhs, a_Exp rh
             else
             {
                 // assign primitive
-                if( right->size == 4 ) // ISSUE: 64-bit
+                if( right->size == sz_INT ) // ISSUE: 64-bit
                     emit->append( new Chuck_Instr_Assign_Primitive );
-                else if( right->size == 8 ) // ISSUE: 64-bit
+                else if( right->size == sz_FLOAT ) // ISSUE: 64-bit
                     emit->append( new Chuck_Instr_Assign_Primitive2 );
                 else
                 {
@@ -2644,7 +2643,7 @@ t_CKBOOL emit_engine_emit_exp_array( Chuck_Emitter * emit, a_Exp_Array array )
         is_str = TRUE;
 
     // make sure
-    if( type->size != 4 && type->size != 8 ) // ISSUE: 64-bit
+    if( type->size != sz_INT && type->size != sz_FLOAT )
     {
         EM_error2( array->linepos,
             "(emit): internal error: array with datasize of %i...", type->size );
@@ -2705,7 +2704,7 @@ t_CKBOOL emit_engine_emit_exp_func_call( Chuck_Emitter * emit,
     t_CKUINT size = type->size;
     if( func->def->s_type == ae_func_builtin )
     {
-        if( size == 0 || size == 4 || size == 8 ) // ISSUE: 64-bit
+        if( size == 0 || size == sz_INT || size == sz_FLOAT )
         {
             // is member
             if( is_member )
@@ -3165,9 +3164,9 @@ t_CKBOOL emit_engine_emit_exp_decl( Chuck_Emitter * emit, a_Exp_Decl decl,
         /* if( !is_init && first_exp )
         {
             // push 0
-            if( type->size == 4 ) // ISSUE: 64-bit
+            if( type->size == sz_INT )
                 emit->append( new Chuck_Instr_Reg_Push_Imm( 0 ) );
-            else if( type->size == 8 ) // ISSUE: 64-bit
+            else if( type->size == sz_FLOAT )
                 emit->append( new Chuck_Instr_Reg_Push_Imm2( 0.0 ) );
             else
             {
@@ -3184,9 +3183,9 @@ t_CKBOOL emit_engine_emit_exp_decl( Chuck_Emitter * emit, a_Exp_Decl decl,
         if( value->is_member )
         {
             // zero out location in object, and leave addr on operand stack
-            if( type->size == 4 ) // ISSUE: 64-bit
+            if( type->size == sz_INT ) // ISSUE: 64-bit
                 emit->append( new Chuck_Instr_Alloc_Member_Word( value->offset ) );
-            else if( type->size == 8 ) // ISSUE: 64-bit
+            else if( type->size == sz_FLOAT ) // ISSUE: 64-bit
                 emit->append( new Chuck_Instr_Alloc_Member_Word2( value->offset ) );
             else
             {
@@ -3218,9 +3217,9 @@ t_CKBOOL emit_engine_emit_exp_decl( Chuck_Emitter * emit, a_Exp_Decl decl,
                 // TODO: this is wrong for static
                 // BAD:
                 // FIX:
-                if( type->size == 4 ) // ISSUE: 64-bit
+                if( type->size == sz_INT ) // ISSUE: 64-bit
                     emit->append( new Chuck_Instr_Alloc_Word( local->offset ) );
-                else if( type->size == 8 ) // ISSUE: 64-bit
+                else if( type->size == sz_FLOAT ) // ISSUE: 64-bit
                     emit->append( new Chuck_Instr_Alloc_Word2( local->offset ) );
                 else
                 {
@@ -3273,11 +3272,11 @@ t_CKBOOL emit_engine_emit_exp_decl( Chuck_Emitter * emit, a_Exp_Decl decl,
             // if obj
             if( is_obj )
                 emit->append( new Chuck_Instr_Assign_Object );
-            // size 4 primitive
-            else if( type->size == 4 ) // ISSUE: 64-bit
+            // size int primitive
+            else if( type->size == sz_INT ) // ISSUE: 64-bit
                 emit->append( new Chuck_Instr_Assign_Primitive );
-            // size 8 primitive
-            else if( type->size == 8 ) // ISSUE: 64-bit
+            // size float primitive
+            else if( type->size == sz_FLOAT ) // ISSUE: 64-bit
                 emit->append( new Chuck_Instr_Assign_Primitive2 );
             else
                 assert( FALSE );
@@ -3672,7 +3671,7 @@ t_CKBOOL emit_engine_emit_spork( Chuck_Emitter * emit, a_Exp_Func_Call exp )
     // handle member function
     // TODO: this is a hack - what if exp is not func_call?
     // if( emit->code->need_this )
-    //     size += 4;
+    //     size += sz_UINT;
 
     // emit instruction that will put the code on the stack
     emit->append( new Chuck_Instr_Reg_Push_Imm( (t_CKUINT)code ) );
@@ -3746,9 +3745,9 @@ t_CKBOOL emit_engine_emit_symbol( Chuck_Emitter * emit, S_Symbol symbol,
         if( v->func_ref )
             emit->append( new Chuck_Instr_Reg_Push_Imm( (t_CKUINT)v->func_ref ) );
         // check size
-        else if( v->type->size == 4 ) // ISSUE: 64-bit
+        else if( v->type->size == sz_INT ) // ISSUE: 64-bit
             emit->append( new Chuck_Instr_Reg_Push_Mem( v->offset, v->is_context_global ) );
-        else if( v->type->size == 8 ) // ISSUE: 64-bit
+        else if( v->type->size == sz_FLOAT ) // ISSUE: 64-bit
             emit->append( new Chuck_Instr_Reg_Push_Mem2( v->offset, v->is_context_global  ) );
         else
         {

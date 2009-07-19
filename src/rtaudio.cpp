@@ -4024,7 +4024,7 @@ bool RtApiAlsa :: probeDeviceOpen( int device, StreamMode mode, int channels,
   snd_pcm_sw_params_alloca( &sw_params );
   snd_pcm_sw_params_current( handle, sw_params );
   snd_pcm_sw_params_set_start_threshold( handle, sw_params, *bufferSize );
-  snd_pcm_sw_params_set_stop_threshold( handle, sw_params, 0x7fffffff );
+  snd_pcm_sw_params_set_stop_threshold( handle, sw_params, LONG_MAX );
   snd_pcm_sw_params_set_silence_threshold( handle, sw_params, 0 );
   snd_pcm_sw_params_set_silence_size( handle, sw_params, INT_MAX );
   err = snd_pcm_sw_params( handle, sw_params );

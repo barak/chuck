@@ -34,6 +34,7 @@
 #define __UTIL_STRING_H__
 
 #include "chuck_def.h"
+#include <cstdio>
 #include <string>
 #include <vector>
 

@@ -1,3 +1,16 @@
+chuck (1.2.0.8.dfsg-1.2) unstable; urgency=medium
+
+  * Non-maintainer upload.
+  * Fix broken runtime on 64-bit architectures, thanks to patches by
+    Samuel Thibault (Closes: #398148).
+  * Set urgency to “medium” as this bug affects testing.
+  * Fix FTBFS with GCC 4.4, thanks to Martin Michlmayr, by adding a
+    <cstdio> include in src/util_string.h (Closes: #504962).
+  * Add jackd to Suggests as suggested (ah!) by James Westby
+    (Closes: #487982).
+
+ -- Cyril Brulebois <kibi@debian.org>  Sun, 19 Jul 2009 16:44:04 +0200
+
 chuck (1.2.0.8.dfsg-1.1) unstable; urgency=medium
 
   * Non-maintainer upload.
