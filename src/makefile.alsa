@@ -5,7 +5,7 @@ YACC=bison
 INCLUDES=
 CFLAGS?= -O3
 FLAGS= -D__LINUX_ALSA__ -c $(CFLAGS)
-LIBS=-lasound -lstdc++ -ldl -lm
+LIBS=-lasound -lstdc++ -ldl -lm -lpthread
 SF_OBJ=util_sndfile.o
 
 ifneq ($(CHUCK_DEBUG),)
