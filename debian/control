@@ -2,8 +2,9 @@ Source: chuck
 Section: sound
 Priority: optional
 Maintainer: Paul Brossier <piem@debian.org>
-Build-Depends: debhelper (>= 4.0.0), bison, flex, libjack-dev, libasound2-dev, libsndfile1-dev, docbook-to-man
-Standards-Version: 3.7.2
+Build-Depends: debhelper (>= 10), bison, flex, libjack-dev, libasound2-dev, libsndfile1-dev, docbook-to-man
+Standards-Version: 3.9.8
+Homepage: http://chuck.cs.princeton.edu
 
 Package: chuck
 Architecture: any

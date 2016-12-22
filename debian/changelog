@@ -1,3 +1,16 @@
+chuck (1.2.0.8.dfsg-1.5) unstable; urgency=medium
+
+  * Non-maintainer upload.
+  * Bumped DH level to 10. (Closes: #817390)
+  * debian/control:
+      - Added a Homepage field.
+      - Bumped Standards-Version to 3.9.8.
+  * debian/watch:
+      - Bumped to version 4.
+      - Fixed to ignore the 'dfsg' suffix.
+
+ -- Joao Eriberto Mota Filho <eriberto@debian.org>  Thu, 22 Dec 2016 19:41:01 -0200
+
 chuck (1.2.0.8.dfsg-1.4) unstable; urgency=low
 
   * Non-maintainer upload.
