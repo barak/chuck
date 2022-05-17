@@ -35,6 +35,7 @@
 #include "chuck_errmsg.h"
 #include "chuck_globals.h"
 #include "util_thread.h"
+#include "util_string.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -110,7 +111,16 @@ FILE * recv_file( const Net_Msg & msg, ck_socket sock )
         otf_ntoh( &buf );
         // write
         fwrite( buf.buffer, sizeof(char), buf.length, fd );
-    }while( buf.param2 );
+    }while( buf.param2 > 0 );
+
+    // check for error
+    if( buf.param2 == NET_ERROR )
+    {
+        // this was a problem
+        EM_log( CK_LOG_INFO, "(via otf): received error flag, dropping..." );
+        // done
+        goto error;
+    }
     
     return fd;
 
@@ -133,26 +143,51 @@ t_CKUINT otf_process_msg( Chuck_VM * vm, Chuck_Compiler * compiler,
     Chuck_Msg * cmd = new Chuck_Msg;
     Chuck_VM_Code * code = NULL;
     FILE * fd = NULL;
-	t_CKUINT ret = 0;
-    
+    t_CKUINT ret = 0;
+
     // fprintf( stderr, "UDP message recv...\n" );
     if( msg->type == MSG_REPLACE || msg->type == MSG_ADD )
     {
+        string filename;
+        vector<string> args;
+
+        // parse out command line arguments
+        if( !extract_args( msg->buffer, filename, args ) )
+        {
+            // error
+            fprintf( stderr, "[chuck]: malformed filename with argument list...\n" );
+            fprintf( stderr, "    -->  '%s'", msg->buffer );
+            SAFE_DELETE(cmd);
+            goto cleanup;
+        }
+
+        // copy stuff
+        if( args.size() > 0 )
+        {
+            strcpy( msg->buffer, filename.c_str() );
+            cmd->args = new vector<string>;
+            *(cmd->args) = args;
+        }
+
         // see if entire file is on the way
-        if( msg->param2 )
+        if( msg->param2 && msg->param2 != NET_ERROR )
         {
             fd = recv_file( *msg, (ck_socket)data );
             if( !fd )
             {
                 fprintf( stderr, "[chuck]: incoming source transfer '%s' failed...\n",
                     mini(msg->buffer) );
-				goto cleanup;
+                SAFE_DELETE(cmd);
+                goto cleanup;
             }
         }
 
         // parse, type-check, and emit
         if( !compiler->go( msg->buffer, fd ) )
-			goto cleanup;
+        {
+            SAFE_DELETE(cmd);
+            goto cleanup;
+        }
 
         // get the code
         code = compiler->output();
@@ -175,21 +210,21 @@ t_CKUINT otf_process_msg( Chuck_VM * vm, Chuck_Compiler * compiler,
     {
         fprintf( stderr, "[chuck]: unrecognized incoming command from network: '%i'\n", cmd->type );
         SAFE_DELETE(cmd);
-		goto cleanup;
+        goto cleanup;
     }
-    
+
     // immediate
     if( immediate )
         ret = vm->process_msg( cmd );
-	else
-	{
+    else
+    {
         vm->queue_msg( cmd, 1 );
-		ret = 1;
-	}
+        ret = 1;
+    }
 
 cleanup:
-	// close file handle
-	if( fd ) fclose( fd );
+    // close file handle
+    if( fd ) fclose( fd );
 
     return ret;
 }
@@ -201,67 +236,100 @@ cleanup:
 // name: otf_send_file()
 // desc: ...
 //-----------------------------------------------------------------------------
-int otf_send_file( const char * filename, Net_Msg & msg, const char * op,
+int otf_send_file( const char * fname, Net_Msg & msg, const char * op,
                    ck_socket dest )
 {
     FILE * fd = NULL;
     struct stat fs;
-    
-    strcpy( msg.buffer, "" );
-    //if( filename[0] != '/' )
-    //{ 
-    //    strcpy( msg.buffer, getenv("PWD") ? getenv("PWD") : "" );
-    //    strcat( msg.buffer, getenv("PWD") ? "/" : "" );
-    //}
-    strcat( msg.buffer, filename );
+    string filename;
+    vector<string> args;
+    char buf[1024];
 
-    // test it
-    fd = open_cat_ck( (char *)msg.buffer );
-    if( !fd )
+    // parse out command line arguments
+    if( !extract_args( fname, filename, args ) )
     {
-        fprintf( stderr, "[chuck]: cannot open file '%s' for [%s]...\n", filename, op );
+        // error
+        fprintf( stderr, "[chuck]: malformed filename + argument list...\n" );
+        fprintf( stderr, "    -->  '%s'", fname );
         return FALSE;
     }
 
-    if( !chuck_parse( (char *)msg.buffer, fd ) )
+    // filename and any args
+    strcpy( msg.buffer, fname );
+
+    // test it
+    strcpy( buf, filename.c_str() );
+    fd = open_cat_ck( buf );
+    if( !fd )
     {
-        fprintf( stderr, "[chuck]: skipping file '%s' for [%s]...\n", filename, op );
+        fprintf( stderr, "[chuck]: cannot open file '%s' for [%s]...\n", filename.c_str(), op );
+        return FALSE;
+    }
+
+    if( !chuck_parse( (char *)filename.c_str(), fd ) )
+    {
+        fprintf( stderr, "[chuck]: skipping file '%s' for [%s]...\n", filename.c_str(), op );
         fclose( fd );
         return FALSE;
     }
-            
+
     // stat it
-    stat( msg.buffer, &fs );
+    memset( &fs, 0, sizeof(fs) );
+    stat( buf, &fs );
     fseek( fd, 0, SEEK_SET );
 
-    //fprintf(stderr, "sending TCP file %s\n", msg.buffer );
+    // log
+    EM_log( CK_LOG_INFO, "sending TCP file %s, size=%d", filename.c_str(), (t_CKUINT)fs.st_size );
+    EM_pushlog();
+
     // send the first packet
     msg.param2 = (t_CKUINT)fs.st_size;
     msg.length = 0;
     otf_hton( &msg );
+    // go
     ck_send( dest, (char *)&msg, sizeof(msg) );
 
     // send the whole thing
     t_CKUINT left = (t_CKUINT)fs.st_size;
     while( left )
     {
-        //fprintf(stderr,"file %03d bytes left ... ", left);
+        // log
+        EM_log( CK_LOG_FINER, "%03d bytes left ... ", left );
         // amount to send
         msg.length = left > NET_BUFFER_SIZE ? NET_BUFFER_SIZE : left;
         // read
         msg.param3 = fread( msg.buffer, sizeof(char), msg.length, fd );
-        // amount left
-        left -= msg.param3 ? msg.param3 : 0;
-        msg.param2 = left;
-        //fprintf(stderr, "sending fread %03d length %03d...\n", msg.param3, msg.length );
+        // check for error
+        if( !msg.param3 )
+        {
+            // error encountered
+            fprintf( stderr, "[chuck]: error while reading '%s'...\n", filename.c_str() );
+            // mark done
+            left = 0;
+            // error flag
+            msg.param2 = NET_ERROR;
+        }
+        else
+        {
+            // amount left
+            left -= msg.param3;
+            // what's left
+            msg.param2 = left;
+        }
+
+        // log
+        EM_log( CK_LOG_FINER, "sending buffer %03d length %03d...", msg.param3, msg.length );
         // send it
         otf_hton( &msg );
         ck_send( dest, (char *)&msg, sizeof(msg) );
     }
-    
+
+    // pop log
+    EM_poplog();
+
     // close
     fclose( fd );
-    //fprintf(stderr, "done.\n", msg.buffer );
+
     return TRUE;
 }
 
@@ -330,7 +398,7 @@ int otf_send_cmd( int argc, char ** argv, t_CKINT & i, const char * host, int po
         EM_pushlog();
         do {
             // log
-            EM_log( CK_LOG_INFO, "sending file '%s' for add...", mini(argv[i]) );
+            EM_log( CK_LOG_INFO, "sending file:args '%s' for add...", mini(argv[i]) );
             msg.type = MSG_ADD;
             msg.param = 1;
             tasks_done += otf_send_file( argv[i], msg, "add", dest );
@@ -434,14 +502,14 @@ int otf_send_cmd( int argc, char ** argv, t_CKINT & i, const char * host, int po
         otf_hton( &msg );
         ck_send( dest, (char *)&msg, sizeof(msg) );
     }
-	else if( !strcmp( argv[i], "--rid" ) )
-	{
-		if( !(dest = otf_send_connect( host, port )) ) return 0;
-		msg.type = MSG_RESET_ID;
-		msg.param = 0;
-		otf_hton( &msg );
-		ck_send( dest, (char *)&msg, sizeof(msg) );
-	}
+    else if( !strcmp( argv[i], "--rid" ) )
+    {
+        if( !(dest = otf_send_connect( host, port )) ) return 0;
+        msg.type = MSG_RESET_ID;
+        msg.param = 0;
+        otf_hton( &msg );
+        ck_send( dest, (char *)&msg, sizeof(msg) );
+    }
     else if( !strcmp( argv[i], "--status" ) || !strcmp( argv[i], "^" ) )
     {
         if( !(dest = otf_send_connect( host, port )) ) return 0;

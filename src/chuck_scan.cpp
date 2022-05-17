@@ -1093,7 +1093,6 @@ t_CKBOOL type_engine_scan1_exp_decl( Chuck_Env * env, a_Exp_Decl decl )
     if( !t )
     {
         // resolve
-
         EM_error2( decl->linepos, "... in declaration ..." );
         return FALSE;
     }
@@ -2229,6 +2228,8 @@ t_CKBOOL type_engine_scan2_exp_decl( Chuck_Env * env, a_Exp_Decl decl )
                              env->func == NULL && !decl->is_static );
         value->is_context_global = ( env->class_def == NULL && env->func == NULL );
         value->addr = var_decl->addr;
+        // flag it until the decl is checked
+        value->is_decl_checked = FALSE;
 
         // remember the value
         var_decl->value = value;

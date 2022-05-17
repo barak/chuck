@@ -164,7 +164,7 @@ t_CKINT Chuck_VM::our_priority = 0x7fffffff;
 #endif
 
 
-#ifndef __PLATFORM_WIN32__
+#if !defined(__PLATFORM_WIN32__) || defined(__WINDOWS_PTHREAD__)
 //-----------------------------------------------------------------------------
 // name: set_priority()
 // desc: ...
@@ -218,7 +218,8 @@ t_CKBOOL Chuck_VM::set_priority( t_CKINT priority, Chuck_VM * vm )
     EM_log( CK_LOG_INFO, "setting thread priority to: %ld...", priority );
 
     // set the priority the thread
-    if( !SetThreadPriority( GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL ) )
+    // if( !SetThreadPriority( GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL ) )
+    if( !SetThreadPriority( GetCurrentThread(), priority ) )
     {
         if( vm )
             vm->m_last_error = "could not set new scheduling parameters";
@@ -347,8 +348,8 @@ t_CKBOOL Chuck_VM::initialize_synthesis( )
     g_t_dac->ugen_info->num_outs = 
         g_t_dac->ugen_info->num_ins = m_num_dac_channels;
     m_dac = (Chuck_UGen *)instantiate_and_initialize_object( g_t_dac, NULL );
-    stereo_ctor( m_dac, NULL );
-    multi_ctor( m_dac, NULL ); // TODO: remove and let type system do this
+    stereo_ctor( m_dac, NULL, NULL ); // TODO: is the NULL shred a problem?
+    multi_ctor( m_dac, NULL, NULL ); // TODO: remove and let type system do this
     m_dac->add_ref();
     // lock it
     m_dac->lock();
@@ -358,8 +359,8 @@ t_CKBOOL Chuck_VM::initialize_synthesis( )
     g_t_dac->ugen_info->num_ins = 
         g_t_adc->ugen_info->num_outs = m_num_adc_channels;
     m_adc = (Chuck_UGen *)instantiate_and_initialize_object( g_t_adc, NULL );
-    stereo_ctor( m_adc, NULL );
-    multi_ctor( m_adc, NULL ); // TODO: remove and let type system do this
+    stereo_ctor( m_adc, NULL, NULL );
+    multi_ctor( m_adc, NULL, NULL ); // TODO: remove and let type system do this
     m_adc->add_ref();
     // lock it
     m_adc->lock();
@@ -805,6 +806,8 @@ t_CKUINT Chuck_VM::process_msg( Chuck_Msg * msg )
         shred->now = shred->wake_time = m_shreduler->now_system;
         // set the vm
         shred->vm_ref = this;
+        // set args
+        if( msg->args ) shred->args = *(msg->args);
         // add it to the parent
         if( shred->parent )
             shred->parent->children[shred->xid] = shred;
@@ -902,9 +905,12 @@ t_CKUINT Chuck_VM::process_msg( Chuck_Msg * msg )
     else if( msg->type == MSG_ADD )
     {
         t_CKUINT xid = 0;
-        if( msg->shred ) xid = this->spork( msg->shred )->xid;
-        else xid = this->spork( msg->code, NULL )->xid;
-        
+        Chuck_VM_Shred * shred = NULL;
+        if( msg->shred ) shred = this->spork( msg->shred );
+        else shred = this->spork( msg->code, NULL );
+        xid = shred->xid;
+        if( msg->args ) shred->args = *(msg->args);
+
         const char * s = ( msg->shred ? msg->shred->name.c_str() : msg->code->name.c_str() );
         EM_error3( "[chuck](VM): sporking incoming shred: %i (%s)...", xid, mini(s) );
         retval = xid;
@@ -916,6 +922,10 @@ t_CKUINT Chuck_VM::process_msg( Chuck_Msg * msg )
         // close file handles and clean up
         all_detach();
         // TODO: free more memory?
+
+        // log
+        EM_log( CK_LOG_INFO, "(VM): exiting..." );
+        // come again
         exit( 1 );
     }
     else if( msg->type == MSG_STATUS )
@@ -1160,6 +1170,7 @@ Chuck_VM_Code::Chuck_VM_Code()
     stack_depth = 0;
     need_this = FALSE;
     native_func = 0;
+    native_func_type = NATIVE_UNKNOWN;
 }
 
 
@@ -1667,11 +1678,11 @@ void Chuck_VM_Shreduler::advance( )
         // loop over channels
         for( i = 0; i < m_num_adc_channels; i++ )
         {
-            m_adc->m_multi_chan[i]->m_current = frame[i] * m_adc->m_multi_chan[i]->m_gain;
+            m_adc->m_multi_chan[i]->m_current = frame[i] * m_adc->m_multi_chan[i]->m_gain * m_adc->m_gain;
             m_adc->m_multi_chan[i]->m_time = this->now_system;
             sum += m_adc->m_multi_chan[i]->m_current;
         }
-        m_adc->m_current = sum / m_num_adc_channels;
+        m_adc->m_last = m_adc->m_current = sum / m_num_adc_channels;
         m_adc->m_time = this->now_system;
     }
 

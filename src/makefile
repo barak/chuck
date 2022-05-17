@@ -1,12 +1,11 @@
-DESTDIR=
-PREFIX=/usr/bin
+DESTDIR=/usr/bin
 
 current: 
 	@echo "[chuck build]: please use one of the following configurations:"; echo "   make linux-alsa, make linux-jack, make linux-oss,"; echo "   make osx, make osx-ub, or make win32"
 
 install:
-	cp $(wildcard chuck chuck.oss chuck.exe) $(DESTDIR)/$(PREFIX)
-	chmod 755 $(DESTDIR)/$(PREFIX)/$(wildcard chuck chuck.oss chuck.exe)
+	cp $(wildcard chuck chuck.exe) $(DESTDIR)/
+	chmod 755 $(DESTDIR)/$(wildcard chuck chuck.exe)
 
 osx:
 	-make -f makefile.osx
@@ -37,4 +36,4 @@ osx-rl:
 	-make -f makefile.rl
 
 clean:
-	rm -f *.o chuck.tab.c chuck.tab.h chuck.yy.c chuck.output $(wildcard chuck chuck.oss chuck.exe)
+	rm -f *.o chuck.tab.c chuck.tab.h chuck.yy.c chuck.output $(wildcard chuck chuck.exe)

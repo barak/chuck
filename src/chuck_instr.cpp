@@ -41,6 +41,8 @@
 #include "chuck_dl.h"
 #include "chuck_errmsg.h"
 
+#include "util_string.h"
+
 #include <typeinfo>
 using namespace std;
 
@@ -67,8 +69,8 @@ static void handle_overflow( Chuck_VM_Shred * shred, Chuck_VM * vm )
 {
     // we have a problem
     fprintf( stderr, 
-        "[chuck](VM): Exception StackOverflow in shred[id=%d:%s]\n",
-        shred->xid, shred->name.c_str() );
+        "[chuck](VM): Exception StackOverflow in shred[id=%d:%s], PC=[%d]\n",
+        shred->xid, shred->name.c_str(), shred->pc );
     // do something!
     shred->is_running = FALSE;
     shred->is_done = TRUE;
@@ -583,6 +585,378 @@ void Chuck_Instr_Mod_double_Assign::execute( Chuck_VM * vm, Chuck_VM_Shred * shr
     **(t_CKFLOAT **)(sp+sz_FLOAT) = temp;
     // push result
     push_( (t_CKFLOAT *&)sp, temp );
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: execute()
+// desc: string + string
+//-----------------------------------------------------------------------------
+void Chuck_Instr_Add_string::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
+{
+    t_CKUINT *& reg_sp = (t_CKUINT *&)shred->reg->sp;
+    Chuck_String * lhs = NULL;
+    Chuck_String * rhs = NULL;
+    Chuck_String * result = NULL;
+
+    // pop word from reg stack
+    pop_( reg_sp, 2 );
+    // left
+    lhs = (Chuck_String *)(*(reg_sp));
+    // right
+    rhs = (Chuck_String *)(*(reg_sp+1));
+
+    // make sure no null
+    if( !rhs || !lhs ) goto null_pointer;
+
+    // make new string
+    result = (Chuck_String *)instantiate_and_initialize_object( &t_string, shred );
+
+    // concat
+    result->str = lhs->str + rhs->str;
+
+    // push the reference value to reg stack
+    push_( reg_sp, (t_CKUINT)(result) );
+
+    return;
+
+null_pointer:
+    // we have a problem
+    fprintf( stderr, 
+        "[chuck](VM): NullPointerException: (string + string) in shred[id=%d:%s], PC=[%d]\n",
+        shred->xid, shred->name.c_str(), shred->pc );
+    goto done;
+
+done:
+    // do something!
+    shred->is_running = FALSE;
+    shred->is_done = TRUE;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: execute()
+// desc: add assign string
+//-----------------------------------------------------------------------------
+void Chuck_Instr_Add_string_Assign::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
+{
+    t_CKUINT *& reg_sp = (t_CKUINT *&)shred->reg->sp;
+    Chuck_String * lhs = NULL;
+    Chuck_String ** rhs_ptr = NULL;
+
+    // pop word from reg stack
+    pop_( reg_sp, 2 );
+    // the previous reference
+    rhs_ptr = (Chuck_String **)(*(reg_sp+1));
+    // copy popped value into memory
+    lhs = (Chuck_String *)(*(reg_sp));
+
+    // make sure no null
+    if( !(*rhs_ptr) ) goto null_pointer;
+
+    // concat
+    (*rhs_ptr)->str += lhs->str;
+
+    // push the reference value to reg stack
+    push_( reg_sp, (t_CKUINT)(*rhs_ptr) );
+
+    return;
+
+null_pointer:
+    // we have a problem
+    fprintf( stderr, 
+        "[chuck](VM): NullPointerException: (string + string) in shred[id=%d:%s], PC=[%d]\n",
+        shred->xid, shred->name.c_str(), shred->pc );
+    goto done;
+
+done:
+    // do something!
+    shred->is_running = FALSE;
+    shred->is_done = TRUE;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: execute()
+// desc: string + int
+//-----------------------------------------------------------------------------
+void Chuck_Instr_Add_string_int::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
+{
+    t_CKUINT *& reg_sp = (t_CKUINT *&)shred->reg->sp;
+    Chuck_String * lhs = NULL;
+    t_CKINT rhs = 0;
+    Chuck_String * result = NULL;
+
+    // pop word from reg stack
+    pop_( reg_sp, 2 );
+    // left
+    lhs = (Chuck_String *)(*(reg_sp));
+    // right
+    rhs = (*(t_CKINT *)(reg_sp+1));
+
+    // make sure no null
+    if( !lhs ) goto null_pointer;
+
+    // make new string
+    result = (Chuck_String *)instantiate_and_initialize_object( &t_string, shred );
+
+    // concat
+    result->str = lhs->str + ::itoa(rhs);
+
+    // push the reference value to reg stack
+    push_( reg_sp, (t_CKUINT)(result) );
+
+    return;
+
+null_pointer:
+    // we have a problem
+    fprintf( stderr, 
+        "[chuck](VM): NullPointerException: (string + int) in shred[id=%d:%s], PC=[%d]\n",
+        shred->xid, shred->name.c_str(), shred->pc );
+    goto done;
+
+done:
+    // do something!
+    shred->is_running = FALSE;
+    shred->is_done = TRUE;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: execute()
+// desc: string + float
+//-----------------------------------------------------------------------------
+void Chuck_Instr_Add_string_float::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
+{
+    t_CKUINT *& reg_sp = (t_CKUINT *&)shred->reg->sp;
+    Chuck_String * lhs = NULL;
+    t_CKFLOAT rhs = 0;
+    Chuck_String * result = NULL;
+
+    // pop word from reg stack
+    pop_( reg_sp, 3 );
+    // left
+    lhs = (Chuck_String *)(*(reg_sp));
+    // right
+    rhs = (*(t_CKFLOAT *)(reg_sp+1));
+
+    // make sure no null
+    if( !lhs ) goto null_pointer;
+
+    // make new string
+    result = (Chuck_String *)instantiate_and_initialize_object( &t_string, shred );
+
+    // concat
+    result->str = lhs->str + ::ftoa(rhs, 4);
+
+    // push the reference value to reg stack
+    push_( reg_sp, (t_CKUINT)(result) );
+
+    return;
+
+null_pointer:
+    // we have a problem
+    fprintf( stderr, 
+        "[chuck](VM): NullPointerException: (string + float) in shred[id=%d:%s], PC=[%d]\n",
+        shred->xid, shred->name.c_str(), shred->pc );
+    goto done;
+
+done:
+    // do something!
+    shred->is_running = FALSE;
+    shred->is_done = TRUE;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: execute()
+// desc: int + string
+//-----------------------------------------------------------------------------
+void Chuck_Instr_Add_int_string::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
+{
+    t_CKUINT *& reg_sp = (t_CKUINT *&)shred->reg->sp;
+    t_CKINT lhs = 0;
+    Chuck_String * rhs = NULL;
+    Chuck_String * result = NULL;
+
+    // pop word from reg stack
+    pop_( reg_sp, 2 );
+    // left
+    lhs = (*(t_CKINT *)(reg_sp));
+    // right
+    rhs = (Chuck_String *)(*(reg_sp+1));
+
+    // make sure no null
+    if( !rhs ) goto null_pointer;
+
+    // make new string
+    result = (Chuck_String *)instantiate_and_initialize_object( &t_string, shred );
+
+    // concat
+    result->str = ::itoa(lhs) + rhs->str;
+
+    // push the reference value to reg stack
+    push_( reg_sp, (t_CKUINT)(result) );
+
+    return;
+
+null_pointer:
+    // we have a problem
+    fprintf( stderr, 
+        "[chuck](VM): NullPointerException: (int + string) in shred[id=%d:%s], PC=[%d]\n",
+        shred->xid, shred->name.c_str(), shred->pc );
+    goto done;
+
+done:
+    // do something!
+    shred->is_running = FALSE;
+    shred->is_done = TRUE;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: execute()
+// desc: float + string
+//-----------------------------------------------------------------------------
+void Chuck_Instr_Add_float_string::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
+{
+    t_CKUINT *& reg_sp = (t_CKUINT *&)shred->reg->sp;
+    t_CKFLOAT lhs = 0;
+    Chuck_String * rhs = NULL;
+    Chuck_String * result = NULL;
+
+    // pop word from reg stack
+    pop_( reg_sp, 3 );
+    // left (2 word)
+    lhs = (*(t_CKFLOAT *)(reg_sp));
+    // right
+    rhs = (Chuck_String *)(*(reg_sp+2));
+
+    // make sure no null
+    if( !rhs ) goto null_pointer;
+
+    // make new string
+    result = (Chuck_String *)instantiate_and_initialize_object( &t_string, shred );
+
+    // concat
+    result->str = ::ftoa(lhs, 4) + rhs->str;
+
+    // push the reference value to reg stack
+    push_( reg_sp, (t_CKUINT)(result) );
+
+    return;
+
+null_pointer:
+    // we have a problem
+    fprintf( stderr, 
+        "[chuck](VM): NullPointerException: (int + string) in shred[id=%d:%s], PC=[%d]\n",
+        shred->xid, shred->name.c_str(), shred->pc );
+    goto done;
+
+done:
+    // do something!
+    shred->is_running = FALSE;
+    shred->is_done = TRUE;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: execute()
+// desc: add assign int string
+//-----------------------------------------------------------------------------
+void Chuck_Instr_Add_int_string_Assign::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
+{
+    t_CKUINT *& reg_sp = (t_CKUINT *&)shred->reg->sp;
+    t_CKINT lhs = 0;
+    Chuck_String ** rhs_ptr = NULL;
+
+    // pop word from reg stack
+    pop_( reg_sp, 2 );
+    // the previous reference
+    rhs_ptr = (Chuck_String **)(*(reg_sp+1));
+    // copy popped value into memory
+    lhs = (*(t_CKINT *)(reg_sp));
+
+    // make sure no null
+    if( !(*rhs_ptr) ) goto null_pointer;
+
+    // concat
+    (*rhs_ptr)->str += ::itoa(lhs);
+
+    // push the reference value to reg stack
+    push_( reg_sp, (t_CKUINT)(*rhs_ptr) );
+
+    return;
+
+null_pointer:
+    // we have a problem
+    fprintf( stderr, 
+        "[chuck](VM): NullPointerException: () in shred[id=%d:%s], PC=[%d]\n",
+        shred->xid, shred->name.c_str(), shred->pc );
+    goto done;
+
+done:
+    // do something!
+    shred->is_running = FALSE;
+    shred->is_done = TRUE;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: execute()
+// desc: add assign float string
+//-----------------------------------------------------------------------------
+void Chuck_Instr_Add_float_string_Assign::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
+{
+    t_CKUINT *& reg_sp = (t_CKUINT *&)shred->reg->sp;
+    t_CKFLOAT lhs = 0;
+    Chuck_String ** rhs_ptr = NULL;
+
+    // pop word from reg stack
+    pop_( reg_sp, 3 );
+    // the previous reference
+    rhs_ptr = (Chuck_String **)(*(reg_sp+2));
+    // copy popped value into memory
+    lhs = (*(t_CKFLOAT *)(reg_sp));
+
+    // make sure no null
+    if( !(*rhs_ptr) ) goto null_pointer;
+
+    // concat
+    (*rhs_ptr)->str += ::ftoa(lhs, 4);
+
+    // push the reference value to reg stack
+    push_( reg_sp, (t_CKUINT)(*rhs_ptr) );
+
+    return;
+
+null_pointer:
+    // we have a problem
+    fprintf( stderr, 
+        "[chuck](VM): NullPointerException: (string + string) in shred[id=%d:%s], PC=[%d]\n",
+        shred->xid, shred->name.c_str(), shred->pc );
+    goto done;
+
+done:
+    // do something!
+    shred->is_running = FALSE;
+    shred->is_done = TRUE;
 }
 
 
@@ -2228,7 +2602,7 @@ void Chuck_Instr_Func_Call_Member::execute( Chuck_VM * vm, Chuck_VM_Shred * shre
     // get the function to be called as code
     Chuck_VM_Code * func = (Chuck_VM_Code *)*reg_sp;
     // get the function to be called
-    f_mfun f = (f_mfun)func->native_func;
+    // MOVED TO BELOW: f_mfun f = (f_mfun)func->native_func;
     // get the local stack depth - caller local variables
     t_CKUINT local_depth = *(reg_sp+1);
     // convert to number of 4-byte words, extra partial word counts as additional word
@@ -2268,8 +2642,22 @@ void Chuck_Instr_Func_Call_Member::execute( Chuck_VM * vm, Chuck_VM_Shred * shre
     // detect overflow/underflow
     if( overflow_( shred->mem ) ) goto error_overflow;
 
-    // call the function
-    f( (Chuck_Object *)(*mem_sp), mem_sp + 1, &retval );
+    // check the type
+    if( func->native_func_type == Chuck_VM_Code::NATIVE_CTOR )
+    {
+        // cast to right type
+        f_ctor f = (f_ctor)func->native_func;
+        // call
+        f( (Chuck_Object *)(*mem_sp), mem_sp + 1, shred );
+    }
+    else
+    {
+        // cast to right type
+        f_mfun f = (f_mfun)func->native_func;
+        // call the function
+        f( (Chuck_Object *)(*mem_sp), mem_sp + 1, &retval, shred );
+    }
+    // pop (TODO: check if this is right)
     mem_sp -= push;
     
     // push the return
@@ -2355,7 +2743,7 @@ void Chuck_Instr_Func_Call_Static::execute( Chuck_VM * vm, Chuck_VM_Shred * shre
     if( overflow_( shred->mem ) ) goto error_overflow;
 
     // call the function
-    f( mem_sp, &retval );
+    f( mem_sp, &retval, shred );
     mem_sp -= push;
 
     // push the return
@@ -2474,8 +2862,8 @@ void Chuck_Instr_Time_Advance::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
     {
         // we have a problem
         fprintf( stderr, 
-            "[chuck](VM): DestTimeNegativeException: '%.6f' in shred[id=%d:%s]\n",
-            *sp, shred->xid, shred->name.c_str() );
+            "[chuck](VM): DestTimeNegativeException: '%.6f' in shred[id=%d:%s], PC=[%d]\n",
+            *sp, shred->xid, shred->name.c_str(), shred->pc );
         // do something!
         shred->is_running = FALSE;
         shred->is_done = TRUE;
@@ -2521,8 +2909,8 @@ void Chuck_Instr_Event_Wait::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
 null_pointer:
     // we have a problem
     fprintf( stderr, 
-        "[chuck](VM): NullPointerException: (null Event wait) in shred[id=%d:%s]\n",
-        shred->xid, shred->name.c_str() );
+        "[chuck](VM): NullPointerException: (null Event wait) in shred[id=%d:%s], PC=[%d]\n",
+        shred->xid, shred->name.c_str(), shred->pc );
     goto done;
 
 done:
@@ -2715,9 +3103,12 @@ Chuck_Object * do_alloc_array( t_CKINT * capacity, const t_CKINT * top,
                                t_CKUINT * objs, t_CKINT & index )
 {
     // not top level
-    Chuck_Array4 * base;
-    Chuck_Object * next;
-    t_CKINT i;
+    Chuck_Array4 * base = NULL;
+    Chuck_Object * next = NULL;
+    t_CKINT i = 0;
+
+    // capacity
+    if( *capacity < 0 ) goto negative_array_size;
 
     // see if top level
     if( capacity >= top )
@@ -2779,8 +3170,14 @@ Chuck_Object * do_alloc_array( t_CKINT * capacity, const t_CKINT * top,
 out_of_memory:
     // we have a problem
     fprintf( stderr, 
-        "[chuck](VM): OutOfMemory: while allocating arrays\n" );
-    return NULL;
+        "[chuck](VM): OutOfMemory: while allocating arrays...\n" );
+    goto error;
+
+negative_array_size:
+    // we have a problem
+    fprintf( stderr,
+        "[chuck](VM): NegativeArraySize: while allocating arrays...\n" );
+    goto error;
 
 error:
     // base shouldn't have been ref counted
@@ -2877,14 +3274,19 @@ void Chuck_Instr_Array_Alloc::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
 overflow:
     // we have a problem
     fprintf( stderr,
-        "[chuck](VM): OverFlow: requested array size too big\n" );
+        "[chuck](VM): OverFlow: requested array size too big...\n" );
+    goto error;
 
 out_of_memory:
     // we have a problem
     fprintf( stderr, 
-        "[chuck](VM): OutOfMemory: while allocating arrays\n" );
+        "[chuck](VM): OutOfMemory: while allocating arrays...\n" );
+    goto error;
 
 error:
+    fprintf( stderr, 
+        "[chuck](VM):     (note: in shred[id=%d:%s])\n", shred->xid, shred->name.c_str() );
+
     // done
     shred->is_running = FALSE;
     shred->is_done = TRUE;
@@ -2907,6 +3309,9 @@ void Chuck_Instr_Array_Access::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
     // pop
     pop_( sp, 2 );
 
+    // check pointer
+    if( !(*sp) ) goto null_pointer;
+
     // 4 or 8
     if( m_size == 4 ) // ISSUE: 64-bit
     {
@@ -2919,13 +3324,13 @@ void Chuck_Instr_Array_Access::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
             // get the addr
             val = arr->addr( i );
             // exception
-            if( !val ) goto error;
+            if( !val ) goto array_out_of_bound;
             // push the addr
             push_( sp, val );
         } else {
             // get the value
             if( !arr->get( i, &val ) )
-                goto error;
+                goto array_out_of_bound;
             // push the value
             push_( sp, val );
         }
@@ -2941,13 +3346,13 @@ void Chuck_Instr_Array_Access::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
             // get the addr
             val = arr->addr( i );
             // exception
-            if( !val ) goto error;
+            if( !val ) goto array_out_of_bound;
             // push the addr
             push_( sp, val );
         } else {
             // get the value
             if( !arr->get( i, &fval ) )
-                goto error;
+                goto array_out_of_bound;
             // push the value
             push_( ((t_CKFLOAT *&)sp), fval );
         }
@@ -2957,12 +3362,22 @@ void Chuck_Instr_Array_Access::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
 
     return;
 
-error:
+null_pointer:
     // we have a problem
     fprintf( stderr, 
-             "[chuck](VM): ArrayOutofBounds in shred[id=%d:%s], PC=[%d], index=[%d]\n", 
-             shred->xid, shred->name.c_str(), shred->pc, i );
+        "[chuck](VM): NullPointerException: (array access) in shred[id=%d:%s], PC=[%d]\n",
+        shred->xid, shred->name.c_str(), shred->pc );
+    goto done;
 
+array_out_of_bound:
+    // we have a problem
+    fprintf( stderr, 
+             "[chuck](VM): ArrayOutofBounds: in shred[id=%d:%s], PC=[%d], index=[%d]\n", 
+             shred->xid, shred->name.c_str(), shred->pc, i );
+    // go to done
+    goto done;
+
+done:
     // do something!
     shred->is_running = FALSE;
     shred->is_done = TRUE;
@@ -2985,6 +3400,9 @@ void Chuck_Instr_Array_Map_Access::execute( Chuck_VM * vm, Chuck_VM_Shred * shre
 
     // pop
     pop_( sp, 2 );
+
+    // check pointer
+    if( !(*sp) ) goto null_pointer;
 
     // 4 or 8
     if( m_size == 4 ) // ISSUE: 64-bit
@@ -3036,12 +3454,21 @@ void Chuck_Instr_Array_Map_Access::execute( Chuck_VM * vm, Chuck_VM_Shred * shre
 
     return;
 
+null_pointer:
+    // we have a problem
+    fprintf( stderr, 
+        "[chuck](VM): NullPointerException: (map access) in shred[id=%d:%s], PC=[%d]\n",
+        shred->xid, shred->name.c_str(), shred->pc );
+    goto done;
+
 error:
     // we have a problem
     fprintf( stderr, 
-             "[chuck](VM): InternalArrayMap error in shred[id=%d:%s], PC=[%d], index=[%s]\n", 
+             "[chuck](VM): InternalArrayMap error: in shred[id=%d:%s], PC=[%d], index=[%s]\n", 
              shred->xid, shred->name.c_str(), shred->pc, key->str.c_str() );
+    goto done;
 
+done:
     // do something!
     shred->is_running = FALSE;
     shred->is_done = TRUE;
@@ -3062,6 +3489,7 @@ void Chuck_Instr_Array_Access_Multi::execute( Chuck_VM * vm, Chuck_VM_Shred * sh
     t_CKUINT val = 0, j;
     t_CKFLOAT fval = 0;
     t_CKINT * ptr = NULL;
+    t_CKUINT index = 0;
 
     // pop all indices then array
     pop_( sp, m_depth + 1 );
@@ -3069,6 +3497,9 @@ void Chuck_Instr_Array_Access_Multi::execute( Chuck_VM * vm, Chuck_VM_Shred * sh
     // get array
     Chuck_Array4 * base = (Chuck_Array4 *)(*sp);
     ptr = (t_CKINT *)(sp+1);
+
+    // check for null
+    if( !base ) goto null_pointer;
 
     // make sure
     assert( m_depth > 1 );
@@ -3079,9 +3510,16 @@ void Chuck_Instr_Array_Access_Multi::execute( Chuck_VM * vm, Chuck_VM_Shred * sh
         i = *ptr++;
         // get the array
         if( !base->get( i, &val ) )
-            goto error;
+            goto array_out_of_bound;
         // set the array
         base = (Chuck_Array4 *)val;
+        // check for null
+        if( !base )
+        {
+            // error
+            index = j + 1;
+            goto null_pointer;
+        }
     }
 
     // 4 or 8
@@ -3096,13 +3534,13 @@ void Chuck_Instr_Array_Access_Multi::execute( Chuck_VM * vm, Chuck_VM_Shred * sh
             // get the addr
             val = arr->addr( i );
             // exception
-            if( !val ) goto error;
+            if( !val ) goto array_out_of_bound;
             // push the addr
             push_( sp, val );
         } else {
             // get the value
             if( !arr->get( i, &val ) )
-                goto error;
+                goto array_out_of_bound;
             // push the value
             push_( sp, val );
         }
@@ -3118,13 +3556,13 @@ void Chuck_Instr_Array_Access_Multi::execute( Chuck_VM * vm, Chuck_VM_Shred * sh
             // get the addr
             val = arr->addr( i );
             // exception
-            if( !val ) goto error;
+            if( !val ) goto array_out_of_bound;
             // push the addr
             push_( sp, val );
         } else {
             // get the value
             if( !arr->get( i, &fval ) )
-                goto error;
+                goto array_out_of_bound;
             // push the value
             push_( ((t_CKFLOAT *&)sp), fval );
         }
@@ -3134,12 +3572,24 @@ void Chuck_Instr_Array_Access_Multi::execute( Chuck_VM * vm, Chuck_VM_Shred * sh
 
     return;
 
-error:
+null_pointer:
     // we have a problem
     fprintf( stderr, 
-             "[chuck](VM): ArrayOutofBounds in shred[id=%d:%s], PC=[%d], index=[%d]\n", 
-             shred->xid, shred->name.c_str(), shred->pc, i );
+        "[chuck](VM): NullPointerException: (array access) in shred[id=%d:%s], PC=[%d]\n",
+        shred->xid, shred->name.c_str(), shred->pc );
+    fprintf( stderr, 
+        "[chuck](VM): (array dimension where exception occurred: %d)\n", index );
+    goto done;
 
+array_out_of_bound:
+    // we have a problem
+    fprintf( stderr, 
+             "[chuck](VM): ArrayOutofBounds: in shred[id=%d:%s], PC=[%d], index=[%d]\n", 
+             shred->xid, shred->name.c_str(), shred->pc, i );
+    // go to done
+    goto done;
+
+done:
     // do something!
     shred->is_running = FALSE;
     shred->is_done = TRUE;
@@ -3408,15 +3858,15 @@ void Chuck_Instr_Op_string::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
 null_pointer:
     // we have a problem
     fprintf( stderr, 
-        "[chuck](VM): NullPointerException: (during string op) in shred[id=%d:%s]\n",
-        shred->xid, shred->name.c_str() );
+        "[chuck](VM): NullPointerException: (during string op) in shred[id=%d:%s], PC=[%d]\n",
+        shred->xid, shred->name.c_str(), shred->pc );
     goto done;
 
 invalid_op:
     // we have a problem
     fprintf( stderr,
-        "[chuck](VM): InvalidStringOpException: '%d' in shred[id=%d:%s]\n",
-        m_val, shred->xid, shred->name.c_str() );
+        "[chuck](VM): InvalidStringOpException: '%d' in shred[id=%d:%s], PC=[%d]\n",
+        m_val, shred->xid, shred->name.c_str(), shred->pc );
     goto done;
 
 done:
@@ -3475,9 +3925,26 @@ void Chuck_Instr_UGen_Link::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
 {
     Chuck_UGen **& sp = (Chuck_UGen **&)shred->reg->sp;
 
+    // pop
     pop_( sp, 2 );
+    // check for null
+    if( !*(sp+1) || !(*sp) ) goto null_pointer;
+    // go for it
     (*(sp + 1))->add( *sp );
+    // push the second
     push_( sp, *(sp + 1) );
+
+    return;
+
+null_pointer:
+    // we have a problem
+    fprintf( stderr, 
+        "[chuck](VM): NullPointerException: (UGen link) in shred[id=%d:%s], PC=[%d]\n",
+        shred->xid, shred->name.c_str(), shred->pc );
+
+    // do something!
+    shred->is_running = FALSE;
+    shred->is_done = TRUE;
 }
 
 

@@ -49,9 +49,15 @@
 #include "chuck_type.h"
 #include "chuck_ugen.h"
 #include "chuck_vm.h"
+#include "chuck_globals.h"
 
 #include <fstream>
 using namespace std;
+
+
+// LiSa query
+DLL_QUERY lisa_query( Chuck_DL_Query * query );
+
 
 t_CKUINT g_srate;
 
@@ -65,6 +71,7 @@ static t_CKUINT step_offset_data = 0;
 static t_CKUINT zerox_offset_data = 0;
 static t_CKUINT delayp_offset_data = 0;
 static t_CKUINT sndbuf_offset_data = 0;
+static t_CKUINT dyno_offset_data = 0;
 
 Chuck_Type * g_t_dac = NULL;
 Chuck_Type * g_t_adc = NULL;
@@ -124,7 +131,7 @@ DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
     // init as base class: UGen_Stereo
     //---------------------------------------------------------------------
     if( !type_engine_import_ugen_begin( env, "UGen_Stereo", "UGen_Multi", env->global(), 
-                                        stereo_ctor, NULL, NULL, 2, 2 ) )
+                                        stereo_ctor, NULL, NULL, NULL, 2, 2 ) )
         return FALSE;
 
     // add left
@@ -157,7 +164,7 @@ DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
     // init as base class: dac
     //---------------------------------------------------------------------
     if( !(g_t_dac = type_engine_import_ugen_begin( env, "DAC", "UGen_Stereo", env->global(), 
-                                                   NULL, NULL, NULL, 2, 2 )) )
+                                                   NULL, NULL, NULL, NULL, 2, 2 )) )
         return FALSE;
 
     // end import
@@ -171,7 +178,7 @@ DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
     // init as base class: adc
     //---------------------------------------------------------------------
     if( !(g_t_adc = type_engine_import_ugen_begin( env, "ADC", "UGen_Stereo", env->global(), 
-                                                   NULL, NULL, NULL, 0, 2 )) )
+                                                   NULL, NULL, NULL, NULL, 0, 2 )) )
         return FALSE;
 
     // end import
@@ -182,7 +189,7 @@ DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
     // init as base class: pan2
     //---------------------------------------------------------------------
     if( !type_engine_import_ugen_begin( env, "Pan2", "UGen_Stereo", env->global(), 
-                                        NULL, NULL, NULL, 2, 2 ) )
+                                        NULL, NULL, NULL, NULL, 2, 2 ) )
         return FALSE;
     
     // end import
@@ -193,7 +200,7 @@ DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
     // init as base class: mix2
     //---------------------------------------------------------------------
     if( !type_engine_import_ugen_begin( env, "Mix2", "UGen_Stereo", env->global(), 
-                                        NULL, NULL, NULL, 2, 2 ) )
+                                        NULL, NULL, NULL, NULL, 2, 2 ) )
         return FALSE;
     
     // end import
@@ -224,7 +231,7 @@ DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
     // init as base class: gain
     //---------------------------------------------------------------------
     if( !type_engine_import_ugen_begin( env, "Gain", "UGen", env->global(), 
-                                        NULL, NULL, NULL ) )
+                                        NULL, NULL, NULL, NULL ) )
         return FALSE;
     // end import
     if( !type_engine_import_class_end( env ) )
@@ -245,7 +252,7 @@ DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
     // init as base class: noise
     //---------------------------------------------------------------------
     if( !type_engine_import_ugen_begin( env, "Noise", "UGen", env->global(), 
-                                        NULL, noise_tick, NULL ) )
+                                        NULL, NULL, noise_tick, NULL ) )
         return FALSE;
 
     // end import
@@ -263,7 +270,7 @@ DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
     // init as base class: cnoise
     //---------------------------------------------------------------------
     if( !type_engine_import_ugen_begin( env, "CNoise", "UGen", env->global(), 
-                                        cnoise_ctor, cnoise_tick, NULL ) )
+                                        cnoise_ctor, cnoise_dtor, cnoise_tick, NULL ) )
         return FALSE;
 
     // add member variable
@@ -312,7 +319,7 @@ DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
     // init as base class: impulse
     //---------------------------------------------------------------------
     if( !type_engine_import_ugen_begin( env, "Impulse", "UGen", env->global(), 
-                                        impulse_ctor, impulse_tick, NULL ) )
+                                        impulse_ctor, impulse_dtor, impulse_tick, NULL ) )
         return FALSE;
 
     // add ctrl: value
@@ -363,7 +370,7 @@ DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
     // init as base class: step
     //---------------------------------------------------------------------
     if( !type_engine_import_ugen_begin( env, "Step", "UGen", env->global(), 
-                                        step_ctor, step_tick, NULL ) )
+                                        step_ctor, step_dtor, step_tick, NULL ) )
         return FALSE;
 
     // add ctrl: value
@@ -400,7 +407,7 @@ DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
     // init as base class: halfrect
     //---------------------------------------------------------------------
     if( !type_engine_import_ugen_begin( env, "HalfRect", "UGen", env->global(), 
-                                        NULL, halfrect_tick, NULL ) )
+                                        NULL, NULL, halfrect_tick, NULL ) )
         return FALSE;
 
     // end import
@@ -417,7 +424,7 @@ DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
     // init as base class: fullrect
     //---------------------------------------------------------------------
     if( !type_engine_import_ugen_begin( env, "FullRect", "UGen", env->global(), 
-                                        NULL, fullrect_tick, NULL ) )
+                                        NULL, NULL, fullrect_tick, NULL ) )
         return FALSE;
 
     // end import
@@ -436,7 +443,7 @@ DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
     // init as base class: zerox
     //---------------------------------------------------------------------
     if( !type_engine_import_ugen_begin( env, "ZeroX", "UGen", env->global(), 
-                                        zerox_ctor, zerox_tick, NULL ) )
+                                        zerox_ctor, zerox_dtor, zerox_tick, NULL ) )
         return FALSE;
 
     // add member variable
@@ -465,7 +472,8 @@ DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
     // init as base class: delayp
     //---------------------------------------------------------------------
     if( !type_engine_import_ugen_begin( env, "DelayP", "UGen", env->global(), 
-                                        delayp_ctor, delayp_tick, delayp_pmsg ) )
+                                        delayp_ctor, delayp_dtor, 
+                                        delayp_tick, delayp_pmsg ) )
         return FALSE;
 
     // add member variable
@@ -529,7 +537,8 @@ DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
     // init as base class: sndbuf
     //---------------------------------------------------------------------
     if( !type_engine_import_ugen_begin( env, "SndBuf", "UGen", env->global(), 
-                                        sndbuf_ctor, sndbuf_tick, NULL ) )
+                                        sndbuf_ctor, sndbuf_dtor,
+                                        sndbuf_tick, NULL ) )
         return FALSE;
 
     // add member variable
@@ -653,6 +662,122 @@ DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
     if( !type_engine_import_class_end( env ) )
         return FALSE;
 
+    //---------------------------------------------------------------------
+    // init as base class: Dyno
+    //---------------------------------------------------------------------
+    if( !type_engine_import_ugen_begin( env, "Dyno", "UGen", env->global(), 
+                                        dyno_ctor, dyno_dtor, dyno_tick, NULL ) )
+        return FALSE;
+
+    // add member variable
+    dyno_offset_data = type_engine_import_mvar( env, "int", "@dyno_data", FALSE );
+    if( dyno_offset_data == CK_INVALID_OFFSET ) goto error;
+
+    // add ctrl: limit
+    func = make_new_mfun( "void", "limit", dyno_ctrl_limit );
+    //func->add_arg( "string", "mode" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add ctrl: compress
+    func = make_new_mfun( "void", "compress", dyno_ctrl_compress );
+    //func->add_arg( "string", "mode" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add ctrl: gate
+    func = make_new_mfun( "void", "gate", dyno_ctrl_gate );
+    //func->add_arg( "string", "mode" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add ctrl: expand
+    func = make_new_mfun( "void", "expand", dyno_ctrl_expand );
+    //func->add_arg( "string", "mode" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add ctrl: duck
+    func = make_new_mfun( "void", "duck", dyno_ctrl_duck );
+    //func->add_arg( "string", "mode" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    //add ctrl: thresh
+    func = make_new_mfun( "float", "thresh", dyno_ctrl_thresh );
+    func->add_arg( "float", "thresh" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add cget: thresh
+    func = make_new_mfun( "float", "thresh", dyno_cget_thresh );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    //add ctrl: attackTime
+    func = make_new_mfun( "dur", "attackTime", dyno_ctrl_attackTime );
+    func->add_arg( "dur", "aTime" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    //add cget: attackTime
+    func = make_new_mfun( "dur", "attackTime", dyno_ctrl_attackTime );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    //add ctrl: releaseTime
+    func = make_new_mfun( "dur", "releaseTime", dyno_ctrl_releaseTime );
+    func->add_arg( "dur", "rTime" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    //add ctrl: releaseTime
+    func = make_new_mfun( "dur", "releaseTime", dyno_ctrl_releaseTime );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    //add ctrl: ratio
+    func = make_new_mfun( "float", "ratio", dyno_ctrl_ratio );
+    func->add_arg( "float", "ratio" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    //add cget: ratio
+    func = make_new_mfun( "float", "ratio", dyno_cget_ratio );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    //add ctrl: slopeBelow
+    func = make_new_mfun( "float", "slopeBelow", dyno_ctrl_slopeBelow );
+    func->add_arg( "float", "slopeBelow" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    //add cget: slopeBelow
+    func = make_new_mfun( "float", "slopeBelow", dyno_cget_slopeBelow );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    //add ctrl: slopeAbove
+    func = make_new_mfun( "float", "slopeAbove", dyno_ctrl_slopeAbove );
+    func->add_arg( "float", "slopeAbove" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    //add cget: slopeAbove
+    func = make_new_mfun( "float", "slopeAbove", dyno_cget_slopeAbove );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    //add ctrl: sideInput
+    func = make_new_mfun( "float", "sideInput", dyno_ctrl_sideInput );
+    func->add_arg( "float", "sideInput" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    //add cget: sideInput
+    func = make_new_mfun( "float", "sideInput", dyno_cget_sideInput );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    //add ctrl: externalSideInput
+    func = make_new_mfun( "int", "externalSideInput", dyno_ctrl_externalSideInput );
+    func->add_arg( "int", "externalSideInput" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    //add cget: externalSideInput
+    func = make_new_mfun( "int", "externalSideInput", dyno_cget_externalSideInput );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // end import
+    if( !type_engine_import_class_end( env ) )
+        return FALSE;
+
+    // import LiSa!
+    if( !lisa_query( QUERY ) )
+        return FALSE;
+
     return TRUE;
 
 error:
@@ -660,6 +785,218 @@ error:
     // end the class import
     type_engine_import_class_end( env );
     
+    return FALSE;
+}
+
+
+
+
+// LiSa (live sampling data offset)
+static t_CKUINT LiSaBasic_offset_data = 0;
+static t_CKUINT LiSaMulti_offset_data = 0;
+
+//-----------------------------------------------------------------------------
+// name: lisa_query()
+// desc: ...
+//-----------------------------------------------------------------------------
+DLL_QUERY lisa_query( Chuck_DL_Query * QUERY )
+{
+    Chuck_Env * env = Chuck_Env::instance();
+    Chuck_DL_Func * func = NULL;
+
+    //---------------------------------------------------------------------
+    // init class: LiSa; overloaded class for both LiSaBasic and LiSaMulti
+    //              - probably don't need the others anymore....
+    // author: Dan Trueman (dan /at/ music.princeton.edu)
+    //---------------------------------------------------------------------
+    if( !type_engine_import_ugen_begin( env, "LiSa", "UGen", env->global(),
+                                        LiSaMulti_ctor, LiSaMulti_dtor,
+                                        LiSaMulti_tick, LiSaMulti_pmsg ) )
+        return FALSE;
+        
+    // set buffer size
+    func = make_new_mfun( "dur", "duration", LiSaMulti_size );
+    func->add_arg( "dur", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // start/stop recording
+    func = make_new_mfun( "int", "record", LiSaMulti_start_record );
+    func->add_arg( "int", "toggle" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // start/stop playing
+    func = make_new_mfun( "int", "play", LiSaMulti_start_play );
+    func->add_arg( "int", "voice" );
+    func->add_arg( "int", "toggle" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    func = make_new_mfun( "int", "play", LiSaMulti_start_play0 );
+    func->add_arg( "int", "toggle" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // set playback rate
+    func = make_new_mfun( "float", "rate", LiSaMulti_ctrl_rate );
+    func->add_arg( "int", "voice" );
+    func->add_arg( "float", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    func = make_new_mfun( "float", "rate", LiSaMulti_ctrl_rate0 );
+    func->add_arg( "float", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // playback position
+    func = make_new_mfun( "dur", "playPos", LiSaMulti_ctrl_pindex );
+    func->add_arg( "int", "voice" );
+    func->add_arg( "dur", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    func = make_new_mfun( "dur", "playPos", LiSaMulti_cget_pindex );
+    func->add_arg( "int", "voice" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    func = make_new_mfun( "dur", "playPos", LiSaMulti_ctrl_pindex0 );
+    func->add_arg( "dur", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    func = make_new_mfun( "dur", "playPos", LiSaMulti_cget_pindex0 );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // record position
+    func = make_new_mfun( "dur", "recPos", LiSaMulti_ctrl_rindex );
+    func->add_arg( "dur", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    func = make_new_mfun( "dur", "recPos", LiSaMulti_cget_rindex );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // loopstart position
+    func = make_new_mfun( "dur", "loopStart", LiSaMulti_ctrl_lstart );
+    func->add_arg( "int", "voice" );
+    func->add_arg( "dur", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    func = make_new_mfun( "dur", "loopStart", LiSaMulti_cget_lstart );
+    func->add_arg( "int", "voice" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    func = make_new_mfun( "dur", "loopStart", LiSaMulti_ctrl_lstart0 );
+    func->add_arg( "dur", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    func = make_new_mfun( "dur", "loopStart", LiSaMulti_cget_lstart0 );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // loopend position
+    func = make_new_mfun( "dur", "loopEnd", LiSaMulti_ctrl_lend );
+    func->add_arg( "int", "voice" );
+    func->add_arg( "dur", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    func = make_new_mfun( "dur", "loopEnd", LiSaMulti_cget_lend);
+    func->add_arg( "int", "voice" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    func = make_new_mfun( "dur", "loopEnd", LiSaMulti_ctrl_lend0 );
+    func->add_arg( "dur", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    func = make_new_mfun( "dur", "loopEnd", LiSaMulti_cget_lend0);
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // loop
+    func = make_new_mfun( "int", "loop", LiSaMulti_ctrl_loop );
+    func->add_arg( "int", "voice" );
+    func->add_arg( "int", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    func = make_new_mfun( "int", "loop", LiSaMulti_cget_loop);
+    func->add_arg( "int", "voice" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    func = make_new_mfun( "int", "loop", LiSaMulti_ctrl_loop0 );
+    func->add_arg( "int", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    func = make_new_mfun( "int", "loop", LiSaMulti_cget_loop0);
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // bidirectional looping
+    func = make_new_mfun( "int", "bi", LiSaMulti_ctrl_bi );
+    func->add_arg( "int", "voice" );
+    func->add_arg( "int", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    func = make_new_mfun( "int", "bi", LiSaMulti_cget_bi);
+    func->add_arg( "int", "voice" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    func = make_new_mfun( "int", "bi", LiSaMulti_ctrl_bi0 );
+    func->add_arg( "int", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    func = make_new_mfun( "int", "bi", LiSaMulti_cget_bi0);
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // loopend_rec position
+    func = make_new_mfun( "dur", "loopEndRec", LiSaMulti_ctrl_loop_end_rec );
+    func->add_arg( "dur", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    func = make_new_mfun( "dur", "loopEndRec", LiSaMulti_cget_loop_end_rec);
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // set record feedback coefficient
+    func = make_new_mfun( "float", "feedback", LiSaMulti_ctrl_coeff );
+    func->add_arg( "float", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    func = make_new_mfun( "float", "feedback", LiSaMulti_cget_coeff);
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // clear buffer
+    func = make_new_mfun( "void", "clear", LiSaMulti_ctrl_clear );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // get free voice
+    func = make_new_mfun( "int", "getVoice", LiSaMulti_cget_voice );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // set maxvoices
+    func = make_new_mfun( "int", "maxVoices", LiSaMulti_ctrl_maxvoices );
+    func->add_arg( "int", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    func = make_new_mfun( "int", "maxVoices", LiSaMulti_cget_maxvoices);
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // ramp stuff
+    func = make_new_mfun( "void", "rampUp", LiSaMulti_ctrl_rampup );
+    func->add_arg( "int", "voice" );
+    func->add_arg( "dur", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    func = make_new_mfun( "void", "rampDown", LiSaMulti_ctrl_rampdown );
+    func->add_arg( "int", "voice" );
+    func->add_arg( "dur", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    func = make_new_mfun( "dur", "recRamp", LiSaMulti_ctrl_rec_ramplen );
+    func->add_arg( "dur", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    func = make_new_mfun( "void", "rampUp", LiSaMulti_ctrl_rampup0 );
+    func->add_arg( "dur", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    func = make_new_mfun( "void", "rampDown", LiSaMulti_ctrl_rampdown0 );
+    func->add_arg( "dur", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // get value
+    func = make_new_mfun( "dur", "value", LiSaMulti_cget_value );
+    func->add_arg( "int", "voice" );
+    func->add_arg( "dur", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    func = make_new_mfun( "dur", "value", LiSaMulti_cget_value0 );
+    func->add_arg( "dur", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // track
+    func = make_new_mfun( "int", "track", LiSaMulti_ctrl_track );
+    func->add_arg( "int", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    func = make_new_mfun( "int", "track", LiSaMulti_cget_track);
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // end the class import
+    type_engine_import_class_end( env );
+
+    return TRUE;
+
+error:
+
+    // end the class import
+    type_engine_import_class_end( env );
+
     return FALSE;
 }
 
@@ -709,15 +1046,15 @@ CK_DLL_CTOR( stereo_ctor )
     if( ugen->m_multi_chan_size )
     {
         // set left
-        OBJ_MEMBER_UINT( SELF, stereo_offset_left ) = (t_CKUINT)(ugen->m_multi_chan[0]);
+        OBJ_MEMBER_UINT(SELF, stereo_offset_left) = (t_CKUINT)(ugen->m_multi_chan[0]);
         // set right
-        OBJ_MEMBER_UINT( SELF, stereo_offset_right ) = (t_CKUINT)(ugen->m_multi_chan[1]);
+        OBJ_MEMBER_UINT(SELF, stereo_offset_right) = (t_CKUINT)(ugen->m_multi_chan[1]);
     }
     else // mono
     {
         // set left and right to self
-        OBJ_MEMBER_UINT( SELF, stereo_offset_left ) = (t_CKUINT)ugen;
-        OBJ_MEMBER_UINT( SELF, stereo_offset_right ) = (t_CKUINT)ugen;
+        OBJ_MEMBER_UINT(SELF, stereo_offset_left) = (t_CKUINT)ugen;
+        OBJ_MEMBER_UINT(SELF, stereo_offset_right) = (t_CKUINT)ugen;
     }
 }
 
@@ -739,7 +1076,7 @@ CK_DLL_CTRL( stereo_ctrl_pan )
     if( pan < -1.0 ) pan = -1.0;
     else if( pan > 1.0 ) pan = 1.0;
     // set it
-    OBJ_MEMBER_FLOAT( SELF, stereo_offset_pan ) = pan;
+    OBJ_MEMBER_FLOAT(SELF, stereo_offset_pan) = pan;
     // pan it
     left->m_pan = pan < 0.0 ? 1.0 : 1.0 - pan;
     right->m_pan = pan > 0.0 ? 1.0 : 1.0 + pan;
@@ -756,7 +1093,7 @@ CK_DLL_CTRL( stereo_ctrl_pan )
 //-----------------------------------------------------------------------------
 CK_DLL_CGET( stereo_cget_pan )
 {
-    RETURN->v_float = OBJ_MEMBER_FLOAT( SELF, stereo_offset_pan );
+    RETURN->v_float = OBJ_MEMBER_FLOAT(SELF, stereo_offset_pan);
 }
 
 
@@ -832,7 +1169,7 @@ public:
       rand_bits++;
       randt = randt >> 1;
     }
-    fprintf(stderr, "random bits - %d", rand_bits );
+    // fprintf(stderr, "random bits - %d", rand_bits );
     setMode ( "pink" );
   } 
   ~CNoise_Data() {}
@@ -852,20 +1189,21 @@ public:
 
 CK_DLL_CTOR( cnoise_ctor )
 {
-    OBJ_MEMBER_UINT( SELF, cnoise_offset_data ) = (t_CKUINT)new CNoise_Data;
+    OBJ_MEMBER_UINT(SELF, cnoise_offset_data) = (t_CKUINT)new CNoise_Data;
 }
 
 CK_DLL_DTOR( cnoise_dtor )
 {
-    delete (CNoise_Data *)OBJ_MEMBER_UINT( SELF, cnoise_offset_data );
+    delete (CNoise_Data *)OBJ_MEMBER_UINT(SELF, cnoise_offset_data);
+    OBJ_MEMBER_UINT(SELF, cnoise_offset_data) = 0;
 }
 
-CK_DLL_TICK( cnoise_tick)
+CK_DLL_TICK( cnoise_tick )
 {
-  CNoise_Data * d = ( CNoise_Data * )OBJ_MEMBER_UINT( SELF, cnoise_offset_data );
+  CNoise_Data * d = ( CNoise_Data * )OBJ_MEMBER_UINT(SELF, cnoise_offset_data);
   switch( d->mode ) { 
   case NOISE_WHITE: 
-    return noise_tick(SELF,in,out);
+    return noise_tick(SELF,in,out,SHRED);
     break;
   case NOISE_PINK:
     return d->pink_tick(out);
@@ -886,7 +1224,7 @@ CK_DLL_TICK( cnoise_tick)
   return TRUE;
 }
 
-t_CKINT CNoise_Data::pink_tick( SAMPLE * out)
+t_CKINT CNoise_Data::pink_tick( SAMPLE * out )
 { 
   //based on Voss-McCartney
 
@@ -896,7 +1234,7 @@ t_CKINT CNoise_Data::pink_tick( SAMPLE * out)
     for ( t_CKINT i = 0 ; i < pink_depth ; i++ ) { pink_array[i] = rand(); last += pink_array[i]; } 
     scale = 2.0 / ((double)RAND_MAX  * ( pink_depth + 1.0 ) );
     bias = 0.0;
-    fprintf( stderr, "scale %f %f %d %d \n", scale, bias, RAND_MAX, pink_depth + 1 );
+    // fprintf( stderr, "scale %f %f %d %d \n", scale, bias, RAND_MAX, pink_depth + 1 );
   }
 
   t_CKINT pind = 0;
@@ -956,37 +1294,37 @@ CNoise_Data::fbm_tick( SAMPLE * out ) {
 void
 CNoise_Data::setMode( char * c ) { 
   if ( strcmp ( c, "white" ) == 0 ) { 
-    fprintf(stderr, "white noise\n");
+    // fprintf(stderr, "white noise\n");
     mode = NOISE_WHITE;    
     scale = 2.0 / (t_CKFLOAT)RAND_MAX;
     bias = -1.0;
   }
   if ( strcmp ( c, "pink" ) == 0 ) { 
-    fprintf(stderr, "pink noise\n");
+    // fprintf(stderr, "pink noise\n");
     mode = NOISE_PINK;
     scale = 2.0 / (double)(RAND_MAX  * ( pink_depth + 1 ) );
     bias = -1.0;
   }
   if ( strcmp ( c, "flip" ) == 0) { 
-    fprintf(stderr, "bitflip noise\n");
+    // fprintf(stderr, "bitflip noise\n");
     mode = NOISE_FLIP;
     scale = 2.0 / (t_CKFLOAT)RAND_MAX;
     bias = -1.0;
   }
   if ( strcmp ( c, "xor" ) == 0) {
-    fprintf(stderr, "xor noise\n"); 
+    // fprintf(stderr, "xor noise\n"); 
     mode = NOISE_XOR;
     scale = 2.0 / (t_CKFLOAT)RAND_MAX;
     bias = -1.0;
   }
   if ( strcmp ( c, "brown" ) == 0) { 
-    fprintf(stderr, "brownian noise\n");
+    // fprintf(stderr, "brownian noise\n");
     mode = NOISE_BROWN;
     scale = 2.0 / (t_CKFLOAT)RAND_MAX;
     bias = -1.0;
   }
   if ( strcmp ( c, "fbm" ) == 0) {   
-    fprintf(stderr, "fbm noise\n");
+    // fprintf(stderr, "fbm noise\n");
     mode = NOISE_FBM;
     scale = 2.0 / (t_CKFLOAT)RAND_MAX;
     bias = -1.0;
@@ -996,14 +1334,14 @@ CNoise_Data::setMode( char * c ) {
 
 CK_DLL_CTRL( cnoise_ctrl_mode )
 {
-    CNoise_Data * d = ( CNoise_Data * )OBJ_MEMBER_UINT( SELF, cnoise_offset_data );
+    CNoise_Data * d = ( CNoise_Data * )OBJ_MEMBER_UINT(SELF, cnoise_offset_data);
     char * mode= *(char **)GET_CK_STRING(ARGS);
     d->setMode(mode);
 }
 
 CK_DLL_CTRL( cnoise_ctrl_fprob )
 {
-    CNoise_Data * d = ( CNoise_Data * )OBJ_MEMBER_UINT( SELF, cnoise_offset_data );
+    CNoise_Data * d = ( CNoise_Data * )OBJ_MEMBER_UINT(SELF, cnoise_offset_data);
     t_CKFLOAT p= GET_CK_FLOAT(ARGS);
     d->fprob = (t_CKINT) ( (double)RAND_MAX * p );
 }
@@ -1029,7 +1367,7 @@ struct Pulse_Data
 CK_DLL_CTOR( impulse_ctor )
 {
     // return data to be used later
-    OBJ_MEMBER_UINT( SELF, impulse_offset_data ) = (t_CKUINT)new Pulse_Data;
+    OBJ_MEMBER_UINT(SELF, impulse_offset_data) = (t_CKUINT)new Pulse_Data;
 }
 
 
@@ -1042,7 +1380,8 @@ CK_DLL_CTOR( impulse_ctor )
 CK_DLL_DTOR( impulse_dtor )
 {
     // delete
-    delete (Pulse_Data *)OBJ_MEMBER_UINT( SELF, impulse_offset_data );
+    delete (Pulse_Data *)OBJ_MEMBER_UINT(SELF, impulse_offset_data);
+    OBJ_MEMBER_UINT(SELF, impulse_offset_data) = 0;
 }
 
 
@@ -1054,7 +1393,7 @@ CK_DLL_DTOR( impulse_dtor )
 //-----------------------------------------------------------------------------
 CK_DLL_TICK( impulse_tick )
 {
-    Pulse_Data * d = (Pulse_Data *)OBJ_MEMBER_UINT( SELF, impulse_offset_data );
+    Pulse_Data * d = (Pulse_Data *)OBJ_MEMBER_UINT(SELF, impulse_offset_data);
     if( d->when )
     {
         *out = d->value;
@@ -1074,7 +1413,7 @@ CK_DLL_TICK( impulse_tick )
 //-----------------------------------------------------------------------------
 CK_DLL_CTRL( impulse_ctrl_next )
 {
-    Pulse_Data * d = (Pulse_Data *)OBJ_MEMBER_UINT( SELF, impulse_offset_data );
+    Pulse_Data * d = (Pulse_Data *)OBJ_MEMBER_UINT(SELF, impulse_offset_data);
     d->value = (SAMPLE)GET_CK_FLOAT(ARGS);
     d->when = 1;
     RETURN->v_float = (t_CKFLOAT)d->value;
@@ -1089,7 +1428,7 @@ CK_DLL_CTRL( impulse_ctrl_next )
 //-----------------------------------------------------------------------------
 CK_DLL_CGET( impulse_cget_next )
 {
-    Pulse_Data * d = (Pulse_Data *)OBJ_MEMBER_UINT( SELF, impulse_offset_data );
+    Pulse_Data * d = (Pulse_Data *)OBJ_MEMBER_UINT(SELF, impulse_offset_data);
     RETURN->v_float = (t_CKFLOAT)d->value;
 }
 
@@ -1103,7 +1442,7 @@ CK_DLL_CGET( impulse_cget_next )
 CK_DLL_CTOR( step_ctor )
 {
     // return data to be used later
-    OBJ_MEMBER_UINT( SELF, step_offset_data ) = (t_CKUINT)new SAMPLE( 1.0f );
+    OBJ_MEMBER_UINT(SELF, step_offset_data) = (t_CKUINT)new SAMPLE( 1.0f );
 }
 
 
@@ -1116,7 +1455,8 @@ CK_DLL_CTOR( step_ctor )
 CK_DLL_DTOR( step_dtor )
 {
     // delete
-    delete (SAMPLE *)OBJ_MEMBER_UINT( SELF, step_offset_data );
+    delete (SAMPLE *)OBJ_MEMBER_UINT(SELF, step_offset_data);
+    OBJ_MEMBER_UINT(SELF, step_offset_data) = 0;
 }
 
 
@@ -1126,7 +1466,7 @@ CK_DLL_DTOR( step_dtor )
 //-----------------------------------------------------------------------------
 CK_DLL_TICK( step_tick )
 {
-    SAMPLE * d = (SAMPLE *)OBJ_MEMBER_UINT( SELF, step_offset_data );
+    SAMPLE * d = (SAMPLE *)OBJ_MEMBER_UINT(SELF, step_offset_data);
     *out = *d;
     
     return TRUE;
@@ -1139,7 +1479,7 @@ CK_DLL_TICK( step_tick )
 //-----------------------------------------------------------------------------
 CK_DLL_CTRL( step_ctrl_next )
 {
-    SAMPLE * d = (SAMPLE *)OBJ_MEMBER_UINT( SELF, step_offset_data );
+    SAMPLE * d = (SAMPLE *)OBJ_MEMBER_UINT(SELF, step_offset_data);
     *d = (SAMPLE)GET_CK_FLOAT(ARGS);
     RETURN->v_float = (t_CKFLOAT)(*d);
 }
@@ -1151,7 +1491,7 @@ CK_DLL_CTRL( step_ctrl_next )
 //-----------------------------------------------------------------------------
 CK_DLL_CGET( step_cget_next )
 {
-    SAMPLE * d = (SAMPLE *)OBJ_MEMBER_UINT( SELF, step_offset_data );
+    SAMPLE * d = (SAMPLE *)OBJ_MEMBER_UINT(SELF, step_offset_data);
     RETURN->v_float = (t_CKFLOAT)(*d);
 }
 
@@ -1190,7 +1530,7 @@ CK_DLL_TICK( fullrect_tick )
 //-----------------------------------------------------------------------------
 CK_DLL_CTOR( zerox_ctor )
 {
-    OBJ_MEMBER_UINT( SELF, zerox_offset_data ) = (t_CKUINT)new SAMPLE( 0.0f );
+    OBJ_MEMBER_UINT(SELF, zerox_offset_data) = (t_CKUINT)new SAMPLE( 0.0f );
 }
 
 
@@ -1200,7 +1540,8 @@ CK_DLL_CTOR( zerox_ctor )
 //-----------------------------------------------------------------------------
 CK_DLL_DTOR( zerox_dtor )
 {
-    delete (SAMPLE *)OBJ_MEMBER_UINT( SELF, zerox_offset_data );
+    delete (SAMPLE *)OBJ_MEMBER_UINT(SELF, zerox_offset_data);
+    OBJ_MEMBER_UINT(SELF, zerox_offset_data) = 0;
 }
 
 
@@ -1211,7 +1552,7 @@ CK_DLL_DTOR( zerox_dtor )
 //-----------------------------------------------------------------------------
 CK_DLL_TICK( zerox_tick )
 {
-    SAMPLE * d = (SAMPLE *)OBJ_MEMBER_UINT( SELF, zerox_offset_data );
+    SAMPLE * d = (SAMPLE *)OBJ_MEMBER_UINT(SELF, zerox_offset_data);
     *out = __SGN(in) != __SGN(*d);
     *out *= __SGN(in);
     *d = in;
@@ -1225,33 +1566,33 @@ CK_DLL_TICK( zerox_tick )
 struct delayp_data 
 { 
 
-    SAMPLE *	buffer;
-    t_CKINT		bufsize;
+    SAMPLE *    buffer;
+    t_CKINT     bufsize;
     
-	t_CKTIME	now;
+    t_CKTIME    now;
 
-    double		readpos;   //readpos ( moves at constant speed, sample per sample
-    double		writepos; // relative to read position
+    double      readpos;   //readpos ( moves at constant speed, sample per sample
+    double      writepos; // relative to read position
     
-    t_CKTIME	offset; // distance between read and write
+    t_CKTIME    offset; // distance between read and write
     
-    t_CKDUR		offset_start; 
-    t_CKDUR		offset_target;
+    t_CKDUR     offset_start; 
+    t_CKDUR     offset_target;
 
-    t_CKTIME	move_end_time; //target time
-    t_CKDUR		move_duration; //time we started shift
+    t_CKTIME    move_end_time; //target time
+    t_CKDUR     move_duration; //time we started shift
     
-    SAMPLE		last_sample;
-    t_CKDUR		last_offset;
+    SAMPLE      last_sample;
+    t_CKDUR     last_offset;
     
 #ifdef _DEBUG
-	int			lasti;
+    int         lasti;
 #endif
 
-    double		acoeff[2];
-    double		bcoeff[2];
-    SAMPLE		outputs[3];
-    SAMPLE		inputs[3];
+    double      acoeff[2];
+    double      bcoeff[2];
+    SAMPLE      outputs[3];
+    SAMPLE      inputs[3];
     
     delayp_data() 
     { 
@@ -1262,40 +1603,45 @@ struct delayp_data
         for ( i = 0 ; i < bufsize ; i++ ) buffer[i] = 0;
         for ( i = 0 ; i < 3 ; i++ ) { acoeff[i] = 0; bcoeff[i] = 0; }
         
-		acoeff[0] = 1.0;
+        acoeff[0] = 1.0;
         acoeff[1] = -.99;
         bcoeff[0] = 1.0;
         bcoeff[1] = -1.0;
         
-		readpos  = 0.0;        
+        readpos  = 0.0;        
 
-		now				= 0.0;
+        now             = 0.0;
 
-        offset			= 0.0; 
-        last_offset		= 0.0;
-        offset_start	= 0.0;
-        offset_target	= 0.0;
+        offset          = 0.0; 
+        last_offset     = 0.0;
+        offset_start    = 0.0;
+        offset_target   = 0.0;
 
-        move_duration	= 1.0;
-        move_end_time	= 0.0;
+        move_duration   = 1.0;
+        move_end_time   = 0.0;
 
 #ifdef _DEBUG
-		lasti		= -1;
+        lasti       = -1;
 #endif
         last_sample = 0;
+    }
+
+    ~delayp_data()
+    {
+        SAFE_DELETE_ARRAY( buffer );
     }
 };
 
 CK_DLL_CTOR( delayp_ctor )
 {
-    OBJ_MEMBER_UINT( SELF, delayp_offset_data ) = (t_CKUINT)new delayp_data;    
+    OBJ_MEMBER_UINT(SELF, delayp_offset_data) = (t_CKUINT)new delayp_data;    
 }
 
 CK_DLL_DTOR( delayp_dtor )
 {
-    delayp_data * d = (delayp_data *)OBJ_MEMBER_UINT( SELF, delayp_offset_data );
-    if( d->buffer ) delete [] d->buffer;
-    delete d;
+    delayp_data * d = (delayp_data *)OBJ_MEMBER_UINT(SELF, delayp_offset_data);
+    SAFE_DELETE(d);
+    OBJ_MEMBER_UINT(SELF, delayp_offset_data) = 0;
 }
 
 CK_DLL_PMSG( delayp_pmsg )
@@ -1303,10 +1649,9 @@ CK_DLL_PMSG( delayp_pmsg )
     return TRUE;
 }
 
-
 CK_DLL_TICK( delayp_tick )
 {
-    delayp_data * d = (delayp_data *)OBJ_MEMBER_UINT( SELF, delayp_offset_data );
+    delayp_data * d = (delayp_data *)OBJ_MEMBER_UINT(SELF, delayp_offset_data);
     if ( !d->buffer ) return FALSE;
 
     // area
@@ -1317,57 +1662,57 @@ CK_DLL_TICK( delayp_tick )
     else  { 
         double dt = 1.0 + ( d->now - d->move_end_time ) / ( d->move_duration ); 
         d->offset = d->offset_start + dt * ( d->offset_target - d->offset_start );
-        //      fprintf (stderr, "dt %f, off %f , start %f target %f\n", dt, d->writeoff,  d->writeoff_start, d->writeoff_target );
+        // fprintf (stderr, "dt %f, off %f , start %f target %f\n", dt, d->writeoff,  d->writeoff_start, d->writeoff_target );
     }
     
     //find locations in buffer...
-    double write		= (d->readpos )			+ d->offset;
-    double last_write	= (d->readpos - 1.0)	+ d->last_offset ;
+    double write        = (d->readpos )         + d->offset;
+    double last_write   = (d->readpos - 1.0)    + d->last_offset ;
     
     //linear interpolation.  will introduce some lowpass/aliasing.
     double write_delta  = write - last_write;
     double sample_delta = in - d->last_sample;
 
-	double duck_constant = 0.69;
+    double duck_constant = 0.69;
 
-	
-	double gee = fabs(write_delta) - 1.0;
+    
+    double gee = fabs(write_delta) - 1.0;
 
-	if ( gee < 24.0 ) { 
-		double head_contact = ( gee > 0 ) ? exp ( - duck_constant * gee ) : 1.0;
-		t_CKINT i, smin, smax, sampi;
-	    SAMPLE sampf = 0;
-		if ( write_delta >= 0 ) { //forward.
-			smin = (t_CKINT) floor ( last_write );
-			smax = (t_CKINT) floor ( write );
-			for ( i = smin+1 ; i <= smax ; i++ ) { 
-				sampf = d->last_sample + sample_delta * ( double(i) - last_write ) / write_delta;
-				sampi = ( i + d->bufsize * 2 ) % d->bufsize;
+    if ( gee < 24.0 ) { 
+        double head_contact = ( gee > 0 ) ? exp ( - duck_constant * gee ) : 1.0;
+        t_CKINT i, smin, smax, sampi;
+        SAMPLE sampf = 0;
+        if ( write_delta >= 0 ) { //forward.
+            smin = (t_CKINT) floor ( last_write );
+            smax = (t_CKINT) floor ( write );
+            for ( i = smin+1 ; i <= smax ; i++ ) { 
+                sampf = d->last_sample + sample_delta * ( double(i) - last_write ) / write_delta;
+                sampi = ( i + d->bufsize * 2 ) % d->bufsize;
 #ifdef _DEBUG 
-				if ( d->lasti == sampi ) { 
-					fprintf(stderr, "over!\n");
-				}
-				d->lasti = sampi;
+                if ( d->lasti == sampi ) { 
+                    fprintf( stderr, "[chuck](via Curve): over!\n");
+                }
+                d->lasti = sampi;
 #endif
-				d->buffer[sampi] += sampf * head_contact ;
-			}
-		}
-		else { //moving in reverse
-			smin = (t_CKINT) floor ( write );
-			smax = (t_CKINT) floor ( last_write );
-			for ( i = smin+1 ; i <= smax ; i++ ) { 
-				sampf = d->last_sample + sample_delta * ( double(i) - last_write ) / write_delta;
-				sampi = ( i + d->bufsize * 2 ) % d->bufsize;
+                d->buffer[sampi] += sampf * head_contact ;
+            }
+        }
+        else { //moving in reverse
+            smin = (t_CKINT) floor ( write );
+            smax = (t_CKINT) floor ( last_write );
+            for ( i = smin+1 ; i <= smax ; i++ ) { 
+                sampf = d->last_sample + sample_delta * ( double(i) - last_write ) / write_delta;
+                sampi = ( i + d->bufsize * 2 ) % d->bufsize;
 #ifdef _DEBUG
-				if ( d->lasti == sampi ) { 
-					fprintf(stderr, "over!\n");
-				}
-				d->lasti = sampi;
+                if ( d->lasti == sampi ) { 
+                    fprintf(stderr, "[chuck](via Curve): over!\n");
+                }
+                d->lasti = sampi;
 #endif
-				d->buffer[sampi] += sampf * head_contact;   
-			}
-		}
-	}
+                d->buffer[sampi] += sampf * head_contact;   
+            }
+        }
+    }
     
     d->last_offset = d->offset;
     d->last_sample = in;
@@ -1379,11 +1724,11 @@ CK_DLL_TICK( delayp_tick )
     
     //output last sample
     
-	t_CKINT rpos = (t_CKINT) fmod( d->readpos, d->bufsize ) ; 
+    t_CKINT rpos = (t_CKINT) fmod( d->readpos, d->bufsize ) ; 
     
     //   *out = d->buffer[rpos];
 
-	/*    
+    /*    
     // did i try to write a dc blocking filter? 
     d->outputs[0] =  0.0;
     d->inputs [0] =  d->buffer[rpos];
@@ -1398,32 +1743,32 @@ CK_DLL_TICK( delayp_tick )
 
     //clear at readpos ( write doesn't !)
     *out = d->outputs[0];
-	*/
+    */
 
-	*out = d->buffer[rpos];
+    *out = d->buffer[rpos];
     
     d->buffer[rpos] = 0; //clear once it's been read
-	d->readpos = fmod ( d->readpos + 1.0 , double( d->bufsize ) );
+    d->readpos = fmod ( d->readpos + 1.0 , double( d->bufsize ) );
  
-	return TRUE;
+    return TRUE;
     
 }
 
 CK_DLL_CTRL( delayp_ctrl_delay )
 {
-    delayp_data * d = ( delayp_data * ) OBJ_MEMBER_UINT( SELF, delayp_offset_data );
+    delayp_data * d = ( delayp_data * ) OBJ_MEMBER_UINT(SELF, delayp_offset_data);
     t_CKDUR target = GET_CK_DUR(ARGS); // rate     
     // area
 
     if ( target != d->offset_target ) {
-	    if ( target > d->bufsize ) { 
+        if ( target > d->bufsize ) { 
             fprintf( stderr, "[chuck](via delayp): delay time %f over max!  set max first!\n", target);
             return;
         }
         d->offset_target = target;
         d->offset_start  = d->last_offset;
 
-		t_CKTIME snow = ((Chuck_UGen*)SELF)->shred->now;
+        t_CKTIME snow = ((Chuck_UGen*)SELF)->shred->now;
         d->move_end_time = snow + d->move_duration; 
     }
     RETURN->v_dur = d->last_offset; // TODO:
@@ -1431,14 +1776,14 @@ CK_DLL_CTRL( delayp_ctrl_delay )
 
 CK_DLL_CGET( delayp_cget_delay )
 {
-    delayp_data * d = ( delayp_data * ) OBJ_MEMBER_UINT( SELF, delayp_offset_data );
+    delayp_data * d = ( delayp_data * ) OBJ_MEMBER_UINT(SELF, delayp_offset_data);
     //SET_NEXT_DUR( out, d->writeoff_last );
     RETURN->v_dur = d->last_offset; // TODO:
 }
 
 CK_DLL_CTRL( delayp_ctrl_window )
 {
-    delayp_data * d = ( delayp_data * ) OBJ_MEMBER_UINT( SELF, delayp_offset_data );
+    delayp_data * d = ( delayp_data * ) OBJ_MEMBER_UINT(SELF, delayp_offset_data);
     t_CKDUR window = GET_CK_DUR(ARGS); // rate     
     if ( window >= 0 ) {
         d->move_duration = window;
@@ -1449,14 +1794,14 @@ CK_DLL_CTRL( delayp_ctrl_window )
 
 CK_DLL_CGET( delayp_cget_window )
 {
-    delayp_data * d = ( delayp_data * ) OBJ_MEMBER_UINT( SELF, delayp_offset_data );
+    delayp_data * d = ( delayp_data * ) OBJ_MEMBER_UINT(SELF, delayp_offset_data);
     RETURN->v_dur = d->move_duration; // TODO:
 }
 
 
 CK_DLL_CTRL( delayp_ctrl_max )
 {   
-    delayp_data * d = ( delayp_data * ) OBJ_MEMBER_UINT( SELF, delayp_offset_data );
+    delayp_data * d = ( delayp_data * ) OBJ_MEMBER_UINT(SELF, delayp_offset_data);
     t_CKDUR nmax = GET_CK_DUR(ARGS); // rate 
     if ( d->bufsize != (t_CKINT)nmax && nmax > 1.0 ) { 
         d->bufsize = (t_CKINT)(nmax+.5); 
@@ -1468,7 +1813,7 @@ CK_DLL_CTRL( delayp_ctrl_max )
 
 CK_DLL_CGET( delayp_cget_max )
 {
-    delayp_data * d = ( delayp_data * ) OBJ_MEMBER_UINT( SELF, delayp_offset_data );
+    delayp_data * d = ( delayp_data * ) OBJ_MEMBER_UINT(SELF, delayp_offset_data);
     //SET_NEXT_DUR( out, (t_CKDUR) d->bufsize );
     RETURN->v_dur = d->bufsize;
 }
@@ -1495,6 +1840,189 @@ table, this has no effect         */
 
 #define SAMPLES_PER_ZERO_CROSSING 32    /* this defines how finely the sinc function 
 is sampled for storage in the table  */
+
+#ifdef CK_SNDBUF_MEMORY_BUFFER
+//------------------------------------------------------------------------------
+// name: MultiBuffer
+// desc: presents multiple buffers in memory as a single sequential logical
+// buffer, for constant time reallocing.  tries to be as discreet as possible,
+// so you can basically use it like a pointer.  optimized for iterative access,
+// as random access has T = O(bufsize)
+//------------------------------------------------------------------------------
+template< class _type >
+class MultiBuffer
+{
+
+public:
+    MultiBuffer()
+    {
+        m_size = 0;
+    }
+    
+    ~MultiBuffer()
+    {
+        deallocate();
+    }
+    
+    size_t size()
+    {
+        return m_size;
+    }
+    
+    void resize( size_t size )
+    {
+        assert( size > m_size ); // for now
+        size_t new_buffer_size = size - m_size;
+        
+        extent new_extent;
+        new_extent.position = new _type[new_buffer_size];
+        new_extent.length = new_buffer_size;
+        m_bufs.push_back( new_extent );
+        m_size = size;
+    }
+    
+    void deallocate()
+    {
+        // delete everything
+        size_t i, len = m_bufs.size();
+        for( i = 0; i < len; i++ )
+            delete[] m_bufs[i].position;
+        m_size = 0;
+    }
+    
+    class Pointer
+    {
+    public:
+        Pointer()
+        {
+            m_mb = NULL;
+            m_lpos = 0;
+            m_extent = 0;
+            m_extpos = 0;
+        }
+        
+        Pointer( MultiBuffer * mb )
+        {
+            m_mb = mb;
+            m_lpos = 0;
+            m_extent = 0;
+            m_extpos = 0;
+        }
+        
+        Pointer( const Pointer & mbp )
+        {
+            m_mb = mbp.m_mb;
+            m_lpos = mbp.m_lpos;
+            m_extent = mbp.m_extent;
+            m_extpos = mbp.m_extpos;      
+        }
+        
+        Pointer & operator=( MultiBuffer & mb )
+        {
+            m_mb = &mb;
+            m_lpos = 0;
+            m_extent = 0;
+            m_extpos = 0;
+            
+            return *this;
+        }
+        
+        Pointer & operator=( const Pointer & mbp )
+        {
+            m_mb = mbp.m_mb;
+            m_lpos = mbp.m_lpos;
+            m_extent = mbp.m_extent;
+            m_extpos = mbp.m_extpos;
+            
+            return *this;
+        }
+        
+        Pointer & operator=( size_t i )
+        {
+            reset();
+            increment( i );
+            return *this;
+        }
+
+        _type & operator*()
+        {
+            return m_mb->m_bufs[m_extent].position[m_extpos];
+        }
+        
+        Pointer operator+( size_t i ) const
+        {
+            Pointer mbp( *this );
+            mbp.increment( i );
+            return mbp;
+        }
+        
+        Pointer operator++( int )
+        {
+            Pointer mbp = *this;
+            this->increment( 1 );
+            return mbp;
+        }
+        
+        bool operator>=( const Pointer & mbp ) const
+        {
+            return ( m_lpos >= mbp.m_lpos );
+        }
+        
+        bool operator>=( const size_t i ) const
+        {
+            return ( m_lpos >= i );
+        }
+        
+        void increment( size_t i )
+        {
+            m_lpos += i;
+            if( m_lpos >= (m_mb->m_size) )
+            {
+                m_extent = m_mb->m_bufs.size();
+                m_extpos = m_lpos - m_mb->m_size;
+                return;
+            }
+            
+            extent ext_current = m_mb->m_bufs[m_extent];
+            i += m_extpos;
+            while( i >= ext_current.length )
+            {
+                i -= ext_current.length;
+                m_extent++;
+                ext_current = m_mb->m_bufs[m_extent];
+            }
+            
+            m_extpos = i;
+        }
+        
+        void reset()
+        {
+            m_lpos = 0;
+            m_extent = 0;
+            m_extpos = 0;
+        }
+        
+    protected:
+        MultiBuffer * m_mb;
+
+        size_t m_lpos; // position in logical buffer
+        size_t m_extent; // current extent
+        size_t m_extpos; // position within the extent
+    };
+    
+protected:
+    
+    struct extent
+    {
+        _type * position;
+        size_t length;
+    };
+    
+    /* data shared by a set of MultiBuffers */
+    vector< extent > m_bufs; // array of sequentially allocated buffers
+    size_t m_size; // overall size of total memory represented
+};
+#endif /* CK_SNDBUF_MEMORY_BUFFER */
 
 // data for each sndbuf
 struct sndbuf_data
@@ -1527,6 +2055,13 @@ struct sndbuf_data
     t_CKINT sinc_width;
     double * sinc_table;
 
+#ifdef CK_SNDBUF_MEMORY_BUFFER
+    MultiBuffer< SAMPLE > mb_buffer;
+    t_CKUINT mb_max_samples;
+    MultiBuffer< SAMPLE >::Pointer mb_record_position;
+    MultiBuffer< SAMPLE >::Pointer mb_playback_position;
+#endif /* CK_SNDBUF_MEMORY_BUFFER */
+
     SNDFILE * fd;
 
     // constructor
@@ -1558,8 +2093,18 @@ struct sndbuf_data
         sinc_samples_per_zero_crossing = SAMPLES_PER_ZERO_CROSSING;
         sinc_table = NULL;
         
+#ifdef CK_SNDBUF_MEMORY_BUFFER
+        mb_buffer = MultiBuffer< SAMPLE >();
+#endif /* CK_SNDBUF_MEMORY_BUFFER */
+        
         loop = FALSE;
         fd = NULL;
+    }
+
+    ~sndbuf_data()
+    {
+        SAFE_DELETE_ARRAY( buffer );
+        SAFE_DELETE_ARRAY( chunk_table );
     }
 };
 
@@ -1571,15 +2116,14 @@ void   sndbuf_sinc_interpolate( sndbuf_data * d, SAMPLE * out );
 
 CK_DLL_CTOR( sndbuf_ctor )
 {
-    OBJ_MEMBER_UINT( SELF, sndbuf_offset_data ) = (t_CKUINT)new sndbuf_data;
+    OBJ_MEMBER_UINT(SELF, sndbuf_offset_data) = (t_CKUINT)new sndbuf_data;
 }
 
 CK_DLL_DTOR( sndbuf_dtor )
 {
-    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT( SELF, sndbuf_offset_data );
-    if( d->buffer ) delete [] d->buffer;
-    if( d->chunk_table ) delete [] d->chunk_table;
-    delete d;
+    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT(SELF, sndbuf_offset_data);
+    SAFE_DELETE(d);
+    OBJ_MEMBER_UINT(SELF, sndbuf_offset_data) = 0;
 }
 
 inline t_CKUINT sndbuf_read( sndbuf_data * d, t_CKUINT offset, t_CKUINT howmuch )
@@ -1692,14 +2236,14 @@ inline double sndbuf_getpos( sndbuf_data * d )
 
 CK_DLL_CTRL( sndbuf_ctrl_loop )
 {
-    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT( SELF, sndbuf_offset_data );
+    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT(SELF, sndbuf_offset_data);
     d->loop = GET_CK_INT(ARGS);
     RETURN->v_int = d->loop; // TODO: Check (everything)
 } 
 
 CK_DLL_CGET( sndbuf_cget_loop )
 {
-    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT( SELF, sndbuf_offset_data );
+    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT(SELF, sndbuf_offset_data);
     RETURN->v_int = d->loop;
 }
 
@@ -1801,15 +2345,61 @@ double sndbuf_sinc( sndbuf_data * d, double x )
 
 CK_DLL_TICK( sndbuf_tick )
 {
-    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT( SELF, sndbuf_offset_data );
-    if( !d->buffer ) return FALSE;
+    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT(SELF, sndbuf_offset_data);
     
+#ifdef CK_SNDBUF_MEMORY_BUFFER
+    // spencer's memory buffer stuff
+    if( d->fd == 0 )
+        // no file open - memory buffer mode
+    {
+        Chuck_UGen * ugen = (Chuck_UGen *)SELF;
+        if( ugen->m_num_src ) 
+            // recording mode
+        {
+            if( d->mb_buffer.size() == 0 )
+            {
+                d->mb_buffer.resize( 44100 * 4 );   // default size: 4 seconds
+                d->mb_record_position = d->mb_buffer;
+                d->mb_playback_position = d->mb_buffer;
+            }
+            
+            if( d->mb_record_position >= d->mb_buffer.size() )
+                d->mb_buffer.resize( d->mb_buffer.size() * 2 );
+            
+            *(d->mb_record_position++) = in;
+        }
+        
+        if( d->mb_buffer.size() )
+        {
+            if( d->mb_playback_position >= d->mb_record_position )
+            {
+                if( d->loop )
+                    d->mb_playback_position = 0;
+                
+                else if( ugen->m_num_src )
+                {
+                    *out = 0;
+                    return TRUE;
+                }
+                
+                else
+                    return FALSE;
+            }
+            
+            *out = *(d->mb_playback_position++);
+        }
+        
+        return TRUE;
+    }
+#endif /* CK_SNDBUF_MEMORY_BUFFER */
+    if( !d->buffer ) return FALSE;
+
     // we're ticking once per sample ( system )
     // curf in samples;
     
     if( !d->loop && d->curr >= d->eob + d->num_channels ) return FALSE;
     
-    // calculate frame    
+    // calculate frame
     if( d->interp == SNDBUF_DROP )
     { 
         *out = (SAMPLE)( (*(d->curr)) ) ;
@@ -1839,7 +2429,7 @@ CK_DLL_TICK( sndbuf_tick )
 
 CK_DLL_CTRL( sndbuf_ctrl_read )
 {
-    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT( SELF, sndbuf_offset_data );
+    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT(SELF, sndbuf_offset_data);
     const char * filename = GET_CK_STRING(ARGS)->str.c_str();
     
     if( d->buffer )
@@ -1968,7 +2558,7 @@ CK_DLL_CTRL( sndbuf_ctrl_read )
                 d->buffer[j] = sin(2*ONE_PI*j/rawsize);
         }
         else {
-            fprintf( stderr, "[chuck](via sndbuf): cannot load '%s'\n", filename );
+            fprintf( stderr, "[chuck](via SndBuf): cannot load '%s'\n", filename );
             return;
         }
 
@@ -1980,7 +2570,7 @@ CK_DLL_CTRL( sndbuf_ctrl_read )
         struct stat s;
         if( stat( filename, &s ) )
         {
-            fprintf( stderr, "[chuck](via sndbuf): cannot stat file '%s'...\n", filename );
+            fprintf( stderr, "[chuck](via SndBuf): cannot stat file '%s'...\n", filename );
             return;
         }
 
@@ -1990,7 +2580,7 @@ CK_DLL_CTRL( sndbuf_ctrl_read )
         char * format = strrchr( filename, '.');
         if( format && strcmp( format, ".raw" ) == 0 )
         { 
-            fprintf( stderr, "[chuck](via sndbuf) %s :: type is '.raw'...\n    assuming 16 bit signed mono (PCM)\n", filename );
+            fprintf( stderr, "[chuck](via SndBuf) %s :: type is '.raw'...\n    assuming 16 bit signed mono (PCM)\n", filename );
             info.format = SF_FORMAT_RAW | SF_FORMAT_PCM_16 | SF_ENDIAN_CPU ;
             info.channels = 1;
             info.samplerate = 44100;
@@ -2001,8 +2591,8 @@ CK_DLL_CTRL( sndbuf_ctrl_read )
         t_CKINT er = sf_error( d->fd );
         if( er )
         {
-            fprintf( stderr, "[chuck](via sndbuf): sndfile error '%i' opening '%s'...\n", er, filename );
-            fprintf( stderr, "[chuck](via sndbuf): (reason: %s)\n", sf_strerror( d->fd ) );
+            fprintf( stderr, "[chuck](via SndBuf): sndfile error '%i' opening '%s'...\n", er, filename );
+            fprintf( stderr, "[chuck](via SndBuf): (reason: %s)\n", sf_strerror( d->fd ) );
             if( d->fd ) sf_close( d->fd );
             // escape
             return;
@@ -2038,7 +2628,7 @@ CK_DLL_CTRL( sndbuf_ctrl_read )
             // check
             if( f != (t_CKUINT)d->num_frames )
             {
-                fprintf( stderr, "[chuck](via sndbuf): read %d rather than %d frames from %s\n",
+                fprintf( stderr, "[chuck](via SndBuf): read %d rather than %d frames from %s\n",
                          f, size, filename );
                 sf_close( d->fd ); d->fd = NULL;
                 return;
@@ -2072,7 +2662,8 @@ CK_DLL_CTRL( sndbuf_ctrl_read )
 
 CK_DLL_CTRL( sndbuf_ctrl_write )
 {
-    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT( SELF, sndbuf_offset_data );
+#ifdef SPENCER_SNDBUF_WRITE
+    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT(SELF, sndbuf_offset_data);
     const char * filename = GET_CK_STRING(ARGS)->str.c_str();
     
     if( d->buffer )
@@ -2084,18 +2675,19 @@ CK_DLL_CTRL( sndbuf_ctrl_write )
     struct stat s;
     if( stat( filename, &s ) )
     {
-        fprintf( stderr, "[chuck](via sndbuf): cannot stat file '%s'...\n", filename );
+        fprintf( stderr, "[chuck](via SndBuf): cannot stat file '%s'...\n", filename );
         return;
     }
     
     d->curr = d->buffer;
     d->eob = d->buffer + d->num_samples;
+#endif
 }
 
 
 CK_DLL_CTRL( sndbuf_ctrl_rate )
 {
-    sndbuf_data * d = ( sndbuf_data * ) OBJ_MEMBER_UINT( SELF, sndbuf_offset_data );
+    sndbuf_data * d = ( sndbuf_data * ) OBJ_MEMBER_UINT(SELF, sndbuf_offset_data);
     t_CKFLOAT rate = GET_CK_FLOAT(ARGS); // rate
     d->rate = rate * d->sampleratio;
     d->rate_factor = rate;
@@ -2104,14 +2696,14 @@ CK_DLL_CTRL( sndbuf_ctrl_rate )
 
 CK_DLL_CGET( sndbuf_cget_rate )
 {
-    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT( SELF, sndbuf_offset_data );
+    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT(SELF, sndbuf_offset_data);
     RETURN->v_float = d->rate_factor;
 }
 
 
 CK_DLL_CTRL( sndbuf_ctrl_freq )
 { 
-    sndbuf_data * d = ( sndbuf_data * ) OBJ_MEMBER_UINT( SELF, sndbuf_offset_data );
+    sndbuf_data * d = ( sndbuf_data * ) OBJ_MEMBER_UINT(SELF, sndbuf_offset_data);
     t_CKFLOAT freq = GET_CK_FLOAT(ARGS);  //hz
     
     d->rate = ( freq * (double) d->num_frames / (double) g_srate );
@@ -2121,13 +2713,13 @@ CK_DLL_CTRL( sndbuf_ctrl_freq )
 
 CK_DLL_CGET( sndbuf_cget_freq )
 {
-    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT( SELF, sndbuf_offset_data );
+    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT(SELF, sndbuf_offset_data);
     RETURN->v_float = d->rate * (t_CKFLOAT) g_srate / ( (t_CKFLOAT) d->num_frames ); 
 }
 
 CK_DLL_CTRL( sndbuf_ctrl_phase )
 { 
-    sndbuf_data * d = ( sndbuf_data * ) OBJ_MEMBER_UINT( SELF, sndbuf_offset_data );
+    sndbuf_data * d = ( sndbuf_data * ) OBJ_MEMBER_UINT(SELF, sndbuf_offset_data);
     t_CKFLOAT phase = GET_CK_FLOAT(ARGS);
     sndbuf_setpos(d, phase * (double)d->num_frames);
     RETURN->v_float = (t_CKFLOAT) d->curf / (t_CKFLOAT)d->num_frames; // TODO: 
@@ -2135,14 +2727,14 @@ CK_DLL_CTRL( sndbuf_ctrl_phase )
 
 CK_DLL_CGET( sndbuf_cget_phase )
 {
-    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT( SELF, sndbuf_offset_data );
+    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT(SELF, sndbuf_offset_data);
     //SET_NEXT_FLOAT( out, (t_CKFLOAT) d->curf / (t_CKFLOAT)d->num_frames );
     RETURN->v_float = (t_CKFLOAT) d->curf / (t_CKFLOAT)d->num_frames;
 }
 
 CK_DLL_CTRL( sndbuf_ctrl_channel )
 { 
-    sndbuf_data * d = ( sndbuf_data * ) OBJ_MEMBER_UINT( SELF, sndbuf_offset_data );
+    sndbuf_data * d = ( sndbuf_data * ) OBJ_MEMBER_UINT(SELF, sndbuf_offset_data);
     unsigned long chan = (unsigned long)GET_CK_INT(ARGS);
     if ( chan >= 0 && chan < d->num_channels ) { 
         d->chan = chan;
@@ -2152,28 +2744,32 @@ CK_DLL_CTRL( sndbuf_ctrl_channel )
 
 CK_DLL_CGET( sndbuf_cget_channel )
 {
-    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT( SELF, sndbuf_offset_data );
+    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT(SELF, sndbuf_offset_data);
     //SET_NEXT_INT( out, d->chan );
     RETURN->v_int = (t_CKINT)d->chan;
 }
 
 CK_DLL_CTRL( sndbuf_ctrl_pos )
 { 
-    sndbuf_data * d = ( sndbuf_data * ) OBJ_MEMBER_UINT( SELF, sndbuf_offset_data );
+    sndbuf_data * d = ( sndbuf_data * ) OBJ_MEMBER_UINT(SELF, sndbuf_offset_data);
     t_CKINT pos = GET_CK_INT(ARGS);
+#ifdef CK_SNDBUF_MEMORY_BUFFER
+    if( pos >= 0 && pos < d->mb_max_samples )
+        d->mb_playback_position = pos;
+#endif /* CK_SNDBUF_MEMORY_BUFFER */
     sndbuf_setpos(d, pos);
     RETURN->v_int = (t_CKINT)sndbuf_getpos(d); // TODO TODO TODOOO
 }
 
 CK_DLL_CGET( sndbuf_cget_pos )
 {
-    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT( SELF, sndbuf_offset_data );
+    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT(SELF, sndbuf_offset_data);
     RETURN->v_int = (t_CKINT)sndbuf_getpos(d); 
 }
 
 CK_DLL_CTRL( sndbuf_ctrl_interp )
 { 
-    sndbuf_data * d = ( sndbuf_data * ) OBJ_MEMBER_UINT( SELF, sndbuf_offset_data );
+    sndbuf_data * d = ( sndbuf_data * ) OBJ_MEMBER_UINT(SELF, sndbuf_offset_data);
     t_CKINT interp = GET_CK_INT(ARGS);
     d->interp = interp;
     RETURN->v_int = d->interp;
@@ -2181,13 +2777,13 @@ CK_DLL_CTRL( sndbuf_ctrl_interp )
 
 CK_DLL_CGET( sndbuf_cget_interp )
 {
-    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT( SELF, sndbuf_offset_data );
+    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT(SELF, sndbuf_offset_data);
     RETURN->v_int = d->interp;
 }
 
 CK_DLL_CTRL( sndbuf_ctrl_chunks )
 {
-    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT( SELF, sndbuf_offset_data );
+    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT(SELF, sndbuf_offset_data);
     t_CKINT frames = GET_NEXT_INT(ARGS);
     d->chunks = frames >= 0 ? frames : 0;
     RETURN->v_int = d->chunks;
@@ -2195,42 +2791,1234 @@ CK_DLL_CTRL( sndbuf_ctrl_chunks )
 
 CK_DLL_CGET( sndbuf_cget_chunks )
 {
-    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT( SELF, sndbuf_offset_data );
+    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT(SELF, sndbuf_offset_data);
     RETURN->v_int = d->chunks;
 }
 
 CK_DLL_CTRL( sndbuf_ctrl_phase_offset )
-{ 
-    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT( SELF, sndbuf_offset_data );
+{
+    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT(SELF, sndbuf_offset_data);
     t_CKFLOAT phase_offset = GET_CK_FLOAT(ARGS);
     sndbuf_setpos(d, d->curf + phase_offset * (t_CKFLOAT)d->num_frames );
 }
 
 CK_DLL_CGET( sndbuf_cget_samples )
 {
-    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT( SELF, sndbuf_offset_data );
+    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT(SELF, sndbuf_offset_data);
     //SET_NEXT_INT( out, d->num_frames );
     RETURN->v_int = d->num_frames;
 }
 
 CK_DLL_CGET( sndbuf_cget_length )
 {
-    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT( SELF, sndbuf_offset_data );
+    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT(SELF, sndbuf_offset_data);
     //SET_NEXT_DUR( out, (t_CKDUR)d->num_frames );
     RETURN->v_dur = (t_CKDUR)d->num_frames / d->sampleratio;
 }
 
 CK_DLL_CGET( sndbuf_cget_channels )
 {
-    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT( SELF, sndbuf_offset_data );
+    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT(SELF, sndbuf_offset_data);
     //SET_NEXT_INT( out, d->num_channels );
     RETURN->v_int = d->num_channels;
 }
 
 CK_DLL_CGET( sndbuf_cget_valueAt )
 {
-    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT( SELF, sndbuf_offset_data );
+    sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT(SELF, sndbuf_offset_data);
     t_CKINT i = GET_CK_INT(ARGS);
     if( d->fd ) sndbuf_load( d, i );
     RETURN->v_float = ( i > d->num_frames || i < 0 ) ? 0 : d->buffer[i];
+}
+
+
+class Dyno_Data
+{
+private:
+  const static t_CKDUR ms;
+
+public:
+  t_CKFLOAT slopeAbove;
+  t_CKFLOAT slopeBelow;
+  t_CKFLOAT thresh;
+  t_CKFLOAT rt;
+  t_CKFLOAT at;
+  t_CKFLOAT xd; //sidechain
+  int externalSideInput; // use input signal or a ctrl signal for env
+  t_CKFLOAT sideInput;   // the ctrl signal for the envelope
+  
+  int count; //diagnostic
+
+  Dyno_Data() {
+    xd = 0.0;
+    count = 0;
+    sideInput = 0;
+    limit();
+  }
+  ~Dyno_Data() {}
+
+  void limit();
+  void compress();
+  void gate();
+  void expand();
+  void duck();
+
+  //set the time constants for rt, at, and tav
+  static t_CKFLOAT computeTimeConst(t_CKDUR t) {
+    //AT = 1 - e ^ (-2.2T/t<AT)
+    //as per chuck_type.cpp, T(sampling period) = 1.0
+    return 1.0 - exp( -2.2 / t );
+  }
+
+  static t_CKDUR timeConstToDur(t_CKFLOAT x) {
+    return -2.2 / log(1.0 - x);
+  }
+
+  //setters for timing constants
+  void setAttackTime(t_CKDUR t);
+  void setReleaseTime(t_CKDUR t);
+
+  //other setters
+  void setRatio(t_CKFLOAT newRatio);
+  t_CKFLOAT getRatio();
+};
+
+const t_CKDUR Dyno_Data::ms = g_vm->srate() * 1.0 / 1000.0;
+
+//setters for the timing constants
+void Dyno_Data::setAttackTime(t_CKDUR t) {
+  at = computeTimeConst(t);
+}
+
+void Dyno_Data::setReleaseTime(t_CKDUR t) {
+  rt = computeTimeConst(t);
+}
+
+void Dyno_Data::setRatio(t_CKFLOAT newRatio) {
+  this->slopeAbove = 1.0 / newRatio;
+  this->slopeBelow = 1.0;
+}
+
+t_CKFLOAT Dyno_Data::getRatio()
+{
+  return this->slopeBelow / this->slopeAbove;
+}
+
+//TODO: come up with better/good presets?
+
+//presets for the dynomics processor
+void Dyno_Data::limit() {
+  slopeAbove = 0.1;   // 10:1 compression above thresh
+  slopeBelow = 1.0;    // no compression below
+  thresh = 0.5;
+  at = computeTimeConst( 5.0 * ms );
+  rt = computeTimeConst( 300.0 * ms );
+  externalSideInput = 0;
+}
+
+void Dyno_Data::compress() {
+  slopeAbove = 0.5;   // 2:1 compression
+  slopeBelow = 1.0;
+  thresh = 0.5;
+  at = computeTimeConst( 5.0 * ms );
+  rt = computeTimeConst( 500.0 * ms );
+  externalSideInput = 0;
+}
+
+void Dyno_Data::gate() {
+  slopeAbove = 1.0;
+  slopeBelow = 100000000; // infinity (more or less)
+  thresh = 0.1;
+  at = computeTimeConst( 11.0 * ms );
+  rt = computeTimeConst( 100.0 * ms );
+  externalSideInput = 0;
+}
+
+void Dyno_Data::expand() {
+  slopeAbove = 2.0;    // 1:2 expansion
+  slopeBelow = 1.0;
+  thresh = 0.5;
+  at = computeTimeConst( 20.0 * ms );
+  rt = computeTimeConst( 400.0 * ms );
+  externalSideInput = 0;
+}
+
+void Dyno_Data::duck() {
+  slopeAbove = 0.5;    // when sideInput rises above thresh, gain starts going
+  slopeBelow = 1.0;    // down. it'll drop more as sideInput gets louder.
+  thresh = 0.1;
+  at = computeTimeConst( 10.0 * ms );
+  rt = computeTimeConst( 1000.0 * ms );
+  externalSideInput = 1;
+}
+
+
+//controls for the preset modes
+CK_DLL_CTRL( dyno_ctrl_limit ) {
+     Dyno_Data * d = ( Dyno_Data * )OBJ_MEMBER_UINT(SELF, dyno_offset_data);
+     d->limit();
+}
+
+CK_DLL_CTRL( dyno_ctrl_compress ) {
+     Dyno_Data * d = ( Dyno_Data * )OBJ_MEMBER_UINT(SELF, dyno_offset_data);
+     d->compress();
+}
+
+CK_DLL_CTRL( dyno_ctrl_gate ) {
+     Dyno_Data * d = ( Dyno_Data * )OBJ_MEMBER_UINT(SELF, dyno_offset_data);
+     d->gate();
+}
+
+CK_DLL_CTRL( dyno_ctrl_expand ) {
+     Dyno_Data * d = ( Dyno_Data * )OBJ_MEMBER_UINT(SELF, dyno_offset_data);
+     d->expand();
+}
+
+CK_DLL_CTRL( dyno_ctrl_duck ) {
+     Dyno_Data * d = ( Dyno_Data * )OBJ_MEMBER_UINT(SELF, dyno_offset_data);
+     d->duck();
+}
+
+//additional controls: thresh
+CK_DLL_CTRL( dyno_ctrl_thresh ) {
+    Dyno_Data * d = ( Dyno_Data * )OBJ_MEMBER_UINT(SELF, dyno_offset_data);
+    d->thresh = GET_CK_FLOAT(ARGS);
+    RETURN->v_float = (t_CKFLOAT)d->thresh;
+}
+
+CK_DLL_CGET( dyno_cget_thresh ) {
+    Dyno_Data * d = ( Dyno_Data * )OBJ_MEMBER_UINT(SELF, dyno_offset_data);
+    RETURN->v_float = (t_CKFLOAT)d->thresh;
+}
+
+//additional controls: attackTime
+CK_DLL_CTRL( dyno_ctrl_attackTime ) {
+    Dyno_Data * d = ( Dyno_Data * )OBJ_MEMBER_UINT(SELF, dyno_offset_data);
+    d->setAttackTime( GET_CK_FLOAT(ARGS) );
+    RETURN->v_dur = d->timeConstToDur(d->at);
+}
+
+CK_DLL_CGET( dyno_cget_attackTime ) {
+    Dyno_Data * d = ( Dyno_Data * )OBJ_MEMBER_UINT(SELF, dyno_offset_data);
+    RETURN->v_dur = d->timeConstToDur(d->at);
+}
+
+//additional controls: releaseTime
+CK_DLL_CTRL( dyno_ctrl_releaseTime ) {
+    Dyno_Data * d = ( Dyno_Data * )OBJ_MEMBER_UINT(SELF, dyno_offset_data);
+    d->setReleaseTime( GET_CK_FLOAT(ARGS) );
+    RETURN->v_dur = d->timeConstToDur(d->rt);
+}
+
+CK_DLL_CGET( dyno_cget_releaseTime ) {
+    Dyno_Data * d = ( Dyno_Data * )OBJ_MEMBER_UINT(SELF, dyno_offset_data);
+    RETURN->v_dur = d->timeConstToDur(d->rt);
+}
+
+//additional controls: ratio
+CK_DLL_CTRL( dyno_ctrl_ratio ) {
+    Dyno_Data * d = ( Dyno_Data * )OBJ_MEMBER_UINT(SELF, dyno_offset_data);
+    d->setRatio( GET_CK_FLOAT(ARGS) );
+    RETURN->v_float = d->getRatio();
+}
+
+CK_DLL_CGET( dyno_cget_ratio ) {
+    Dyno_Data * d = ( Dyno_Data * )OBJ_MEMBER_UINT(SELF, dyno_offset_data);
+    RETURN->v_float = d->getRatio();
+}
+
+//additional controls: slopeBelow
+CK_DLL_CTRL( dyno_ctrl_slopeBelow ) {
+    Dyno_Data * d = ( Dyno_Data * )OBJ_MEMBER_UINT(SELF, dyno_offset_data);
+    d->slopeBelow = GET_CK_FLOAT(ARGS);
+    
+    RETURN->v_float = d->slopeBelow;
+}
+
+CK_DLL_CGET( dyno_cget_slopeBelow ) {
+    Dyno_Data * d = ( Dyno_Data * )OBJ_MEMBER_UINT(SELF, dyno_offset_data);
+    RETURN->v_float = d->slopeBelow;
+}
+
+//additional controls: slopeAbove
+CK_DLL_CTRL( dyno_ctrl_slopeAbove ) {
+    Dyno_Data * d = ( Dyno_Data * )OBJ_MEMBER_UINT(SELF, dyno_offset_data);
+    d->slopeAbove = GET_CK_FLOAT(ARGS);
+    
+    RETURN->v_float = d->slopeAbove;
+}
+
+CK_DLL_CGET( dyno_cget_slopeAbove ) {
+    Dyno_Data * d = ( Dyno_Data * )OBJ_MEMBER_UINT(SELF, dyno_offset_data);
+    RETURN->v_float = d->slopeAbove;
+}
+
+//additional controls: sideInput
+CK_DLL_CTRL( dyno_ctrl_sideInput ) {
+    Dyno_Data * d = ( Dyno_Data * )OBJ_MEMBER_UINT(SELF, dyno_offset_data);
+    d->sideInput = GET_CK_FLOAT(ARGS);
+    
+    RETURN->v_float = d->sideInput;
+}
+
+CK_DLL_CGET( dyno_cget_sideInput ) {
+    Dyno_Data * d = ( Dyno_Data * )OBJ_MEMBER_UINT(SELF, dyno_offset_data);
+    RETURN->v_float = d->sideInput;
+}
+
+//additional controls: externalSideInput
+CK_DLL_CTRL( dyno_ctrl_externalSideInput ) {
+    Dyno_Data * d = ( Dyno_Data * )OBJ_MEMBER_UINT(SELF, dyno_offset_data);
+    d->externalSideInput = GET_CK_INT(ARGS);
+    
+    RETURN->v_int = d->externalSideInput;
+}
+
+CK_DLL_CGET( dyno_cget_externalSideInput ) {
+    Dyno_Data * d = ( Dyno_Data * )OBJ_MEMBER_UINT(SELF, dyno_offset_data);
+    RETURN->v_int = d->externalSideInput;
+}
+
+//constructor
+CK_DLL_CTOR( dyno_ctor )
+{
+    OBJ_MEMBER_UINT(SELF, dyno_offset_data) = (t_CKUINT)new Dyno_Data;
+}
+
+CK_DLL_DTOR( dyno_dtor )
+{
+    delete (Dyno_Data *)OBJ_MEMBER_UINT(SELF, dyno_offset_data);
+    OBJ_MEMBER_UINT(SELF, dyno_offset_data) = 0;
+}
+
+// recomputes envelope, determines how the current amp envelope compares with
+// thresh, applies the appropriate new slope depending on how far above/below
+// the threshold the current envelope is.
+CK_DLL_TICK( dyno_tick )
+{
+    Dyno_Data * d = ( Dyno_Data * )OBJ_MEMBER_UINT(SELF, dyno_offset_data);
+
+    // only change sideInput if we're not using an external ctrl signal.
+    // otherwise we'll just use whatever the user sent us last as the ctrl signal
+    if(!d->externalSideInput)
+        d->sideInput = in >= 0 ? in : -in;
+
+    // 'a' is signal left after subtracting xd (to recompute sideChain envelope)
+    double a = d->sideInput - d->xd;
+    // a is only needed if positive to pull the envelope up, not to bring it down
+    if ( a < 0 ) a=0;
+    // the attack/release (peak) exponential filter to guess envelope
+    d->xd = d->xd * (1 - d->rt) + d->at * a;
+
+    // if you were to use the rms filter,
+    // it would probably look, a sumpthin' like this
+    // d->xd = TAV * in*in + (1+TAV) * d->xd
+
+    // decide which slope to use, depending on whether we're below/above thresh
+    double slope = d->xd > d->thresh ? d->slopeAbove : d->slopeBelow;
+    // the gain function - apply the slope chosen above
+    double f = slope == 1.0 ? 1.0 : pow( d->xd / d->thresh, slope - 1.0 );
+
+    // apply the gain found above to input sample
+    *out = f * in;
+
+    return TRUE;
+}
+
+
+
+
+#define LiSa_MAXVOICES 100
+#define LiSa_MAXBUFSIZE 4410000 
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_data
+// desc: ...
+//-----------------------------------------------------------------------------
+struct LiSaMulti_data
+{
+    SAMPLE * mdata;
+    t_CKINT mdata_len;
+    t_CKINT maxvoices;
+    t_CKINT loop_start[LiSa_MAXVOICES], loop_end[LiSa_MAXVOICES], loop_end_rec;
+    t_CKINT rindex; // record and play indices
+    t_CKBOOL record, looprec, loopplay[LiSa_MAXVOICES], reset, append, play[LiSa_MAXVOICES], bi[LiSa_MAXVOICES];
+    t_CKFLOAT coeff; // feedback coeff
+    t_CKDOUBLE p_inc[LiSa_MAXVOICES], pindex[LiSa_MAXVOICES]; // playback increment
+    
+    // ramp stuff
+    t_CKDOUBLE rampup_len[LiSa_MAXVOICES], rampdown_len[LiSa_MAXVOICES], rec_ramplen, rec_ramplen_inv;
+    t_CKDOUBLE rampup_len_inv[LiSa_MAXVOICES], rampdown_len_inv[LiSa_MAXVOICES];
+    t_CKDOUBLE rampctr[LiSa_MAXVOICES];
+    t_CKBOOL rampup[LiSa_MAXVOICES], rampdown[LiSa_MAXVOICES];
+    
+    t_CKINT track;
+    
+    // allocate memory, length in samples
+    inline int buffer_alloc(t_CKINT length)
+    {
+        mdata = (SAMPLE *)malloc(length * sizeof(SAMPLE));
+        if(!mdata)  {
+            fprintf(stderr, "LiSaBasic: unable to allocate memory!\n");
+            return false;
+        }
+            
+        mdata_len = length;
+        maxvoices = 10; // default; user can set
+        rec_ramplen = 0.;
+        rec_ramplen_inv = 1.;
+        
+        track = 0;
+        
+        for (t_CKINT i=0; i < LiSa_MAXVOICES; i++) {
+            loop_start[i] = 0;
+            loop_end[i] = loop_end_rec = length;
+            
+            pindex[i] = rindex = 0;
+            play[i] = record = bi[i] = false;
+            looprec = loopplay[i] = true;
+            coeff = 0.;
+            p_inc[i] = 1.;
+            
+            // ramp stuff
+            rampup[i] = rampdown[i] = false;
+            rampup_len[i] = rampdown_len[i] = 0.;
+            rampup_len_inv[i] = rampdown_len_inv[i] = 1.;
+            rampctr[i] = 0.;
+        }
+        
+        return true;
+    }
+    
+    // dump a sample into the buffer; retain existing sample, scaled by "coeff"
+    inline void recordSamp(SAMPLE insample)
+    {
+        SAMPLE tempsample;
+        
+        if(record) {
+            if(looprec) {
+                if(rindex >= loop_end_rec)  rindex = 0;
+                tempsample = coeff * mdata[rindex] + insample;
+                //mdata[rindex] = coeff * mdata[rindex] + insample;
+                //rindex++;
+            } else {
+                if (rindex < loop_end_rec) {
+                    //mdata[rindex] = coeff * mdata[rindex] + insample;
+                    tempsample = coeff * mdata[rindex] + insample;
+                    //rindex++;
+                } else {
+                    record = 0;
+                    return;
+                }
+            }
+            
+            // ramp stuff here
+            if(rindex < rec_ramplen) {
+                tempsample *= (rindex * rec_ramplen_inv);
+            } else if(rindex > (loop_end_rec - rec_ramplen)) {
+                tempsample *= (loop_end_rec - rindex) * rec_ramplen_inv;
+            }
+            mdata[rindex] = tempsample;
+            rindex++;
+        }
+    }
+    
+    // grab a sample from the buffer, with linear interpolation (add prc's SINC interp later)
+    // increment play index
+    inline SAMPLE getNextSamp(t_CKINT which)
+    {
+        // constrain
+        if(loopplay[which]) {
+            if(bi[which]) { // change direction if bidirectional mode
+                if(pindex[which] >= loop_end[which] || pindex[which] < loop_start[which]) {
+                    pindex[which]  -=  p_inc[which];
+                    p_inc[which]    = -p_inc[which];
+                } 
+            }
+            while(pindex[which] >= loop_end[which]) pindex[which] = loop_start[which] + (pindex[which] - loop_end[which]);
+            while(pindex[which] < loop_start[which]) pindex[which] = loop_end[which] - (loop_start[which] - pindex[which]);
+
+        } else if(pindex[which] >= loop_end[which] || pindex[which] < loop_start[which]) {
+            play[which] = 0;
+            //fprintf(stderr, "turning voice %d off!\n", which);
+            return (SAMPLE) 0.;
+        }
+        
+        // interp
+        t_CKINT whereTrunc = (t_CKINT) pindex[which];
+        t_CKDOUBLE whereFrac = pindex[which] - (t_CKDOUBLE)whereTrunc;
+        t_CKINT whereNext = whereTrunc + 1;
+        
+        if((whereNext) == loop_end[which]) whereNext = loop_start[which];
+        
+        pindex[which] += p_inc[which];
+        
+        t_CKDOUBLE outsample;
+        outsample = (t_CKDOUBLE)mdata[whereTrunc] + (t_CKDOUBLE)(mdata[whereNext] - mdata[whereTrunc]) * whereFrac;
+        
+        // ramp stuff
+        if(rampup[which]) {
+            outsample *= rampctr[which]++ * rampup_len_inv[which]; //remove divide
+            if(rampctr[which] >= rampup_len[which]) rampup[which] = false;
+        }
+        else if(rampdown[which]) {
+            outsample *= (rampdown_len[which] - rampctr[which]++) * rampdown_len_inv[which];
+            if(rampctr[which] >= rampdown_len[which]) {
+                rampdown[which] = false;
+                play[which] = false;
+            }
+        }
+        
+        return (SAMPLE)outsample;        
+    }
+    
+    // grab a sample from the buffer, with linear interpolation (add prc's SINC interp later)
+    // given a position within the buffer
+    inline SAMPLE getSamp(t_CKDOUBLE where, t_CKINT which)
+    {
+        // constrain
+        if(where >= loop_end[which]) where  = loop_end[which] - 1.;
+        if(where < loop_start[which]) where = loop_start[which];
+        
+        // interp
+        t_CKINT whereTrunc = (t_CKINT) where;
+        t_CKDOUBLE whereFrac = where - (t_CKDOUBLE)whereTrunc;
+        t_CKINT whereNext = whereTrunc + 1;
+        
+        if((whereNext) == loop_end[which]) whereNext = loop_start[which];
+
+        t_CKDOUBLE outsample;
+        outsample = (t_CKDOUBLE)mdata[whereTrunc] + (t_CKDOUBLE)(mdata[whereNext] - mdata[whereTrunc]) * whereFrac;
+        
+        return (SAMPLE)outsample;        
+    }
+
+    // ramp stuff
+    inline void ramp_up(t_CKINT voicenum, t_CKDUR uptime)
+    {            
+        // fprintf(stderr, "ramping up voice %d", voicenum);
+
+        rampup[voicenum] = true;
+        play[voicenum] = true;
+        rampup_len[voicenum] = (t_CKDOUBLE)uptime;
+        if(rampup_len[voicenum] > 0.) rampup_len_inv[voicenum] = 1./rampup_len[voicenum];
+        else rampup_len[voicenum] = 1.;
+
+        // check to make sure we are not mid ramping down
+        if(rampdown[voicenum]) {
+            rampctr[voicenum] = rampup_len[voicenum] * (1. - rampctr[voicenum]/rampdown_len[voicenum]);
+            rampdown[voicenum] = false;
+        } else rampctr[voicenum] = 0;
+    }
+    
+    inline void ramp_down(t_CKINT voicenum, t_CKDUR downtime)
+    {
+        rampdown[voicenum] = true;
+        rampdown_len[voicenum] = (t_CKDOUBLE)downtime;
+        if(rampdown_len[voicenum] > 0.) rampdown_len_inv[voicenum] = 1./rampdown_len[voicenum];
+        else rampdown_len[voicenum] = 1.;
+        
+        // check to make sure we are not mid ramping up
+        if(rampup[voicenum]) {
+            rampctr[voicenum] = rampdown_len[voicenum] * (1. - rampctr[voicenum]/rampup_len[voicenum]);
+            rampup[voicenum] = false;
+        } else rampctr[voicenum] = 0;
+    }
+    
+    inline void set_rec_ramplen(t_CKDUR newlen)
+    {
+        rec_ramplen = (t_CKDOUBLE)newlen;
+        if(rec_ramplen > 0.) rec_ramplen_inv = 1./rec_ramplen;
+        else rec_ramplen_inv = 1.;
+    }
+
+    // tick_multi: mono
+    // may want to make multichannel version, 
+    // but could also just run multiple LiSas to get multi channel
+    // this is probably not ideal for, say, a 16 channel setup, but maybe who cares
+    inline SAMPLE tick_multi( SAMPLE in)
+    {
+        if(!mdata) return (SAMPLE) 0.;
+        
+        recordSamp(in);
+        
+        SAMPLE tempsample = 0.;
+
+        if(track==0) {
+            for (t_CKINT i=0; i<maxvoices; i++) {
+                if(play[i]) tempsample += getNextSamp(i);
+            }
+        } else if(track==1 && play[0]) {
+            if(in<0.) in = -in; //only use voice 0 when tracking.
+            tempsample = getSamp((t_CKDOUBLE)in * (t_CKDOUBLE)(loop_end[0] - loop_start[0]) + (t_CKDOUBLE)loop_start[0], 0);
+        }
+
+        return tempsample;
+    }
+    
+    inline void clear_buf()
+    {
+        for (t_CKINT i = 0; i < mdata_len; i++)
+            mdata[i] = 0.;
+    }
+    
+    inline t_CKINT get_free_voice()
+    {
+        t_CKINT voicenumber = 0;
+        while(play[voicenumber] && voicenumber < maxvoices) {
+            voicenumber++;
+        }
+        if(voicenumber == maxvoices) voicenumber = -1;
+        return voicenumber;
+    }
+};
+
+
+
+
+//++++++++++++++++++++++++++++++++++++++++
+//
+//
+//++++++++++++++++++++++++++++++++++++++++
+//
+//
+//++++++++++++++++++++++++++++++++++++++++
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_ctor()
+// desc: CTOR function ...
+//-----------------------------------------------------------------------------
+CK_DLL_CTOR( LiSaMulti_ctor )
+{
+
+    LiSaMulti_data * f =  new LiSaMulti_data;
+    memset( f, 0, sizeof(LiSaMulti_data) );
+    OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data) = (t_CKUINT)f;
+
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_dtor()
+// desc: DTOR function ...
+//-----------------------------------------------------------------------------
+CK_DLL_DTOR( LiSaMulti_dtor )
+{
+    // get data
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    // delete
+    SAFE_DELETE(d);
+    // set
+    OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data) = 0;
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_tick()
+// desc: TICK function ...
+//-----------------------------------------------------------------------------
+CK_DLL_TICK( LiSaMulti_tick )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    *out = d->tick_multi( in );
+    return TRUE;
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_size()
+// desc: set size of buffer allocation
+//-----------------------------------------------------------------------------
+CK_DLL_CTRL( LiSaMulti_size )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    t_CKDUR buflen = GET_NEXT_DUR(ARGS);
+    if (buflen > LiSa_MAXBUFSIZE) {
+        fprintf(stderr, "buffer size request too large, resizing\n");
+        buflen = LiSa_MAXBUFSIZE;
+    }
+    d->buffer_alloc((t_CKINT)buflen);
+    
+    RETURN->v_dur = (t_CKDUR)buflen;
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_start_record()
+// desc: CTRL function ...
+//-----------------------------------------------------------------------------
+CK_DLL_CTRL( LiSaMulti_start_record )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    d->record = GET_NEXT_INT(ARGS);
+    
+    RETURN->v_int = (t_CKINT)d->record;    
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_start_play()
+// desc: CTRL function
+//-----------------------------------------------------------------------------
+CK_DLL_CTRL( LiSaMulti_start_play )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    t_CKINT which = GET_NEXT_INT(ARGS);
+    d->play[which] = GET_NEXT_INT(ARGS);
+    //fprintf(stderr, "voice %d playing = %d\n", which, d->play[which]);
+    
+    RETURN->v_int = (t_CKINT)d->play[which];
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_start_play()
+// desc: CTRL function
+//-----------------------------------------------------------------------------
+CK_DLL_CTRL( LiSaMulti_start_play0 )
+{
+
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    d->play[0] = GET_NEXT_INT(ARGS);
+    //fprintf(stderr, "voice %d playing = %d\n", which, d->play[which]);
+    
+    RETURN->v_int = (t_CKINT)d->play[0];
+    
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_ctrl_rate()
+// desc: CTRL function
+//-----------------------------------------------------------------------------
+CK_DLL_CTRL( LiSaMulti_ctrl_rate )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    t_CKINT which = GET_NEXT_INT(ARGS);
+    d->p_inc[which] = (t_CKDOUBLE)GET_NEXT_FLOAT(ARGS);
+    //fprintf(stderr, "setting voice %d rate to %f\n", which, d->p_inc[which]);
+    
+    RETURN->v_int = (t_CKINT)d->p_inc[which];
+}
+
+
+CK_DLL_CTRL( LiSaMulti_ctrl_rate0 )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    d->p_inc[0] = (t_CKDOUBLE)GET_NEXT_FLOAT(ARGS);
+    //fprintf(stderr, "setting voice %d rate to %f\n", which, d->p_inc[which]);
+    
+    RETURN->v_int = (t_CKINT)d->p_inc[0];
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_ctrl_pindex()
+// desc: CTRL function
+//-----------------------------------------------------------------------------
+CK_DLL_CTRL( LiSaMulti_ctrl_pindex )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    t_CKINT which = GET_NEXT_INT(ARGS);
+    d->pindex[which] = (t_CKDOUBLE)GET_NEXT_DUR(ARGS);
+    
+    RETURN->v_dur = (t_CKDUR)d->pindex[which];
+}
+
+
+CK_DLL_CTRL( LiSaMulti_ctrl_pindex0 )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    d->pindex[0] = (t_CKDOUBLE)GET_NEXT_DUR(ARGS);
+    
+    RETURN->v_dur = (t_CKDUR)d->pindex[0];
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_cget_pindex()
+// desc: CGET function
+//-----------------------------------------------------------------------------
+CK_DLL_CGET( LiSaMulti_cget_pindex )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    t_CKINT which = GET_NEXT_INT(ARGS);
+
+    // return
+    RETURN->v_dur = (t_CKDUR)d->pindex[which];
+}
+
+
+CK_DLL_CGET( LiSaMulti_cget_pindex0 )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+
+    // return
+    RETURN->v_dur = (t_CKDUR)d->pindex[0];
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_ctrl_pindex()
+// desc: CTRL function
+//-----------------------------------------------------------------------------
+CK_DLL_CTRL( LiSaMulti_ctrl_rindex )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    d->rindex = /* gewang-> */(t_CKINT)GET_NEXT_DUR(ARGS);
+    
+    RETURN->v_dur = (t_CKDUR)d->rindex;
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_cget_pindex()
+// desc: CGET function
+//-----------------------------------------------------------------------------
+CK_DLL_CGET( LiSaMulti_cget_rindex )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+
+    // return
+    RETURN->v_dur = (t_CKDUR)d->rindex;
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_ctrl_lstart()
+// desc: CTRL function
+//-----------------------------------------------------------------------------
+CK_DLL_CTRL( LiSaMulti_ctrl_lstart )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    t_CKINT which = GET_NEXT_INT(ARGS);
+    d->loop_start[which] = /* gewang-> */(t_CKINT)GET_NEXT_DUR(ARGS);
+    
+    RETURN->v_dur = (t_CKDUR)d->loop_start[which];
+}
+
+
+CK_DLL_CTRL( LiSaMulti_ctrl_lstart0 )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    d->loop_start[0] = /* gewang-> */(t_CKINT)GET_NEXT_DUR(ARGS);
+    
+    RETURN->v_dur = (t_CKDUR)d->loop_start[0];
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_cget_lstart()
+// desc: CGET function
+//-----------------------------------------------------------------------------
+CK_DLL_CGET( LiSaMulti_cget_lstart )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    
+    t_CKINT which = GET_NEXT_INT(ARGS);
+    // return
+    RETURN->v_dur = (t_CKDUR)d->loop_start[which];
+}
+
+
+CK_DLL_CGET( LiSaMulti_cget_lstart0 )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    
+    // return
+    RETURN->v_dur = (t_CKDUR)d->loop_start[0];
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_ctrl_lend()
+// desc: CTRL function
+//-----------------------------------------------------------------------------
+CK_DLL_CTRL( LiSaMulti_ctrl_lend )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    t_CKINT which = GET_NEXT_INT(ARGS);
+    d->loop_end[which] = /* gewang-> */(t_CKINT)GET_NEXT_DUR(ARGS);
+}
+
+
+CK_DLL_CTRL( LiSaMulti_ctrl_lend0 )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    d->loop_end[0] = /* gewang-> */(t_CKINT)GET_NEXT_DUR(ARGS);
+    
+    RETURN->v_dur = (t_CKDUR)d->loop_end[0];
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_cget_lend()
+// desc: CGET function
+//-----------------------------------------------------------------------------
+CK_DLL_CGET( LiSaMulti_cget_lend )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    t_CKINT which = GET_NEXT_INT(ARGS);
+
+    // return
+    RETURN->v_dur = (t_CKDUR)d->loop_end[which];
+}
+
+
+CK_DLL_CGET( LiSaMulti_cget_lend0 )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+
+    // return
+    RETURN->v_dur = (t_CKDUR)d->loop_end[0];
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_ctrl_loop()
+// desc: CTRL function
+//-----------------------------------------------------------------------------
+CK_DLL_CTRL( LiSaMulti_ctrl_loop )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    t_CKINT which = GET_NEXT_INT(ARGS);
+    d->loopplay[which] = (t_CKBOOL)GET_NEXT_INT(ARGS);
+}
+
+
+CK_DLL_CTRL( LiSaMulti_ctrl_loop0 )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    d->loopplay[0] = (t_CKBOOL)GET_NEXT_INT(ARGS);
+    
+    RETURN->v_int = (t_CKINT)d->loopplay[0];
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_cget_loop()
+// desc: CGET function
+//-----------------------------------------------------------------------------
+CK_DLL_CGET( LiSaMulti_cget_loop )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    t_CKINT which = GET_NEXT_INT(ARGS);
+
+    // return
+    RETURN->v_int = (t_CKINT)d->loopplay[which];
+}
+
+
+CK_DLL_CGET( LiSaMulti_cget_loop0 )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+
+    // return
+    RETURN->v_int = (t_CKINT)d->loopplay[0];
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_ctrl_bi()
+// desc: CTRL function
+//-----------------------------------------------------------------------------
+CK_DLL_CTRL( LiSaMulti_ctrl_bi )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    t_CKINT which = GET_NEXT_INT(ARGS);
+    d->bi[which] = (t_CKBOOL)GET_NEXT_INT(ARGS);
+    
+    RETURN->v_int = (t_CKINT)d->bi[which];
+}
+
+
+CK_DLL_CTRL( LiSaMulti_ctrl_bi0 )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    d->bi[0] = (t_CKBOOL)GET_NEXT_INT(ARGS);
+    
+    RETURN->v_int = (t_CKINT)d->bi[0];
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_cget_bi()
+// desc: CGET function
+//-----------------------------------------------------------------------------
+CK_DLL_CGET( LiSaMulti_cget_bi )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    t_CKINT which = GET_NEXT_INT(ARGS);
+
+    // return
+    RETURN->v_int = (t_CKINT)d->bi[which];
+}
+
+
+CK_DLL_CGET( LiSaMulti_cget_bi0 )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+
+    // return
+    RETURN->v_int = (t_CKINT)d->bi[0];
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_ctrl_loop_end_rec()
+// desc: CTRL function
+//-----------------------------------------------------------------------------
+CK_DLL_CTRL( LiSaMulti_ctrl_loop_end_rec )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    d->loop_end_rec = /* gewang-> */(t_CKINT)GET_NEXT_DUR(ARGS);
+    
+    RETURN->v_dur = (t_CKDUR)d->loop_end_rec;
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_cget_loop_end_rec()
+// desc: CGET function
+//-----------------------------------------------------------------------------
+CK_DLL_CGET( LiSaMulti_cget_loop_end_rec )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+
+    // return
+    RETURN->v_dur = (t_CKDUR)d->loop_end_rec;
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_ctrl_loop_rec()
+// desc: CTRL function
+//-----------------------------------------------------------------------------
+CK_DLL_CTRL( LiSaMulti_ctrl_loop_rec )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    d->looprec = (t_CKBOOL)GET_NEXT_INT(ARGS);
+    
+    RETURN->v_int = (t_CKINT)d->looprec;
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_cget_loop_rec()
+// desc: CGET function
+//-----------------------------------------------------------------------------
+CK_DLL_CGET( LiSaMulti_cget_loop_rec )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+
+    // return
+    RETURN->v_int = (t_CKINT)d->looprec;
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_ctrl_coeff()
+// desc: CTRL function
+//-----------------------------------------------------------------------------
+CK_DLL_CTRL( LiSaMulti_ctrl_coeff )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    d->coeff = (t_CKDOUBLE)GET_NEXT_FLOAT(ARGS);
+    
+    RETURN->v_float = (t_CKFLOAT)d->coeff;
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_cget_coeff()
+// desc: CGET function
+//-----------------------------------------------------------------------------
+CK_DLL_CGET( LiSaMulti_cget_coeff )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+
+    // return
+    RETURN->v_float = (t_CKFLOAT)d->coeff;
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_ctrl_clear()
+// desc: CTRL function
+//-----------------------------------------------------------------------------
+CK_DLL_CTRL( LiSaMulti_ctrl_clear )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    d->clear_buf();
+}
+
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_cget_voice()
+// desc: CGET function
+//-----------------------------------------------------------------------------
+CK_DLL_CGET( LiSaMulti_cget_voice )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+
+    // return
+    RETURN->v_int = (t_CKINT)d->get_free_voice();
+}
+
+
+// ramp stuff
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_ctrl_rampup()
+// desc: CTRL function
+//-----------------------------------------------------------------------------
+CK_DLL_CTRL( LiSaMulti_ctrl_rampup )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    t_CKINT voice = GET_NEXT_INT(ARGS);
+    t_CKDUR len = GET_NEXT_DUR(ARGS);
+
+    d->ramp_up(voice, len);
+    
+    RETURN->v_dur = (t_CKDUR)len;    
+}
+
+
+CK_DLL_CTRL( LiSaMulti_ctrl_rampup0 )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    t_CKDUR len = GET_NEXT_DUR(ARGS);
+
+    d->ramp_up(0, len);
+    
+    RETURN->v_dur = (t_CKDUR)len;    
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_ctrl_rampdown()
+// desc: CTRL function
+//-----------------------------------------------------------------------------
+CK_DLL_CTRL( LiSaMulti_ctrl_rampdown )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    t_CKINT voice = GET_NEXT_INT(ARGS);
+    t_CKDUR len = GET_NEXT_DUR(ARGS);
+
+    d->ramp_down(voice, len);
+    
+    RETURN->v_dur = (t_CKDUR)len;    
+}
+
+
+CK_DLL_CTRL( LiSaMulti_ctrl_rampdown0 )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    t_CKDUR len = GET_NEXT_DUR(ARGS);
+
+    d->ramp_down(0, len);
+    
+    RETURN->v_dur = (t_CKDUR)len;    
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_ctrl_rec_ramplen()
+// desc: CTRL function
+//-----------------------------------------------------------------------------
+CK_DLL_CTRL( LiSaMulti_ctrl_rec_ramplen )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    t_CKDUR newramplen = GET_NEXT_DUR(ARGS);
+    d->set_rec_ramplen(newramplen);
+    
+    RETURN->v_dur = (t_CKDUR)newramplen;    
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_ctrl_maxvoices()
+// desc: CTRL function
+//-----------------------------------------------------------------------------
+CK_DLL_CTRL( LiSaMulti_ctrl_maxvoices )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    d->maxvoices = GET_NEXT_INT(ARGS);
+    RETURN->v_int = d->maxvoices;
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_cget_maxvoices()
+// desc: CGET function
+//-----------------------------------------------------------------------------
+CK_DLL_CGET( LiSaMulti_cget_maxvoices )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+
+    // return
+    RETURN->v_int = d->maxvoices;
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_cget_samp()
+// desc: CGET function
+//-----------------------------------------------------------------------------
+CK_DLL_CGET( LiSaMulti_cget_value )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    t_CKINT voice = GET_NEXT_INT(ARGS);
+    t_CKDOUBLE where = (t_CKDOUBLE) GET_NEXT_DUR(ARGS);
+
+    // return
+    RETURN->v_dur = (t_CKDUR)d->getSamp(where, voice);
+}
+
+
+CK_DLL_CGET( LiSaMulti_cget_value0 )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+
+    t_CKDOUBLE where = (t_CKDOUBLE) GET_NEXT_DUR(ARGS);
+    // return
+    RETURN->v_dur = (t_CKDUR)d->getSamp(where, 0);
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_ctrl_track()
+// desc: CTRL function
+//-----------------------------------------------------------------------------
+CK_DLL_CTRL( LiSaMulti_ctrl_track )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    d->track = (t_CKINT)GET_NEXT_INT(ARGS);
+    
+    RETURN->v_int = d->track;
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_cget_sync()
+// desc: CGET function
+//-----------------------------------------------------------------------------
+CK_DLL_CGET( LiSaMulti_cget_track )
+{
+    LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+
+    // return
+    RETURN->v_int = d->track;
+}
+
+
+//-----------------------------------------------------------------------------
+// name: LiSaMulti_pmsg()
+// desc: PMSG function ...
+//-----------------------------------------------------------------------------
+CK_DLL_PMSG(LiSaMulti_pmsg )
+{
+    return FALSE;
 }

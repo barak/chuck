@@ -260,14 +260,17 @@ Chuck_Object::~Chuck_Object()
 Chuck_Array4::Chuck_Array4( t_CKBOOL is_obj, t_CKINT capacity )
 {
     // sanity check
-    // assert( capacity > 0 );
-    // set capacity
-    m_vector.resize( capacity );
+    assert( capacity >= 0 );
     // reset size
     m_size = 0;
     // set capacity
     m_capacity = capacity;
-    // is object
+    // set capacity
+    m_vector.reserve( capacity );
+    // clear (as non-object, so no releases)
+    m_is_obj = FALSE;
+    this->clear();
+    // is object (set after clear)
     m_is_obj = is_obj;
 }
 
@@ -309,7 +312,6 @@ t_CKUINT Chuck_Array4::addr( t_CKINT i )
 //-----------------------------------------------------------------------------
 t_CKUINT Chuck_Array4::addr( const string & key )
 {
-
     // get the addr
     return (t_CKUINT)(&m_map[key]);
 }
@@ -478,6 +480,15 @@ t_CKINT Chuck_Array4::pop_back( )
     if( m_size == 0 )
         return 0;
 
+    // if obj
+    if( m_is_obj )
+    {
+        Chuck_Object * v = (Chuck_Object *)m_vector[m_size-1];
+        if( v ) v->release();
+    }
+    
+    // zero
+    m_vector[m_size-1] = 0;
     // add to vector
     m_vector.pop_back();
     
@@ -518,8 +529,78 @@ void Chuck_Array4::clear( )
     // clear vector
     m_vector.clear();
 
+    // zero
+    zero( 0, m_capacity );
+
     // set size
     m_size = 0;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: set_capacity()
+// desc: ...
+//-----------------------------------------------------------------------------
+t_CKINT Chuck_Array4::set_capacity( t_CKINT capacity )
+{
+    // sanity check
+    assert( capacity >= 0 );
+
+    // if clearing capacity
+    if( capacity < m_capacity )
+    {
+        // zero out section
+        zero( capacity, m_capacity );
+    }
+
+    // resize vector
+    m_vector.reserve( capacity );
+    // set size
+    m_size = m_size < capacity ? m_size : capacity;
+    // set capacity
+    m_capacity = capacity;
+
+    return m_capacity;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: zero()
+// desc: ...
+//-----------------------------------------------------------------------------
+void Chuck_Array4::zero( t_CKUINT start, t_CKUINT end )
+{
+    // sanity check
+    assert( start <= m_capacity && end <= m_capacity );
+
+    // if contains objects
+    if( m_is_obj )
+    {
+        Chuck_Object * v = NULL;
+        for( t_CKUINT i = start; i < end; i++ )
+        {
+            // get it
+            v = (Chuck_Object *)m_vector[i];
+            // release
+            if( v )
+            {
+                v->release();
+                m_vector[i] = 0;
+            }
+        }
+    }
+    else
+    {
+        for( t_CKUINT i = start; i < end; i++ )
+        {
+            // zero
+            m_vector[i] = 0;
+        }
+    }
 }
 
 
@@ -532,13 +613,15 @@ void Chuck_Array4::clear( )
 Chuck_Array8::Chuck_Array8( t_CKINT capacity )
 {
     // sanity check
-    assert( capacity > 0 );
-    // set capacity
-    m_vector.resize( capacity );
+    assert( capacity >= 0 );
     // reset size
     m_size = 0;
     // set capacity
     m_capacity = capacity;
+    // set capacity
+    m_vector.reserve( capacity );
+    // clear
+    this->clear();
 }
 
 
@@ -727,6 +810,8 @@ t_CKINT Chuck_Array8::pop_back( )
     if( m_size == 0 )
         return 0;
 
+    // zero
+    m_vector[m_size-1] = 0.0;
     // add to vector
     m_vector.pop_back();
     
@@ -767,8 +852,56 @@ void Chuck_Array8::clear( )
     // clear vector
     m_vector.clear();
 
+    // zero
+    zero( 0, m_capacity );
+
     // set size
     m_size = 0;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: set_capacity()
+// desc: ...
+//-----------------------------------------------------------------------------
+t_CKINT Chuck_Array8::set_capacity( t_CKINT capacity )
+{
+    // sanity check
+    assert( capacity >= 0 );
+
+    // if less
+    if( capacity < m_capacity )
+        zero( capacity, m_capacity );
+
+    // resize vector
+    m_vector.reserve( capacity );
+    // set size
+    m_size = m_size < capacity ? m_size : capacity;
+    // set capacity
+    m_capacity = capacity;
+
+    return m_capacity;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: zero()
+// desc: ...
+//-----------------------------------------------------------------------------
+void Chuck_Array8::zero( t_CKUINT start, t_CKUINT end )
+{
+    // sanity check
+    assert( start <= m_capacity && end <= m_capacity );
+
+    for( t_CKUINT i = start; i < end; i++ )
+    {
+        // zero
+        m_vector[i] = 0.0;
+    }
 }
 
 
@@ -784,10 +917,12 @@ t_CKUINT Chuck_Event::our_can_wait = 0;
 //-----------------------------------------------------------------------------
 void Chuck_Event::signal()
 {
+    m_queue_lock.acquire();
     if( !m_queue.empty() )
     {
         Chuck_VM_Shred * shred = m_queue.front();
         m_queue.pop();
+        m_queue_lock.release();
         Chuck_VM_Shreduler * shreduler = shred->vm_ref->shreduler();
         shred->event = NULL;
         shreduler->remove_blocked( shred );
@@ -796,6 +931,8 @@ void Chuck_Event::signal()
         t_CKTIME *& sp = (t_CKTIME *&)shred->reg->sp;
         push_( sp, shreduler->now_system );
     }
+    else
+        m_queue_lock.release();
 }
 
 
@@ -809,7 +946,7 @@ t_CKBOOL Chuck_Event::remove( Chuck_VM_Shred * shred )
 {
     std::queue<Chuck_VM_Shred *> temp;
     t_CKBOOL removed = FALSE;
-
+    m_queue_lock.acquire();
     while( !m_queue.empty() )
     {
         if( m_queue.front() != shred )
@@ -822,6 +959,7 @@ t_CKBOOL Chuck_Event::remove( Chuck_VM_Shred * shred )
     }
 
     m_queue = temp;
+    m_queue_lock.release();
     return removed;
 }
 
@@ -836,11 +974,16 @@ t_CKBOOL Chuck_Event::remove( Chuck_VM_Shred * shred )
 void Chuck_Event::queue_broadcast()
 {
     // TODO: handle multiple VM
+    m_queue_lock.acquire();
     if( !m_queue.empty() )
     {
         Chuck_VM_Shred * shred = m_queue.front();
+        m_queue_lock.release();
         shred->vm_ref->queue_event( this, 1 );
     }
+    else
+        m_queue_lock.release();
+
 }
 
 
@@ -852,10 +995,14 @@ void Chuck_Event::queue_broadcast()
 //-----------------------------------------------------------------------------
 void Chuck_Event::broadcast()
 {
+    m_queue_lock.acquire();
     while( !m_queue.empty() )
     {
+        m_queue_lock.release();
         this->signal();
+        m_queue_lock.acquire();
     }
+    m_queue_lock.release();
 }
 
 
@@ -874,7 +1021,7 @@ void Chuck_Event::wait( Chuck_VM_Shred * shred, Chuck_VM * vm )
     
     Chuck_DL_Return RETURN;
     f_mfun canwaitplease = (f_mfun)this->vtable->funcs[our_can_wait]->code->native_func;
-    canwaitplease( this, NULL, &RETURN );
+    canwaitplease( this, NULL, &RETURN, shred ); // TODO: check this is right shred
     // RETURN.v_int = 1;
 
     // see if we can wait
@@ -884,7 +1031,9 @@ void Chuck_Event::wait( Chuck_VM_Shred * shred, Chuck_VM * vm )
         shred->is_running = FALSE;
 
         // add to waiting list
+        m_queue_lock.acquire();
         m_queue.push( shred );
+        m_queue_lock.release();
 
         // add event to shred
         assert( shred->event == NULL );

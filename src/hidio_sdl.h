@@ -35,61 +35,18 @@
 #ifndef __HID_IO_H__
 #define __HID_IO_H__
 
-#ifdef __cplusplus
 #include "chuck_def.h"
 #include "util_buffers.h"
 #include "util_thread.h"
-#endif
+
+#include "util_hid.h"
 
 // forward reference
 struct PhyHidDevIn;
 struct PhyHidDevOut;
 
-//-----------------------------------------------------------------------------
-// definitions
-//-----------------------------------------------------------------------------
-struct HidMsg
-{
-    t_CKINT device_type; // device type
-    t_CKINT device_num;  // device number
-    t_CKINT type;        // message type
-    t_CKINT eid;         // element id
-    t_CKINT idata[4];    // int data
-    t_CKFLOAT fdata[4];  // float data
-    
-#ifdef __cplusplus
-    HidMsg()
-    { this->clear(); }
-
-    void clear()
-    {
-        memset( this, 0, sizeof(HidMsg) );
-    }
-#endif
-};
-
-
-/* device types */
-static const t_CKUINT CK_HID_DEV_NONE = 0;
-static const t_CKUINT CK_HID_DEV_JOYSTICK = 1;
-static const t_CKUINT CK_HID_DEV_MOUSE = 2;
-static const t_CKUINT CK_HID_DEV_KEYBOARD = 3;
-static const t_CKUINT CK_HID_DEV_COUNT = 4;
-
-/* message types */
-static const t_CKUINT CK_HID_JOYSTICK_AXIS = 0;
-static const t_CKUINT CK_HID_BUTTON_DOWN = 1;
-static const t_CKUINT CK_HID_BUTTON_UP = 2;
-static const t_CKUINT CK_HID_JOYSTICK_HAT = 3;
-static const t_CKUINT CK_HID_JOYSTICK_BALL = 4;
-static const t_CKUINT CK_HID_MOUSE_MOTION = 5;
-static const t_CKUINT CK_HID_MOUSE_WHEEL = 6;
-static const t_CKUINT CK_HID_MSG_COUNT = 7;
-
 /* constants */
 #define CK_MAX_HID_DEVICES 1024
-
-#ifdef __cplusplus
 
 //-----------------------------------------------------------------------------
 // name: struct HidOut
@@ -124,9 +81,6 @@ public:
     t_CKBOOL m_suppress_output;
 };
 
-
-
-
 //-----------------------------------------------------------------------------
 // name: class HidIn
 // desc: HID input
@@ -140,11 +94,13 @@ public:
 public:
     t_CKBOOL open( t_CKINT device_type, t_CKINT device_num );
     t_CKBOOL close();
+    t_CKBOOL read( t_CKINT type, t_CKINT num, HidMsg * msg );
+    t_CKBOOL send( const HidMsg * msg );
     t_CKBOOL good() { return m_valid; }
     t_CKINT  num() { return m_valid ? (t_CKINT)m_device_num : -1; }
 
 public:
-    void     set_suppress( t_CKBOOL print_or_not )
+    void set_suppress( t_CKBOOL print_or_not )
     { m_suppress_output = print_or_not; }
     t_CKBOOL get_suppress()
     { return m_suppress_output; }
@@ -152,6 +108,7 @@ public:
 public:
     t_CKBOOL empty();
     t_CKUINT recv( HidMsg * msg );
+    std::string name();
 
 public:
     PhyHidDevIn * phin;
@@ -163,18 +120,17 @@ public:
     t_CKBOOL m_suppress_output;
 };
 
-
-void probeHidIn();
-void probeHidOut();
-
-
 class HidInManager
 {
 public:
     static void init();
+    static void init_default_drivers();
     static void cleanup();
     static t_CKBOOL open( HidIn * hin, t_CKINT device_type, t_CKINT device_num );
     static t_CKBOOL close( HidIn * hin );
+    
+    static void probeHidIn();
+    static void probeHidOut();
 
 #ifndef __PLATFORM_WIN32__
     static void * cb_hid_input( void * );
@@ -196,8 +152,8 @@ protected:
 class HidOutManager
 {
 public:
-    static t_CKBOOL open( HidOut * mout, t_CKINT device_num );
-    static t_CKBOOL close( HidOut * mout );
+    static t_CKBOOL open( HidOut * hout, t_CKINT device_num );
+    static t_CKBOOL close( HidOut * hout );
 
 protected:
     HidOutManager();
@@ -205,8 +161,5 @@ protected:
 
     static std::vector<PhyHidDevOut *> the_phouts;
 };
-
-#endif
-
 
 #endif

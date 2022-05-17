@@ -1268,7 +1268,71 @@ t_CKBOOL emit_engine_emit_exp_binary( Chuck_Emitter * emit, a_Exp_Binary binary 
 
     t_CKBOOL left = FALSE;
     t_CKBOOL right = FALSE;
-
+    
+    // hack to allow && to terminate as soon as possible - spencer
+    // i.e. in ( 0 && f() ) the function f() will not be called
+    // (obviates need for boolean AND instruction)
+    if( binary->op == ae_op_and )
+    {
+        Chuck_Instr_Branch_Op * op;
+        
+        // push default result
+        emit->append( new Chuck_Instr_Reg_Push_Imm( 0 ) );
+        
+        left = emit_engine_emit_exp( emit, binary->lhs );
+        if( !left )
+            return FALSE;        
+        
+        // compare to 0; use default result if zero
+        emit->append( new Chuck_Instr_Reg_Push_Imm( 0 ) );
+        emit->append( op = new Chuck_Instr_Branch_Eq_int( 0 ) );
+        
+        // pop default result
+        emit->append( new Chuck_Instr_Reg_Pop_Word );
+        
+        // result of whole expression is now result of rhs
+        right = emit_engine_emit_exp( emit, binary->rhs );
+        if( !right )
+            return FALSE;
+        
+        // set branch location
+        op->set( emit->next_index() );
+        
+        return TRUE;
+    }
+    
+    // hack to allow || to terminate as soon as possible - spencer
+    // i.e. in ( 1 || f() ) the function f() will not be called
+    // (obviates need for boolean OR instruction)
+    else if( binary->op == ae_op_or )
+    {
+        Chuck_Instr_Branch_Op * op;
+        
+        // push default result
+        emit->append( new Chuck_Instr_Reg_Push_Imm( 1 ) );
+        
+        left = emit_engine_emit_exp( emit, binary->lhs );
+        if( !left )
+            return FALSE;        
+        
+        // compare to 0; use default result if non-zero
+        emit->append( new Chuck_Instr_Reg_Push_Imm( 0 ) );
+        emit->append( op = new Chuck_Instr_Branch_Neq_int( 0 ) );
+        
+        // pop default result
+        emit->append( new Chuck_Instr_Reg_Pop_Word );
+        
+        // result of whole expression is now result of rhs
+        right = emit_engine_emit_exp( emit, binary->rhs );
+        if( !right )
+            return FALSE;
+        
+        // set branch location
+        op->set( emit->next_index() );
+        
+        return TRUE;
+    }
+    
     // emit
     left = emit_engine_emit_exp( emit, binary->lhs );
     right = emit_engine_emit_exp( emit, binary->rhs );
@@ -1313,6 +1377,44 @@ t_CKBOOL emit_engine_emit_op( Chuck_Emitter * emit, ae_Operator op, a_Exp lhs, a
         {
             emit->append( instr = new Chuck_Instr_Add_double );
         }
+        // string + string
+        else if( isa( t_left, &t_string ) && isa( t_right, &t_string ) )
+        {
+            // concatenate
+            emit->append( instr = new Chuck_Instr_Add_string );
+        }
+        // left: string
+        else if( isa( t_left, &t_string ) )
+        {
+            // + int
+            if( isa( t_right, &t_int ) )
+                emit->append( instr = new Chuck_Instr_Add_string_int );
+            else if( isa( t_right, &t_float ) )
+                emit->append( instr = new Chuck_Instr_Add_string_float );
+            else
+            {
+                EM_error2( lhs->linepos,
+                    "(emit): internal error: unhandled op '%s' %s '%s'",
+                    t_left->c_name(), op2str( op ), t_right->c_name() );
+                return FALSE;
+            }
+        }
+        // right: string
+        else if( isa( t_right, &t_string ) )
+        {
+            // + int
+            if( isa( t_left, &t_int ) )
+                emit->append( instr = new Chuck_Instr_Add_int_string );
+            else if( isa( t_left, &t_float ) )
+                emit->append( instr = new Chuck_Instr_Add_float_string );
+            else
+            {
+                EM_error2( lhs->linepos,
+                    "(emit): internal error: unhandled op '%s' %s '%s'",
+                    t_left->c_name(), op2str( op ), t_right->c_name() );
+                return FALSE;
+            }
+        }
         else // other types
         {
             switch( left )
@@ -1336,6 +1438,28 @@ t_CKBOOL emit_engine_emit_op( Chuck_Emitter * emit, ae_Operator op, a_Exp lhs, a
             ( left == te_time && right == te_dur ) )
         {
             emit->append( instr = new Chuck_Instr_Add_double_Assign );
+        }
+        // string + string
+        else if( isa( t_left, &t_string ) && isa( t_right, &t_string ) )
+        {
+            // concatenate
+            emit->append( instr = new Chuck_Instr_Add_string_Assign );
+        }
+        // right: string
+        else if( isa( t_right, &t_string ) )
+        {
+            // + int
+            if( isa( t_left, &t_int ) )
+                emit->append( instr = new Chuck_Instr_Add_int_string_Assign );
+            else if( isa( t_left, &t_float ) )
+                emit->append( instr = new Chuck_Instr_Add_float_string_Assign );
+            else
+            {
+                EM_error2( lhs->linepos,
+                    "(emit): internal error: unhandled op '%s' %s '%s'",
+                    t_left->c_name(), op2str( op ), t_right->c_name() );
+                return FALSE;
+            }
         }
         else // other types
         {
@@ -1682,7 +1806,8 @@ t_CKBOOL emit_engine_emit_op( Chuck_Emitter * emit, ae_Operator op, a_Exp lhs, a
 
     // -------------------------------- bool -----------------------------------        
     case ae_op_eq:
-        if( isa( t_left, &t_string ) && isa( t_right, &t_string ) )
+        if( isa( t_left, &t_string ) && isa( t_right, &t_string ) 
+            && !isa( t_left, &t_null ) && !isa( t_right, &t_null ) ) // !null
             emit->append( instr = new Chuck_Instr_Op_string( op ) );
         else if( isa( t_left, &t_object ) && isa( t_right, &t_object ) )
             emit->append( instr = new Chuck_Instr_Eq_int );
@@ -2763,11 +2888,15 @@ t_CKBOOL emit_engine_emit_exp_dot_member( Chuck_Emitter * emit,
     else // static
     {
         // emit the type
-        emit->append( new Chuck_Instr_Reg_Push_Imm( (t_CKUINT)t_base ) );
+        // commented out so built-in static member variables don't have an 
+        // extra thing on the stack - spencer
+        //emit->append( new Chuck_Instr_Reg_Push_Imm( (t_CKUINT)t_base ) );
 
         // if is a func
         if( isfunc( member->self->type ) )
         {
+            // emit the type - spencer
+            emit->append( new Chuck_Instr_Reg_Push_Imm( (t_CKUINT)t_base ) );
             // get the func
             func = t_base->info->lookup_func( member->xid, FALSE );
             // make sure it's there
@@ -2791,6 +2920,8 @@ t_CKBOOL emit_engine_emit_exp_dot_member( Chuck_Emitter * emit,
             }
             else
             {
+                // emit the type - spencer
+                emit->append( new Chuck_Instr_Reg_Push_Imm( (t_CKUINT)t_base ) );
                 // find the offset for data
                 offset = value->offset;
                 // emit the member

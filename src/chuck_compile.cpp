@@ -174,7 +174,7 @@ void Chuck_Compiler::set_auto_depend( t_CKBOOL v )
 // name: go()
 // desc: parse, type-check, and emit a program
 //-----------------------------------------------------------------------------
-t_CKBOOL Chuck_Compiler::go( const string & filename, FILE * fd )
+t_CKBOOL Chuck_Compiler::go( const string & filename, FILE * fd, const char * str_src )
 {
     t_CKBOOL ret = TRUE;
     Chuck_Context * context = NULL;
@@ -183,13 +183,13 @@ t_CKBOOL Chuck_Compiler::go( const string & filename, FILE * fd )
     if( !m_auto_depend )
     {
         // normal
-        ret = this->do_normal( filename, fd );
+        ret = this->do_normal( filename, fd, str_src );
         return ret;
     }
     else // auto
     {
         // parse the code
-        if( !chuck_parse( filename.c_str(), fd ) )
+        if( !chuck_parse( filename.c_str(), fd, str_src ) )
             return FALSE;
 
         // make the context
@@ -365,13 +365,13 @@ t_CKBOOL Chuck_Compiler::do_all_except_classes( Chuck_Context * context )
 // name: do_normal()
 // desc: compile normally without auto-depend
 //-----------------------------------------------------------------------------
-t_CKBOOL Chuck_Compiler::do_normal( const string & filename, FILE * fd )
+t_CKBOOL Chuck_Compiler::do_normal( const string & filename, FILE * fd, const char * str_src )
 {
     t_CKBOOL ret = TRUE;
     Chuck_Context * context = NULL;
 
     // parse the code
-    if( !chuck_parse( filename.c_str(), fd ) )
+    if( !chuck_parse( filename.c_str(), fd, str_src ) )
         return FALSE;
 
     // make the context
@@ -482,16 +482,17 @@ t_CKBOOL load_module( Chuck_Env * env, f_ck_query query,
                       const char * name, const char * nspc )
 {
     Chuck_DLL * dll = NULL;
+    t_CKBOOL query_failed = FALSE;
     
     // load osc
     dll = new Chuck_DLL( name );
-    dll->load( query );
-    if( !dll->query() || !type_engine_add_dll( env, dll, nspc ) )
+    if( !dll->load( query ) || (query_failed = !dll->query()) || 
+        !type_engine_add_dll( env, dll, nspc ) )
     {
         fprintf( stderr, 
                  "[chuck]: internal error loading module '%s.%s'...\n", 
                  nspc, name );
-        if( !dll->query() )
+        if( query_failed )
             fprintf( stderr, "       %s\n", dll->last_error() );
 
         return FALSE;

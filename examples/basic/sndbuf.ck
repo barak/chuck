@@ -1,7 +1,11 @@
+// sound file
+"../data/snare.wav" => string filename;
+if( me.args() ) me.arg(0) => filename;
+
 // the patch 
 SndBuf buf => dac;
 // load the file
-"../data/snare.wav" => buf.read;
+filename => buf.read;
 
 // time loop
 while( true )

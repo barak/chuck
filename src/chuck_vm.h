@@ -129,6 +129,11 @@ public:
     t_CKBOOL need_this;
     // native
     t_CKUINT native_func;
+    // is ctor?
+    t_CKUINT native_func_type;
+
+    // native func types
+    enum { NATIVE_UNKNOWN, NATIVE_CTOR, NATIVE_DTOR, NATIVE_MFUN, NATIVE_SFUN };
 };
 
 
@@ -196,6 +201,7 @@ public:
 public: // id
     t_CKUINT xid;
     std::string name;
+    std::vector<std::string> args;
 
 public:
     Chuck_VM_Shred * prev;
@@ -486,7 +492,17 @@ struct Chuck_Msg
     t_CKUINT replyB;
     void * replyC;
 
+    std::vector<std::string> * args;
+
     Chuck_Msg() { memset( this, 0, sizeof(*this) ); }
+    ~Chuck_Msg() { SAFE_DELETE( args ); }
+    
+    void set( const std::vector<std::string> & vargs )
+    {
+        SAFE_DELETE(args);
+        args = new std::vector<std::string>;
+        (*args) = vargs;
+    }
 };
 
 
