@@ -34,4 +34,4 @@ override_dh_compress:
 	dh_compress -X.wav -X.ck
 
 execute_after_dh_fixperms:
-	find debian/chuck-data/usr/share/doc/chuck-data/examples/ -type f -exec chmod --changes 644 '{}' '+'
+	-find debian/chuck-data/usr/share/doc/chuck-data/examples/ -type f -exec chmod --changes 644 '{}' '+'

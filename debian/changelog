@@ -2,8 +2,9 @@ chuck (1.4.1.1-1) unstable; urgency=medium
 
   * New upstream version
   * Forward port patches (all but spelling errors have been upstreamed)
+  * Fail to fail if examples not found (as in CI test-build-any)
 
- -- Barak A. Pearlmutter <bap@debian.org>  Wed, 18 May 2022 17:31:49 +0100
+ -- Barak A. Pearlmutter <bap@debian.org>  Wed, 18 May 2022 18:59:38 +0100
 
 chuck (1.3.5.2-1) unstable; urgency=medium
 
