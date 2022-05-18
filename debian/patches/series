@@ -1,3 +1,4 @@
 cherry-pick.chuck-1.3.5.2-5-g6810807.fixed-warnings.patch
 cherry-pick.chuck-1.3.5.2-43-g6adcffa.fix-undefined-behavior-out-of-bounds-write.patch
 spelling-fixes.patch
+0004-negative-pointer.patch
