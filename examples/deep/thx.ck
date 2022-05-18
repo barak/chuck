@@ -1,8 +1,8 @@
-// THX emulatorPerry R. Cook, Jan. 8, 2007
+// THX emulator
 //   author: Perry R. Cook (Jan 8, 2007)
 // modified: Ge Wang (added parameters up top)
 
-// F-1,  B1b,   F1,  B2b,   F2,  B3b,   F3,  A5,   F4, A6
+// F-1, B1b,  F1,    B2b,   F2,    B3b,   F3,    A5,    F4,   A6
 [ 29.0, 87.5, 116.0, 175.0, 233.0, 350.0, 524.0, 880.0, 1048, 1760,
   29.0, 87.5, 116.0, 175.0, 233.0, 350.0, 524.0, 880.0, 1048, 1760,
   29.0, 87.5, 116.0, 175.0, 233.0, 350.0, 524.0, 880.0, 1048, 1760 
@@ -26,7 +26,7 @@ JCRev rl => dac.left;
 JCRev rr => dac.right;
 
 // reverb settings
-0.1 => rl.mix => rr.mix;
+0.025 => rl.mix => rr.mix;
 
 // variables
 0 => int i => int j;
@@ -35,13 +35,13 @@ JCRev rr => dac.right;
 for( 0 => i; i < 30; i++ )
 {
     // random freqs
-    Std.rand2f( 200.0, 800.0 ) => initials[i] => s[i].freq;
+    Math.random2f( 200.0, 800.0 ) => initials[i] => s[i].freq;
     // 10 sample updates
     ( targets[i] - initials[i] ) / sweep_steps => deltas[i];
     // initial gain
     0.1 => s[i].gain;
     // random
-    Std.rand2f( 0.0, 1.0 ) => gl[i].gain;
+    Math.random2f( 0.0, 1.0 ) => gl[i].gain;
     // panning
     1.0 - gl[i].gain() => gr[i].gain;
     // hook up

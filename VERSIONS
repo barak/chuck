@@ -1,3 +1,617 @@
+1.3.5.2
+---
+  - (added) default root path changed from /usr to /usr/local
+            (fixes issues in Mac OS X 10.11 "El Capitan")
+  - (added) new ChuGins
+            - FoldbackSaturator
+              by Ness Morris
+              Foldback Saturator for nasty distortion.
+            - WPDiodeLadder
+              by Owen Vallis
+              Diode ladder filter based on Will Pirkle's technical notes.
+            - WPKorg35
+              by Owen Vallis
+              Korg 35 low-pass filter based on Will Pirkle's technical notes.
+  - (fixed)(Win) missing DLL issue
+  - (fixed) me.dir() issues with Machine.add()-ed shreds
+  - (fixed) crash fixes for <<< >>> with null objects
+  - (fixed) stop ignoring midi clock in midi messages
+  - (fixed) crash fix for array => ugen
+  - (fixed) fix OscOut send failure for programs that also use OscIn
+
+1.3.5.1
+---
+  - (added) new ChuGins
+            - PowerADSR
+              by Eric Heep
+              Power function ADSR envelope.
+            - WinFuncEnv
+              by Eric Heep
+              Envelope built on window functions.
+  - (added) more aggressive optimizations for ARM platforms
+  - (fixed) SndBuf fixes
+  - (fixed) SerialIO fixes:
+            - newline handling
+            - full-duplex IO
+            - general lag issues
+
+1.3.5.0
+---
+  - (added) new functions in Std
+            - int Std.clamp(int v, int min, int max)
+              Return v constrained to [min, max]
+            - float Std.clampf(float v, float min, float max)
+              Return v constrained to [min, max]
+            - float Std.scalef(float v, float srcmin, float srcmax, 
+                               float dstmin, float dstmax)
+              Scale v to range [dstmin, dstmax]. v is assumed to have the range
+              [srcmin, srcmax]. 
+            - float Std.dbtolin(float x)
+              Convert x dB to linear value
+            - float Std.lintodb(float x)
+              Convert linear value x to dB
+  - (added) MidiIn.open(string)/MidiOut.open(string) will open devices matched 
+            by partial match if no full device-name match is found. 
+  - (added) examples/osc/osc_dump.ck example 
+  - (added) new static variables in ADSR
+            - .ATTACK, .DECAY, .SUSTAIN, .RELEASE, .DONE
+              values corresponding to current state, returned by ADSR.state()
+  - (added) full book/digital-artists examples
+  - (fixed) real-time audio hiccuping/underrun when loading files in SndBuf
+            - SndBuf .chunks now uses .chunks as buffer size for dynamic loading
+            - files are loaded .chunks samples at a time
+            - memory for the file is divided into buffers of .chunks samples
+            - chunk size defaults to 32768 samples
+  - (fixed) DLL issue on Win32 command line build
+  - (fixed) non-void functions implicitly return 0/null if no return statement
+  - (fixed) --probe crashes and other crashes related to error logging
+  - (fixed) include trailing slash in me.dir() and friends
+  - (fixed) fix me.path()/me.dir() for input paths with implicit .ck extension
+  - (fixed) better error messages for OscIn/OscOut
+  - (fixed) rare threading bug for OTF commands
+
+1.3.4.0
+---
+  - (added) chuck operator connects between arrays of ugens, multi-channel 
+            ugens, and mono unit ugens
+            ex. 
+                SinOsc s => Pan2 pan => Gain master[2] => dac;
+            persists stereo signal through master to dac. 
+            See examples/stereo/array.ck for example usage. 
+  - (added) new OSC support classes
+            - OscOut
+              Sends OSC messages
+                - .dest(string host, int port)
+                  set destination hostname or IP address and port
+                - .start(string addr)
+                  set target OSC address to addr
+                - .add(int i)
+                - .add(float f)
+                - .add(string s)
+                  add argument to the message
+                - .send()
+                  send message
+            - OscIn extends Event
+              Receives OSC messages
+                - int .port
+                  port number to listen to
+                - .addAddress(string addr)
+                  listen for OSC addresses matching addr
+                - .removeAddress(string addr)
+                  stop listening for OSC addresses matching addr
+                - .listenAll()
+                  listen for all incoming OSC messages on port
+                - int .recv(OscMsg msg)
+                  retrieve pending OSC messages into msg. Returns 1 if a 
+                  message was available, 0 otherwise
+            - OscMsg
+              Encapsulates a received OSC message
+                - string .address
+                  the OSC address this message was sent to
+                - string .typetag
+                  the OSC typetag of this message
+                - int .getInt(int i)
+                - float .getFloat(int i)
+                - string .getString(int i)
+                  retrieve the argument at position i of the given type
+            See examples/osc/ for examples on usage. 
+            OscRecv and OscSend are still supported for backwards compatibility,
+            but new code should use OscIn and OscOut. 
+  - (added) new SerialIO functions
+            - .writeByte(int b)
+              write byte b to the serial stream
+            - .writeBytes(int b[])
+              write array of bytes b to the serial stream
+  - (added) new chugins (from Joel Matthys)
+            - PitchTrack
+              Monophonic autocorrelation pitch tracker, based on [helmholtz~] by
+              Katja, http://www.katjaas.nl/helmholtz/helmholtz.html
+            - GVerb
+              Good quality stereo reverb with adjustable parameters
+            - Mesh2D
+              STK instrument that simulates a rectilinear, 2-dimensional digital
+              waveguide mesh structure. Basically sounds like striking a metal 
+              plate.
+            - Spectacle
+              FFT-based spectral delay and EQ
+            - Elliptic
+              Elliptic filter, capable of very steep slopes or interesting 
+              harmonic ripples
+  - (fixed) ChucK Shell fixes
+
+1.3.3.0
+---
+  - (added) PulseAudio support (via RtAudio)  
+  - (fixed) relative path resolution for me.path() and me.dir()
+  - (fixed) C:/ style pathnames do not trigger spurious argument processing
+  - (fixed) MidiFileIn on Windows/Linux
+
+1.3.2.0
+---
+  - (added) --clear.vm flag
+            instructs remote VM to remove all shreds and clear public user types
+  - (added) Std.ftoi(float f)
+            Function for converting float to int
+  - (added) ASCII char literals - 'c' converted to int with ASCII value
+  - (added) book/digital-artists example programs for forthcoming book:
+            "Programming for Musicians and Digital Artists" (Manning 
+            Publications)
+            (very special thanks to Mark Morris and Bruce Lott for sample
+            production)
+  - (added) new functions
+            - me.path()
+              equivalent to me.sourcePath()
+            - me.dir()
+              equivalent to me.sourceDir()
+            - me.dir(int N)
+              return Nth-level parent of source directory
+            - Shred.fromId(int id)
+              return Shred object corresponding to specified id
+  - (added) new functions for string objects
+            - .charAt(int index)
+              return character of string at index
+            - .setCharAt(int index, int ch)
+              set character of string at index to ch
+            - .substring(int pos)
+              return new string with characters from pos to end of string
+            - .substring(int pos, int len)
+              return new string with characters from pos of length len
+            - .insert(int pos, string str)
+              insert str at pos
+            - .erase(int pos, int len)
+              remove len characters from string, beginning at pos
+            - .replace(int pos, string str)
+              replace characters of string at pos with str
+            - .replace(int pos, int len, string str)
+              replace len characters of string with str, starting at pos
+            - .find(int ch)
+              search for character ch in string, return index of first instance
+            - .find(int ch, int pos)
+              search for character ch in string, return index of first instance
+              at or after index pos
+            - .find(string str)
+              search for string str in string, return index of first instance
+            - .find(string str, int pos)
+              search for string str in string, return index of first instance at
+              or after index pos
+            - .rfind(int ch)
+              search for character ch in string, return index of last instance
+            - .rfind(int ch, int pos)
+              search for character ch in string, return index of last instance
+              at or before index pos
+            - .rfind(string str)
+              search for string str in string, return index of last instance
+            - .rfind(string str, int pos)
+              search for string str in string, return index of last instance at
+              or before index pos
+  - (added) MidiFileIn class
+            Class for parsing + handling MIDI input from a file.
+            See examples/midi/playmidi.ck for example usage. 
+            - .open(string filename)
+              Open file at specified path
+            - .read(MidiMsg inMsg)
+              Get next message in first track
+            - .read(MidiMsg inMsg, int trackNo)
+              Get next message in trackNo
+  - (added) SerialIO class (extends IO)
+            Class for communicating with serial devices, e.g Arduino.
+            See examples/serial/ for example usage. 
+            - .list() (static)
+              return array of strings corresponding
+              to available serial IO devices
+            - .open(int i, int baud, int mode)
+              open device with index i. baud can be a constant specifying
+              which standard serial baud rate is used (e.g. 
+              SerialIO.B9600). mode can be SerialIO.ASCII or 
+              SerialIO.BINARY to specify ASCII or binary interpretation
+              of serial data. 
+            - .onLine()
+            - .onByte()
+            - .onBytes(int num)
+            - .onInts(int num)
+            - .onFloats(int num)
+              chuck to now to wait for that type of data to arrive (in the
+              specified quantity). E.g. serial.onLine() => now; will wait 
+              for 1 newline-terminated string to arrive from the serial
+              device. 
+            - .getLine()
+              .getByte()
+              retrieve data requested as above as string/byte
+            - .getBytes()
+              .getInts()
+              .getFloats()
+              retrieve data requested using the onLine()/etc. above. as array
+              of data type
+            - .baudRate()
+              .baudRate(int baud)
+              get/set baud rate
+            - SerialIO.B2400
+              SerialIO.B4800
+              SerialIO.B9600
+              SerialIO.B19200
+              SerialIO.B38400
+              SerialIO.B7200
+              SerialIO.B14400
+              SerialIO.B28800
+              SerialIO.B57600
+              SerialIO.B115200
+              SerialIO.B230400
+              available baud rates
+  - (added) Regex class
+            Class for regular expression matching and replacing in strings. 
+            Regex style is POSIX-extended. 
+            - RegEx.match(string pattern, string str)
+              Return true if match for pattern is found in str, false otherwise
+            - RegEx.match(string pattern, string str, string matches[])
+              Same as above, but return the match and sub-patterns in matches
+              matches[0] is the entire matched pattern, matches[1] is the first 
+              sub-pattern (if any), and so on. 
+            - RegEx.replace(string pat, string repl, string str)
+              Replace the first instance of pat in str with repl, returning the
+              result. 
+            - RegEx.replaceAll(string pat, string repl, string str)
+              Replace all instances of pat in str with repl, returning the
+              result. 
+  - (fixed) --adc:<N> now works as expected
+  - (fixed) FileIO => string bug
+  - (fixed) LiSa.sync/LiSa.track now works when set to 
+            1 (playhead follows input, normalized/rectified to [0,1])
+            2 (playhead follows input, non-normalized/rectified)
+            affects examples/special/LiSa-track*.ck
+  - (fixed) LiSa interpolation bug
+  - (fixed) .clear() function of arrays properly removes all items of the array
+  - (fixed) != properly handles comparison between a string and literal null
+  - (fixed) multichannel refcounting bug
+  - (fixed) WvOut performs IO writes on separate thread, significantly 
+            minimizing audio underruns
+  - (fixed) crash in Chorus destructor
+  - (fixed) crash in Mandolin destructor
+  - (fixed) ADSR correctly initialized in "DONE" state
+
+1.3.1.3
+---
+  - (fixed) number in --dac:<N> flag is no longer off by one (this bug
+            was introduced in 1.3.1.2)
+
+1.3.1.2
+---
+  - (added) chuck now automatically detects and uses next highest
+            or closest (in that order) system sample rate in   
+            the case where the default is not available; if a sample
+            rate requested via --srate: is not available, an error
+            will be encountered with a message.
+  - (fixed) base parent object is correctly accounted for by 
+            new shred when sporking member functions
+            (thanks to Michael Heuer for reporting and 
+             narrowing this down)
+  - (fixed) popping local variables from the operand stack in cases
+            where the datatype size is larger than int-size; this
+            is a bug introduced with 64-bit in 1.3.1.0, and exhibited
+            on 32-bit systems only.  (thanks to Simon Steptoe 
+            reporting and narrowing this down)
+  - (fixed) opening real-time audio with 0 input channels should
+            now work, once again.
+
+1.3.1.1
+---
+  - (fixed) critical bug since 1.3 where member function calls in
+            loop conditionals caused crashes when the loop body
+            contained local Object's to be released;  this directly
+            affects using OSC, MIDI, HID, which commonly employ 
+            syntax like: 'while( e.nextMesg() ) { ... }';
+            -- this is most likely the cause of the OSC-related issues
+            we've been seeing (thanks to Graham Coleman for tracking 
+            down and narrowingthe issue!)
+  - (fixed) strengthened synchronization in OSC between internal
+            listener thread and chuck VM code
+  - (fixed) memory bug in OscRecv deallocation
+  - (fixed) Machine.add( ... ) on windows now supports both '\\'
+            and '/' in aboslute paths (previously only '\\').
+            (thanks to Graham Coleman for finding this!)
+
+---
+1.3.1.0
+  - (added) 64-bit support for all platforms (OS X, Linux, Windows)
+            many thanks to Paul Brossier, Stephen Sinclair, 
+            Robin Haberkorn, Michael Wilson, Kassen, and 
+            Fernando Lopez-Lezcano, and chuck-users!
+  - (added) Math.random(), random2(), randomf(), random2f(), srandom(),
+            and Math.RANDOM_MAX;  NOTE: randomf() returns range 0.0 to 1.0
+            these use the much better random() stdlib functions
+            the existing Std.rand*() and Std.srand() is still
+            be available for compatibility (these to be deprecated
+            in the future; please start using Math.random*())
+            * (NOTE: on windows, Math.random() still uses the same
+              generator as Std.rand() -- we hope to improve this in
+              a future version!)
+            * (NOTE: also see removed below)
+  - (added) chuck --version | chuck --about now print architecture
+            (32-bit or 64-bit)
+  - (added) Machine.intsize() will return int width in bits (e.g., 32 or 64)
+  - (added) examples/array/array_mmixed.ck to verify mixed-index
+            fix (see below), based on Robin Haberkorn's test code
+  - (fixed) multi-dimensional arrays now correctly support mix-typed
+            indices (e.g., strings & ints) (thanks Robin Haberkorn)
+  - (fixed) constants in Math library now cleaner, they include:
+            * Math.PI
+            * Math.TWO_PI
+            * Math.e or Math.E
+            * Math.i or Math.I or Math.j or Math.J // as 'complex' type
+            * Math.INFINITY
+            * Math.RANDOM_MAX
+            * Math.INT_MAX // currently, differs on 32-bit and 64-bit systems
+            * Math.FLOAT_MAX
+            * Math.FLOAT_MIN_MAG // minimum positive float value
+  - (fixed) Chubgraph.gain(), .last(), and .op()
+  - (fixed) error message printing system for variable arguments
+  - (fixed) StifKarp.sustain now works properly
+  - (fixed) all examples now use Math.random*() instead of Std.rand*()
+  - (removed) Math.rand*() removed --> please use Math.random*();
+            (see 'added' above; Std.rand*() still there, but to be 
+            deprecated; please use Math.random*() moving forward)
+
+---
+1.3.0.2
+  - (fixed) string literal reference counting
+  - (fixed) chuck to function call reference counting
+
+---
+1.3.0.1
+  - (fixed) WvOut no longer only record silence
+  - (fixed) WvOut.closeFile() does not cause the VM to hang
+
+---
+1.3.0.0
+  - (added) Chugins: dynamically loaded compiled classes/ugens
+            see http://chuck.stanford.edu/extend/ for examples. 
+  - (added) new command line options
+            --chugin-load:{auto|off}     disable/enable chugin loading
+            -gFILE/--chugin:FILE         load chugin at FILE
+            -GPATH/--chugin-path:PATH    load all chugins in directory PATH
+            --dac:NAME                   use dac with name matching NAME
+            --adc:NAME                   use adc with name matching NAME
+  - (added) Chubgraphs: create ugens by compositing existing UGens
+            see examples/extend/chubgraph.ck
+  - (added) ChuGens: create ugen by implementing audio-rate processing in ChucK
+            see examples/extend/chugen.ck
+  - (added) new ugens:
+            - WvOut2: stereo uncompressed audio file output
+            - SndBuf2: stereo uncompressed audio file input
+  - (added) new functions:
+            - me.sourcePath()
+                returns file path of source file corresponding to this shred
+            - me.sourceDir()
+                returns directory of source file corresponding to this shred
+            - MidiIn.open(string name)
+                open MIDI input matching name
+            - MidiOut.open(string name)
+                open MIDI output matching name
+            - Hid.open(string name)
+                open HID matching name
+  - (added) experimental OS X multitouch HID
+  - (fixed) real-time audio on Mac OS X 10.7 (Lion), 10.8 (Mountain Lion)
+  - (fixed) IO.newline() now flushes "chout"
+  - (fixed) "chout" and "cherr" now invoke member functions correctly
+  - (fixed) no for statement conditional handled correctly
+  - (fixed) STK WvOut correctly handles case when file open fails
+  - (fixed) << operator for arrays now correctly references counts
+  - (fixed) crashing bug when receiving external events at a high-rate
+            ("the OSC bug")
+  - (fixed) scope closing correctly dereferences local objects
+  - (fixed) crash when exiting shreds with connected ugens
+  - (fixed) deallocation of "empty" Shred object no longer crashes
+  - (fixed) crash when HID events are sent to an exited shred
+  - (fixed) destructors for built-in objects are executed
+
+---
+1.2.1.3
+  - (added) initial/experimental support for file I/O (finally)
+            (thanks to Andrew Schran, Martin Robinson)
+  - (added) new class: IO, FileIO
+            see examples/io/:
+                read-int.ck
+                read-str.ck
+                readline.ck - using readline
+                write.ck - write using <=
+                write2.ck - write using .write()
+  - (added) IO input via =>
+  - (added) IO output via <= (the "back-chuck")
+            example: fio <= x <= " " <= y <= "\n";
+  - (added) new syntax for checking if/while/for/until with IO objects
+            e.g., while( fio => i ) { ... }
+  - (added) StdOut/StdErr objects:
+            "chout" (pronounced "shout")
+            "cherr" (pronounced "Cher")
+  - (added) Hid.open() now can accept a device name parameter
+  - (added) analysis/tracking examples are now back
+            (thanks to Kassen for looking into this)
+  - (fixed) calling overloaded functions with most specific match
+            e.g., Specific extends General:
+            fun void foo( General obj ) { }
+            fun void foo( Specific obj ) { }
+            foo( obj $ Specific ); // should call foo( Specific )
+            (thanks to Robert Poor for reporting, to Kassen, David Rush,
+            Michael Heuer, and Andrew C. Smith for follow-up)
+  - (fixed) STK instruments control changes reports range issues as
+            "control value exceeds nominal range"; previously printed
+            hard-coded values that were potentially misleading
+            (thanks to Kassen for reporting)
+  - (fixed) all oscillators now produce audio for negative frequencies
+            (thanks to Luke Dahl)
+  - (fixed) incorrect UGen disconnect (thanks Kassen for reporting)
+  - (fixed) type checker now validates if/while/for/until types
+  - (fixed) linux compilation (for gcc 4.x)
+  - (fixed) complilation on OS X Snow Leopard
+
+
+---
+1.2.1.2
+  - (added) dynamic, resizable arrays
+                .size( int ) resizes array; .size() returns current size()
+                << operator appends new elements into array
+                .popBack() pops the last element of the array, reducing size by 1
+                .clear() zero's out elements of the array
+            (see examples/array/
+                array_dyanmic.ck
+                array_resize.ck)
+  - (added) new UAna: FeatureCollector
+            turns UAna input into a single feature vector, upon .upchuck()
+            new UAna: Flip
+            turns audio samples into frames in the UAna domain
+            new UAna: pilF
+            turns UAna frames into audio samples, via overlap add
+            new UAna: AutoCorr
+            computes the autocorrelation of UAna input
+            new UAna: XCorr
+            computes the cross correlation of the first two UAna input
+  - (added) UGen.isConnectedTo( Ugen )  // is connected to another ugen?
+  - (added) UAna.isUpConnectedTo( UAna )  // is connected to another uana via =^?
+  - (added) int Shred.done()  // is the shred done?
+            int Shred.running()  // is the shred running?
+  - (added) int Math.ensurePow2( int )
+  - (added) Math.INFINITY, Math.FLOAT_MAX, Math.FLOAT_MIN_MAG, Math.INT_MAX
+  - (added) TriOsc.width(), PulseOsc.width(), SawOsc.width(), SqrOsc.width()
+  - (added) Std.system(string) is now disabled by default, to enable: specify
+            the --caution-to-the-wind command line flag, for example:
+                %> chuck --caution-to-the-wind --loop
+  - (removed) SqrOsc.width( float ), width is always .5
+  - (fixed) it's now (again) possible to multiply connect
+            two UGen's
+  - (fixed) OS X only: sudden-motion-sensor HID no longer 
+            introduces audio dropouts below peak CPU usage
+            due to added centralized polling;
+            added static Hid.globalPollRate( dur ) to control
+            the central SMS polling's rate
+  - (fixed) Windows only: implementation of array via STL vector::reserve()
+            has been replaced with a more compatible approach (see chuck_oo.cpp)
+  - (fixed) dac amplitude no longer halved!
+            NOTE: this increases the gain from before by
+            a factor of 2, or roughly 6 dB!!  BEWARE!!
+  - (fixed) corrected order of shred/ugen dealloc in VM destructor,
+            preventing a potential crash during shutdown
+  - (fixed) UAna can now upchuck() at now==0
+  - (fixed) STK Chorus UGen now has reasonable defaults
+            .max( dur, float ) for initializing to delay/depth limits
+            .baseDelay( dur ) sets current base delay
+  - (fixed) dur +=> now no longer crashes
+  - (fixed) ADSR now returns attackTime, decayTime, and releaseTime that corresponds
+            to the duration-based setting functions (internally multiplied by SR)
+            (thanks Eduard)
+  - (fixed) STK Mandolin no longer plays without explicit noteOn
+  - (fixed) unsporked Shred instances now given id == 0 (thanks Kassen)
+  - (fixed) typos in ugen_xxx.cpp and chuck-specific rtaudio.cpp (/moudi)
+
+
+---
+1.2.1.1
+  - (fixed) ctrl-c no longer causes crash on shutdown
+            (was due to memory deallocation bug)
+  - (fixed) incorrect code generation for multiple expressions in 3rd clause 
+            of for loops (thanks to Eduard for tracking!)
+  - (fixed) Envelope now is able to ramp down (contributed by Kassen, Dr. Spankenstein, 
+            kijjaz, and others on electro-music!)
+            
+
+---
+1.2.1.0 : codename spectral
+  - (added) Unit Analyzers (UAna: prounced U-Wanna, plural UAnae)
+              (primary creators: Rebecca and Ge)
+            provides support for spectral processing, 
+              information retrieval, generalized + precise audio analysis
+
+  - (added) new datatypes:
+            ---------
+            complex: (real,imaginary)
+                 example: #(3,4) is complex literal (3,4)
+                 example: #(3,4) => complex value;
+                          access components via value.re and value.im
+                 used by UAnae
+
+            polar: (modulus, phase)
+                 example: %(.5, pi/4) is magnitude .5 and phase pi/4
+                 example: %(.5, pi/4) => polar bear;
+                          access components via bear.mag and bear.phase
+                 used by UAnae
+            ----------
+            example: can cast between complex and polar via standard $ casting
+
+  - (added) new UAna's:
+            ----------
+            (authors: Rebecca and Ge)
+            FFT: Fast Fourier Transform
+                 input: from UGen (manually input float vector)
+                 output: complex spectrum (.cval()/.cvals())
+                         magnitude spectrum (.cval()/.fvals())
+                 (see examples/analysis/)
+            IFFT: Inverse FFT
+                 input: UAna/Blob complex vector (spectrum)
+                 output: to UGen (as samples)
+                 (see examples/analysis/)
+            Centroid: Centroid feature extractor
+                 input: UAna/Blob float vector (mag spectrum)
+                 output: single centroid value per frame
+                 (see examples/analysis/features/)
+            Flux: Flux feature extractor
+                 input: UAna/Blob float vector (mag spectrum)
+                 output: single flux value between current and previous frame
+                 (see examples/analysis/features/)
+            RMS: RMS feature extractor
+                 input: UAna/Blob float vector (mag spectrum)
+                 output: single RMS value of frame
+                 (see examples/analysis/features/)
+            RollOff: RollOff feature extractor
+                 input: UAna/Blob float vector (mag spectrum)
+                        percentage threshold
+                 output: single RollOff value of frame
+                 (see examples/analysis/features/)
+            ----------
+
+  - (added) capability to externally abort "infinite loop" shreds
+            (this deals with hanging shreds due to potentially
+            infinite loops that don't advance time)
+  - (added) OTF command: chuck --abort.shred sends network OTF
+            to server to remove current shred if there is one
+  - (added) default .toString() method to all Object's
+  - (added) adding an Object to string will first cast object to string;
+            then add the two
+  - (added) LiSa.duration() get method, and .voiceGain() set/get
+            (Dan Trueman)
+  - (added) alternate line comment: <-- same as //
+            example:
+                 SinOsc s => dac;  <-- here is a comment
+  - (fixed) NullPointerException when instantiating array of objects
+            containing arrays of objects
+                 (thanks to chuck-users!!)
+  - (fixed) Machine.remove() on parent shred id no longer crashes
+  - (fixed) Machine.remove() on 'me' now works correctly
+  - (fixed) rounding when writing files via WvOut
+                 (thanks to Chris Chafe for discovering and reporting this)
+  - (changed) default frequencies (220/440) added for various STK instruments
+
+
+(there is no version 1.2.0.9!)
+---
+
 ---
 1.2.0.8
   - (added) command line argument support

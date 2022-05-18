@@ -1,32 +1,36 @@
 ---
 ChucK is originated by:
-  Ge Wang (gewang@cs.princeton.edu)
-  Perry R. Cook (prc@cs.princeton.edu)
-
-Lead Design:
   Ge Wang
-  Perry Cook
+  Perry R. Cook
+
+Chief Architect and Design:
+  Ge Wang
 
 Developers:
-  Ge Wang (Lead)
-  Perry Cook
-  Ananya Misra (amisra@cs.princeton.edu)
-  Philip Davidson (philipd@alumni.princeton.edu)
-  Ari Lazier (alazier@cs.princeton.edu)
-  Spencer Salazar (ssalazar@cs.princeton.edu)
+  Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
+  Perry Cook (prc@cs.princeton.edu)
+  Spencer Salazar (spencer@ccrma.stanford.edu)
   Rebecca Fiebrink (fiebrink@cs.princeton.edu)
+  Ananya Misra (amisra@cs.princeton.edu)
+  Ari Lazier (alazier@cs.princeton.edu)
+  Philip Davidson (philipd@alumni.princeton.edu)
   Dan Trueman (dan@music.princeton.edu)
 
 Lead Test:
+  Ge Wang
+  Spencer Salazar
   Philip Davidson
   Ajay Kapur
-  Ge Wang
+
+Sporksperson, ChucK Forums Moderator, ChucKian Sherpa:
+  Kassen Oud
 
 Documentation:
   Adam Tindale
   Philip Davidson
   Ananya Misra
   Spencer Salazar
+  Rebecca Fiebrink
   Ge Wang
 
 (See also the file THANKS and README)
@@ -34,7 +38,10 @@ Documentation:
 ---
 ChucK home page:
     http://chuck.cs.princeton.edu/
+    http://chuck.stanford.edu/
 
 Princeton Sound Lab:
     http://soundlab.cs.princeton.edu/
 
+CCRMA:
+    http://ccrma.stanford.edu/

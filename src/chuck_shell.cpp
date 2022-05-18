@@ -1,38 +1,38 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // file: chuck_shell.cpp
-// desc: ...
+// desc: chuck shell implementation
 //
-// author: Spencer Salazar (ssalazar@princeton.edu)
+// author: Spencer Salazar (spencer@ccrma.stanford.edu)
 // date: Autumn 2005
 //-----------------------------------------------------------------------------
-
 #include "chuck_shell.h"
 #include "chuck_otf.h"
 #include "util_network.h"
+#include "util_string.h"
 
 #include <stdio.h>
 #include <errno.h>
@@ -161,6 +161,31 @@ void tokenize_string( string str, vector< string > & tokens)
         tokens.push_back( string( str, j, i - j ) );
     }
 }
+
+//-----------------------------------------------------------------------------
+// name: win32_tmpnam()
+// desc: replacement for broken tmpnam() on Windows Vista + 7
+// file_path should be at least MAX_PATH characters. 
+//-----------------------------------------------------------------------------
+#ifdef __PLATFORM_WIN32__
+
+#include <windows.h>
+
+int win32_tmpnam(char *file_path)
+{
+    char tmp_path[MAX_PATH];
+    
+    if(GetTempPath(256, tmp_path) == 0)
+        return 0;
+    
+    if(GetTempFileName(tmp_path, "cksh", 0, file_path) == 0)
+        return 0;
+
+    return 1;
+}
+
+#endif
+
 
 //-----------------------------------------------------------------------------
 // name: shell_cb
@@ -583,7 +608,7 @@ void Chuck_Shell::continue_code( string & in )
 void Chuck_Shell::do_code( string & code, string & out, string command )
 {
     // open a temporary file
-#if defined(__LINUX_ALSA__) || defined(__LINUX_OSS__) || defined(__LINUX_JACK__)
+#if defined(__PLATFORM_LINUX__) || defined(__MACOSX_CORE__)
     char tmp_dir[] = "/tmp";
     char * tmp_filepath = new char [32];
     strncpy( tmp_filepath, "/tmp/chuck_file.XXXXXX", 32 );
@@ -605,14 +630,18 @@ void Chuck_Shell::do_code( string & code, string & out, string command )
         return;
     }
 #else
-    char * tmp_filepath = tmpnam( NULL );
-    if( tmp_filepath == NULL )
+    char tmp_filepath1[MAX_PATH];
+    win32_tmpnam(tmp_filepath1);
+
+    if( tmp_filepath1 == NULL )
     {
         out += string( "shell: error: unable to generate tmpfile name\n" );
         prompt = variables["COMMAND_PROMPT"];
         return;
     }
     
+    string tmp_filepath_stl = normalize_directory_separator(string(tmp_filepath1));
+    const char *tmp_filepath = tmp_filepath_stl.c_str();
     FILE * tmp_file = fopen( tmp_filepath, "w" );
     if( tmp_file == NULL )
     {
@@ -639,7 +668,7 @@ void Chuck_Shell::do_code( string & code, string & out, string command )
     DeleteFile( tmp_filepath );
 #endif // __PLATFORM_WIN32__
 
-#if defined(__LINUX_ALSA__) || defined(__LINUX_OSS__) || defined(__LINUX_JACK__)
+#if defined(__PLATFORM_LINUX__)
     delete[] tmp_filepath;
 #endif
 
@@ -709,19 +738,21 @@ t_CKBOOL Chuck_Shell_Network_VM::add_shred( const vector< string > & files,
     t_CKINT i = 0;
     t_CKBOOL return_val;
     vector<string>::size_type j, str_len, vec_len = files.size() + 1;
-    char ** argv = new char * [ vec_len ];
+    const char ** argv = new const char * [ vec_len ];
     
     /* prepare an argument vector to submit to otf_send_cmd */
     /* first, specify an add command */
-    argv[0] = new char [2];
-    strncpy( argv[0], "+", 2 );
+    char * argv0 = new char [2];
+    strncpy( argv0, "+", 2 );
+    argv[0] = argv0;
     
     /* copy file paths into argv */
     for( j = 1; j < vec_len; j++ )
     {
         str_len = files[j - 1].size() + 1;
-        argv[j] = new char [str_len];
-        strncpy( argv[j], files[j - 1].c_str(), str_len );
+        char * argvj = new char [str_len];
+        strncpy( argvj, files[j - 1].c_str(), str_len );
+        argv[j] = argvj;
     }
     
     /* send the command */
@@ -735,7 +766,11 @@ t_CKBOOL Chuck_Shell_Network_VM::add_shred( const vector< string > & files,
 
     /* clean up heap data */
     for( j = 0; j < vec_len; j++ )
-        delete[] argv[j];
+    {
+        // TODO: verify this is alright
+        char * arg = (char *)argv[j];
+        delete[] arg;
+    }
     delete[] argv;
     
     return return_val;
@@ -751,19 +786,21 @@ t_CKBOOL Chuck_Shell_Network_VM::remove_shred( const vector< string > & ids,
     t_CKINT i = 0;
     t_CKBOOL return_val;
     vector<string>::size_type j, str_len, vec_len = ids.size() + 1;
-    char ** argv = new char * [ vec_len ];
+    const char ** argv = new const char * [ vec_len ];
     
     /* prepare an argument vector to submit to otf_send_cmd */
     /* first, specify an add command */
-    argv[0] = new char [2];
-    strncpy( argv[0], "-", 2 );
+    char * argv0 = new char [2];
+    strncpy( argv0, "-", 2 );
+    argv[0] = argv0;
     
     /* copy ids into argv */
     for( j = 1; j < vec_len; j++ )
     {
         str_len = ids[j - 1].size() + 1;
-        argv[j] = new char [str_len];
-        strncpy( argv[j], ids[j - 1].c_str(), str_len );
+        char * argvj = new char [str_len];
+        strncpy( argvj, ids[j - 1].c_str(), str_len );
+        argv[j] = argvj;
     }
     
     /* send the command */
@@ -777,7 +814,11 @@ t_CKBOOL Chuck_Shell_Network_VM::remove_shred( const vector< string > & ids,
 
     /* clean up heap data */
     for( j = 0; j < vec_len; j++ )
-        delete[] argv[j];
+    {
+        // TODO: verify this is ok
+        char * arg = (char *)argv[j];
+        delete[] arg;
+    }
     delete[] argv;
     
     return return_val;
@@ -791,9 +832,8 @@ t_CKBOOL Chuck_Shell_Network_VM::remove_all( string & out )
 {
     t_CKBOOL return_val = TRUE;
     t_CKINT j = 0;
-    char ** argv = new char *;
-    argv[0] = "--removeall";
-    if( !otf_send_cmd( 1, argv, j, hostname.c_str(), port ) )
+    const char * argv = "--removeall";
+    if( !otf_send_cmd( 1, &argv, j, hostname.c_str(), port ) )
     {
         out += "removeall: error: command failed\n";
         return_val = FALSE;
@@ -810,9 +850,8 @@ t_CKBOOL Chuck_Shell_Network_VM::remove_last( string & out )
 {
     t_CKBOOL return_val = TRUE;
     t_CKINT j = 0;
-    char ** argv = new char *;
-    argv[0] = "--";
-    if( !otf_send_cmd( 1, argv, j, hostname.c_str(), port ) )
+    const char * argv = "--";
+    if( !otf_send_cmd( 1, &argv, j, hostname.c_str(), port ) )
     {
         out += "removelast: error: command failed\n";
         return_val = FALSE;
@@ -826,7 +865,7 @@ t_CKBOOL Chuck_Shell_Network_VM::remove_last( string & out )
 // desc: ...
 //-----------------------------------------------------------------------------
 t_CKBOOL Chuck_Shell_Network_VM::replace_shred( const vector< string > &vec,
-                                        string & out )
+                                                string & out )
 {
     if( vec.size() < 2 )
     {
@@ -837,7 +876,7 @@ t_CKBOOL Chuck_Shell_Network_VM::replace_shred( const vector< string > &vec,
     t_CKINT i = 0;
     t_CKBOOL return_val;
     vector<string>::size_type j, str_len, vec_len = vec.size() + 1;
-    char ** argv = new char * [ vec_len ];
+    const char ** argv = new const char * [ vec_len ];
     
     /* prepare an argument vector to submit to otf_send_cmd */
     /* first, specify an add command */
@@ -847,8 +886,9 @@ t_CKBOOL Chuck_Shell_Network_VM::replace_shred( const vector< string > &vec,
     for( j = 1; j < vec_len; j++ )
     {
         str_len = vec[j - 1].size() + 1;
-        argv[j] = new char [str_len];
-        strncpy( argv[j], vec[j - 1].c_str(), str_len );
+        char * argvj = new char [str_len];
+        strncpy( argvj, vec[j - 1].c_str(), str_len );
+        argv[j] = argvj;
     }
     
     /* send the command */
@@ -867,9 +907,13 @@ t_CKBOOL Chuck_Shell_Network_VM::replace_shred( const vector< string > &vec,
         return FALSE;
     }
     
-/* clean up heap data */
+    /* clean up heap data */
     for( j = 1; j < vec_len; j++ )
-        delete[] argv[j];
+    {
+        // TODO: verify this is ok
+        char * arg = (char *)argv[j];
+        delete[] arg;
+    }
     delete[] argv;
     
     return return_val;
@@ -881,21 +925,17 @@ t_CKBOOL Chuck_Shell_Network_VM::replace_shred( const vector< string > &vec,
 //-----------------------------------------------------------------------------
 t_CKBOOL Chuck_Shell_Network_VM::status( string & out )
 {
-    char ** argv = new char *;
+    const char * argv = "--status";
     t_CKBOOL return_val = FALSE;
     t_CKINT j = 0;
     
-    argv[0] = "--status";
-    if( otf_send_cmd( 1, argv, j, hostname.c_str(), port ) )
+    if( otf_send_cmd( 1, &argv, j, hostname.c_str(), port ) )
         return_val = TRUE;
-    
     else
     {
         return_val = FALSE;
         out += "status: error: command failed\n";
     }
-    
-    delete argv;
     
     return return_val;
 }
@@ -906,13 +946,11 @@ t_CKBOOL Chuck_Shell_Network_VM::status( string & out )
 //-----------------------------------------------------------------------------
 t_CKBOOL Chuck_Shell_Network_VM::kill( string & out )
 {
-    char ** argv = new char *;
+    const char * argv = "--kill";
     t_CKINT j = 0;
     t_CKBOOL return_val;
     
-    argv[0] = "--kill";
-    
-    if( otf_send_cmd( 1, argv, j, hostname.c_str(), port ) )
+    if( otf_send_cmd( 1, &argv, j, hostname.c_str(), port ) )
         return_val = TRUE;
     
     else
@@ -920,8 +958,6 @@ t_CKBOOL Chuck_Shell_Network_VM::kill( string & out )
         return_val = FALSE;
         out += "kill: error: command failed";
     }
-    
-    delete argv;
     
     return return_val;
 }
@@ -1718,7 +1754,7 @@ t_CKINT Chuck_Shell::Command_VMAdd::execute( vector< string > & argv,
     caller->vms.push_back( caller->current_vm->copy() );
     
 #ifndef __PLATFORM_WIN32__
-    snprintf( buf, 16, "%u", caller->vms.size() - 1 );
+    snprintf( buf, 16, "%lu", caller->vms.size() - 1 );
 #else
     sprintf( buf, "%u", caller->vms.size() - 1 );   
 #endif // __PLATFORM_WIN32__
@@ -1743,7 +1779,7 @@ t_CKINT Chuck_Shell::Command_VMRemove::execute( vector< string > & argv,
     for( ; i < len; i++ )
     {
         vm_no = strtoul( argv[i].c_str(), NULL, 10 );
-        if( vm_no == 0 && errno == EINVAL || caller->vms.size() <= vm_no || 
+        if( ( vm_no == 0 && errno == EINVAL ) || caller->vms.size() <= vm_no || 
             caller->vms[vm_no] == NULL )
         {
             out += "error: invalid VM id: " + argv[i] + "\n";
@@ -1773,8 +1809,7 @@ t_CKINT Chuck_Shell::Command_VMSwap::execute( vector< string > & argv,
     }
     
     new_vm = strtol( argv[0].c_str(), NULL, 10 );
-    if( new_vm >= caller->vms.size() || new_vm < 0 || 
-        caller->vms[new_vm] == NULL )
+    if( new_vm >= caller->vms.size() || caller->vms[new_vm] == NULL )
     {
         out += string( "error: invalid VM: " ) + argv[0] + "\n";
         return -1;
@@ -1808,9 +1843,9 @@ t_CKINT Chuck_Shell::Command_VMList::execute( vector< string > & argv,
         if( caller->vms[i] != NULL )
         {
 #ifndef __PLATFORM_WIN32__
-            snprintf( buf, 16, "%u", i );
+            snprintf( buf, 16, "%lu", i );
 #else
-            sprintf( buf, "%u", i );
+            sprintf( buf, "%lu", i );
 #endif // __PLATFORM_WIN32__
             out += string( "VM " ) + buf + ": " + 
                    caller->vms[i]->fullname() + "\n";

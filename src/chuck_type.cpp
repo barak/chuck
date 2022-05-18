@@ -1,35 +1,34 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // file: chuck_type.cpp
 // desc: chuck type-system / type-checker
 //
-// author: Ge Wang (gewang@cs.princeton.edu)
-//         Perry R. Cook (prc@cs.princeton.edu)
+// author: Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
 // date: Autumn 2002 - original
-//       Autumn 2004 - rewrite
+//       Autumn 2005 - rewrite
 //-----------------------------------------------------------------------------
 #include "chuck_type.h"
 #include "chuck_parse.h"
@@ -53,6 +52,8 @@ Chuck_Type t_int( te_int, "int", NULL, sizeof(t_CKINT) );
 Chuck_Type t_float( te_float, "float", NULL, sizeof(t_CKFLOAT) );
 Chuck_Type t_time( te_time, "time", NULL, sizeof(t_CKTIME) );
 Chuck_Type t_dur( te_dur, "dur", NULL, sizeof(t_CKTIME) );
+Chuck_Type t_complex( te_complex, "complex", NULL, sizeof(t_CKCOMPLEX) );
+Chuck_Type t_polar( te_polar, "polar", NULL, sizeof(t_CKPOLAR) );
 Chuck_Type t_null( te_null, "@null", NULL, sizeof(void *) );
 Chuck_Type t_function( te_function, "@function", &t_object, sizeof(void *) );
 Chuck_Type t_object( te_object, "Object", NULL, sizeof(void *) );
@@ -60,7 +61,13 @@ Chuck_Type t_array( te_array, "@array", &t_object, sizeof(void *) );
 Chuck_Type t_string( te_string, "string", &t_object, sizeof(void *) );
 Chuck_Type t_event( te_event, "Event", &t_object, sizeof(void *) );
 Chuck_Type t_ugen( te_ugen, "UGen", &t_object, sizeof(void *) );
+Chuck_Type t_uana( te_uana, "UAna", &t_ugen, sizeof(void *) );
+Chuck_Type t_uanablob( te_uanablob, "UAnaBlob", &t_object, sizeof(void *) );
 Chuck_Type t_shred( te_shred, "Shred", &t_object, sizeof(void *) );
+Chuck_Type t_io( te_io, "IO", &t_event, sizeof(void *) );
+Chuck_Type t_fileio( te_fileio, "FileIO", &t_io, sizeof(void *) );
+Chuck_Type t_chout( te_chout, "StdOut", &t_io, sizeof(void *) );
+Chuck_Type t_cherr( te_cherr, "StdErr", &t_io, sizeof(void *) );
 Chuck_Type t_thread( te_thread, "Thread", &t_object, sizeof(void *) );
 Chuck_Type t_class( te_class, "Class", &t_object, sizeof(void *) );
 
@@ -104,10 +111,13 @@ t_CKTYPE type_engine_check_exp_binary( Chuck_Env * env, a_Exp_Binary binary );
 t_CKTYPE type_engine_check_op( Chuck_Env * env, ae_Operator op, a_Exp lhs, a_Exp rhs, a_Exp_Binary binary );
 t_CKTYPE type_engine_check_op_chuck( Chuck_Env * env, a_Exp lhs, a_Exp rhs, a_Exp_Binary binary );
 t_CKTYPE type_engine_check_op_unchuck( Chuck_Env * env, a_Exp lhs, a_Exp rhs );
+t_CKTYPE type_engine_check_op_upchuck( Chuck_Env * env, a_Exp lhs, a_Exp rhs );
 t_CKTYPE type_engine_check_op_at_chuck( Chuck_Env * env, a_Exp lhs, a_Exp rhs );
 t_CKTYPE type_engine_check_exp_unary( Chuck_Env * env, a_Exp_Unary unary );
 t_CKTYPE type_engine_check_exp_primary( Chuck_Env * env, a_Exp_Primary exp );
 t_CKTYPE type_engine_check_exp_array_lit( Chuck_Env * env, a_Exp_Primary exp );
+t_CKTYPE type_engine_check_exp_complex_lit( Chuck_Env * env, a_Exp_Primary exp );
+t_CKTYPE type_engine_check_exp_polar_lit( Chuck_Env * env, a_Exp_Primary exp );
 t_CKTYPE type_engine_check_exp_cast( Chuck_Env * env, a_Exp_Cast cast );
 t_CKTYPE type_engine_check_exp_postfix( Chuck_Env * env, a_Exp_Postfix postfix );
 t_CKTYPE type_engine_check_exp_dur( Chuck_Env * env, a_Exp_Dur dur );
@@ -201,15 +211,23 @@ Chuck_Env * type_engine_init( Chuck_VM * vm )
     env->global()->type.add( t_float.name, &t_float );        t_float.lock();
     env->global()->type.add( t_time.name, &t_time );          t_time.lock();
     env->global()->type.add( t_dur.name, &t_dur );            t_dur.lock();
+    env->global()->type.add( t_complex.name, &t_complex );    t_complex.lock();
+    env->global()->type.add( t_polar.name, &t_polar );        t_polar.lock();
     env->global()->type.add( t_object.name, &t_object );      t_object.lock();
     env->global()->type.add( t_string.name, &t_string );      t_string.lock();
     env->global()->type.add( t_ugen.name, &t_ugen );          t_ugen.lock();
+    env->global()->type.add( t_uana.name, &t_uana );          t_uana.lock();
+    env->global()->type.add( t_uanablob.name, &t_uanablob );  t_uanablob.lock();
     env->global()->type.add( t_shred.name, &t_shred );        t_shred.lock();
     env->global()->type.add( t_thread.name, &t_thread );      t_thread.lock();
     env->global()->type.add( t_function.name, &t_function );  t_function.lock();
     env->global()->type.add( t_class.name, &t_class );        t_class.lock();
     env->global()->type.add( t_array.name, &t_array );        t_array.lock();
     env->global()->type.add( t_event.name, &t_event );        t_event.lock();
+    env->global()->type.add( t_io.name, &t_io );              t_io.lock();
+    env->global()->type.add( t_fileio.name, &t_fileio );      t_fileio.lock();
+    env->global()->type.add( t_chout.name, &t_chout );        t_chout.lock();
+    env->global()->type.add( t_cherr.name, &t_cherr );        t_cherr.lock();
 
     // dur value
     t_CKDUR samp = 1.0;
@@ -229,8 +247,14 @@ Chuck_Env * type_engine_init( Chuck_VM * vm )
     init_class_array( env, &t_array );
     init_class_string( env, &t_string );
     init_class_ugen( env, &t_ugen );
+    init_class_blob( env, &t_uanablob );
+    init_class_uana( env, &t_uana );
     init_class_shred( env, &t_shred );
     init_class_event( env, &t_event );
+    init_class_io( env, &t_io );
+    init_class_fileio( env, &t_fileio );
+    init_class_chout( env, &t_chout ); // (added 1.3.0.0)
+    init_class_cherr( env, &t_cherr ); // (added 1.3.0.0)
 
     EM_log( CK_LOG_SEVERE, "class 'class'" );
     t_class.info = new Chuck_Namespace;
@@ -258,6 +282,8 @@ Chuck_Env * type_engine_init( Chuck_VM * vm )
     env->global()->value.add( "maybe", new Chuck_Value( &t_int, "maybe", new t_CKFLOAT(.5), FALSE ) );
     env->global()->value.add( "pi", new Chuck_Value( &t_float, "pi", new t_CKFLOAT(ONE_PI), TRUE ) );
     env->global()->value.add( "global", new Chuck_Value( &t_class, "global", env->global(), TRUE ) );
+    env->global()->value.add( "chout", new Chuck_Value( &t_io, "chout", Chuck_IO_Chout::getInstance(), TRUE ) );
+    env->global()->value.add( "cherr", new Chuck_Value( &t_io, "cherr", Chuck_IO_Cherr::getInstance(), TRUE ) );
 
     // TODO: can't use the following now is local to shred
     // env->global()->value.add( "now", new Chuck_Value( &t_time, "now", &(vm->shreduler()->now_system), TRUE ) );
@@ -321,6 +347,8 @@ Chuck_Env * type_engine_init( Chuck_VM * vm )
     env->key_values["dac"] = TRUE;
     env->key_values["blackhole"] = TRUE;
     env->key_values["global"] = TRUE;
+    env->key_values["chout"] = TRUE;
+    env->key_values["cherr"] = TRUE;
     env->key_values["null"] = TRUE;
     env->key_values["NULL"] = TRUE;
 
@@ -338,6 +366,9 @@ Chuck_Env * type_engine_init( Chuck_VM * vm )
     // env->key_types["machine"] = TRUE;
     // env->key_types["language"] = TRUE;
     // env->key_types["compiler"] = TRUE;
+    
+    // ge and spencer reserve this one
+    env->key_values["newlineEx2VistaHWNDVisualFoxProA"] = TRUE;
 
     // commit the global namespace
     env->global()->commit();
@@ -367,10 +398,16 @@ void type_engine_shutdown( Chuck_Env * env )
     SAFE_RELEASE( t_array.info );
     SAFE_RELEASE( t_string.info );
     SAFE_RELEASE( t_ugen.info );
+    SAFE_RELEASE( t_uanablob.info );
+    SAFE_RELEASE( t_uana.info );
     SAFE_RELEASE( t_shred.info );
     SAFE_RELEASE( t_event.info );
     SAFE_RELEASE( t_class.info );
     SAFE_RELEASE( t_thread.info );
+    SAFE_RELEASE( t_io.info );
+    SAFE_RELEASE( t_fileio.info );
+    SAFE_RELEASE( t_chout.info );  // added 1.3.0.0
+    SAFE_RELEASE( t_cherr.info );  // added 1.3.0.0
 }
 
 
@@ -783,7 +820,24 @@ t_CKBOOL type_engine_check_if( Chuck_Env * env, a_Stmt_If stmt )
     if( !type_engine_check_exp( env, stmt->cond ) )
         return FALSE;
         
-    // TODO: ensure that conditional has valid type
+    // ensure that conditional has valid type
+    switch( stmt->cond->type->xid )
+    {
+    case te_int:
+    case te_float:
+    case te_dur:
+    case te_time:
+        break;
+        
+    default:
+        // check for IO
+        if( isa( stmt->cond->type, &t_io ) ) break;
+
+        // error
+        EM_error2( stmt->cond->linepos,
+            "invalid type '%s' in if condition", stmt->cond->type->name.c_str() );
+        return FALSE;
+    }
 
     // check if
     if( !type_engine_check_stmt( env, stmt->if_body ) )
@@ -814,7 +868,37 @@ t_CKBOOL type_engine_check_for( Chuck_Env * env, a_Stmt_For stmt )
     if( !type_engine_check_stmt( env, stmt->c2 ) )
         return FALSE;
 
-    // TODO: same as if - check conditional type valid
+    // check for empty for loop conditional (added 1.3.0.0)
+    if( stmt->c2 == NULL )
+    {
+        // error
+        EM_error2( stmt->linepos,
+                  "empty for loop condition..." );
+        EM_error2( stmt->linepos,
+                  "...(note: explicitly use 'true' if it's the intent)" );
+        EM_error2( stmt->linepos,
+                  "...(e.g., 'for( ; true; ){ /*...*/ }')" );
+        return FALSE;
+    }
+
+    // ensure that conditional has valid type
+    switch( stmt->c2->stmt_exp->type->xid )
+    {
+    case te_int:
+    case te_float:
+    case te_dur:
+    case te_time:
+        break;
+
+    default:
+        // check for IO
+        if( isa( stmt->c2->stmt_exp->type, &t_io ) ) break;
+
+        // error
+        EM_error2( stmt->c2->stmt_exp->linepos,
+            "invalid type '%s' in for condition", stmt->c2->stmt_exp->type->name.c_str() );
+        return FALSE;
+    }
 
     // check the post
     if( stmt->c3 && !type_engine_check_exp( env, stmt->c3 ) )
@@ -848,7 +932,24 @@ t_CKBOOL type_engine_check_while( Chuck_Env * env, a_Stmt_While stmt )
     if( !type_engine_check_exp( env, stmt->cond ) )
         return FALSE;
         
-    // TODO: same as if - ensure the type in conditional is valid
+    // ensure that conditional has valid type
+    switch( stmt->cond->type->xid )
+    {
+    case te_int:
+    case te_float:
+    case te_dur:
+    case te_time:
+        break;
+        
+    default:
+        // check for IO
+        if( isa( stmt->cond->type, &t_io ) ) break;
+
+        // error
+        EM_error2( stmt->cond->linepos,
+            "invalid type '%s' in while condition", stmt->cond->type->name.c_str() );
+        return FALSE;
+    }
 
     // for break and continue statement
     env->breaks.push_back( stmt->self );
@@ -877,7 +978,24 @@ t_CKBOOL type_engine_check_until( Chuck_Env * env, a_Stmt_Until stmt )
     if( !type_engine_check_exp( env, stmt->cond ) )
         return FALSE;
         
-    // TODO: same as if - ensure the type in conditional is valid
+    // ensure that conditional has valid type
+    switch( stmt->cond->type->xid )
+    {
+    case te_int:
+    case te_float:
+    case te_dur:
+    case te_time:
+        break;
+        
+    default:
+        // check for IO
+        if( isa( stmt->cond->type, &t_io ) ) break;
+
+        // error
+        EM_error2( stmt->cond->linepos,
+            "invalid type '%s' in until condition", stmt->cond->type->name.c_str() );
+        return FALSE;
+    }
 
     // for break and continue statement
     env->breaks.push_back( stmt->self );
@@ -1230,6 +1348,30 @@ t_CKTYPE type_engine_check_op( Chuck_Env * env, ae_Operator op, a_Exp lhs, a_Exp
         return NULL;
     }
 
+    // file I/O
+    /*
+    if( op == ae_op_arrow_left || op == ae_op_arrow_right )
+    {
+        // check left
+        if( isa( left, &t_io ) )
+        {
+            // check for assignment
+            if( op == ae_op_arrow_right && lhs->s_meta != ae_meta_var )
+            {
+                // error
+                EM_error2( rhs->linepos,
+                    "cannot perform I/O assignment via '->' to non-mutable value" );
+                return NULL;
+            }
+
+            // check right
+            if( isa( right, &t_int ) || isa( right, &t_float ) ||
+                isa( right, &t_string ) )
+                return left;
+        }
+    }
+    */
+    
     // implicit cast
     if( *left != *right )
     {
@@ -1237,6 +1379,11 @@ t_CKTYPE type_engine_check_op( Chuck_Env * env, ae_Operator op, a_Exp lhs, a_Exp
         switch( op )
         {
         case ae_op_plus:
+            // Object.toString
+            if( isa( left, &t_string ) && isa( right, &t_object ) && !isa( right, &t_string) )
+                right = rhs->cast_to = &t_string;
+            else if( isa( left, &t_object ) && isa( right, &t_string ) && !isa( left, &t_string) )
+                left = lhs->cast_to = &t_string;
         case ae_op_minus:
         case ae_op_times:
         case ae_op_divide:
@@ -1246,6 +1393,17 @@ t_CKTYPE type_engine_check_op( Chuck_Env * env, ae_Operator op, a_Exp lhs, a_Exp
         case ae_op_ge:
         case ae_op_eq:
         case ae_op_neq:
+            // complex
+            LR( te_int, te_complex ) left = lhs->cast_to = &t_complex;
+            else LR( te_complex, te_int ) right = rhs->cast_to = &t_complex;
+            LR( te_float, te_complex ) left = lhs->cast_to = &t_complex;
+            else LR( te_complex, te_float ) right = rhs->cast_to = &t_complex;
+            
+            // polar
+            LR( te_int, te_polar ) left = lhs->cast_to = &t_polar;
+            else LR( te_complex, te_int ) right = rhs->cast_to = &t_polar;
+            LR( te_float, te_complex ) left = lhs->cast_to = &t_polar;
+            else LR( te_complex, te_float ) right = rhs->cast_to = &t_polar;
         case ae_op_percent:
             // mark for cast
             LR( te_int, te_float ) left = lhs->cast_to = &t_float;
@@ -1259,12 +1417,19 @@ t_CKTYPE type_engine_check_op( Chuck_Env * env, ae_Operator op, a_Exp lhs, a_Exp
         switch( op )
         {
         case ae_op_plus_chuck:
+            // Object.toString
+            if( isa( left, &t_object ) && isa( right, &t_string ) && !isa( left, &t_string ) )
+                left = lhs->cast_to = &t_string;
         case ae_op_minus_chuck:
         case ae_op_times_chuck:
         case ae_op_divide_chuck:
         case ae_op_percent_chuck:
             // mark for cast
             LR( te_int, te_float ) left = lhs->cast_to = &t_float;
+            LR( te_float, te_complex ) left = lhs->cast_to = &t_complex;
+            LR( te_float, te_polar ) left = lhs->cast_to = &t_polar;
+            LR( te_int, te_complex ) left = lhs->cast_to = &t_complex;
+            LR( te_int, te_polar ) left = lhs->cast_to = &t_polar;
         break;
         
         default: break;
@@ -1279,6 +1444,28 @@ t_CKTYPE type_engine_check_op( Chuck_Env * env, ae_Operator op, a_Exp lhs, a_Exp
         else if( op == ae_op_divide )
         {
             LR( te_dur, te_int ) right = rhs->cast_to = &t_float;
+        }
+
+        // array
+        if( op == ae_op_shift_left && isa( left, &t_array ) )
+        {
+            // type of array
+            Chuck_Type * atype = left->array_type;
+            // check type
+            if( isa( atype, &t_float ) )
+            {
+                if( right->xid == te_int ) right = rhs->cast_to = &t_float;
+            }
+            else if( isa( atype, &t_complex ) )
+            {
+                if( right->xid == te_int || right->xid == te_float 
+                    || right->xid == te_polar ) right = rhs->cast_to = &t_complex;
+            }
+            else if( isa( atype, &t_polar ) )
+            {
+                if( right->xid == te_int || right->xid == te_float 
+                    || right->xid == te_complex ) right = rhs->cast_to = &t_complex;
+            }
         }
     }
     
@@ -1370,6 +1557,9 @@ t_CKTYPE type_engine_check_op( Chuck_Env * env, ae_Operator op, a_Exp lhs, a_Exp
     case ae_op_unchuck:
         return type_engine_check_op_unchuck( env, lhs, rhs );
     
+    case ae_op_upchuck:
+        return type_engine_check_op_upchuck( env, lhs, rhs );
+
     case ae_op_at_chuck:
         return type_engine_check_op_at_chuck( env, lhs, rhs );
 
@@ -1381,6 +1571,10 @@ t_CKTYPE type_engine_check_op( Chuck_Env * env, ae_Operator op, a_Exp lhs, a_Exp
         LR( te_int, te_int ) return &t_int;
         LR( te_float, te_float ) return &t_float;
         LR( te_dur, te_dur ) return &t_dur;
+        LR( te_complex, te_complex ) return &t_complex;
+        LR( te_polar, te_polar ) return &t_polar;
+        // COMMUTE( te_float, te_complex ) return &t_complex;
+        // COMMUTE( te_float, te_polar ) return &t_polar;
         COMMUTE( te_dur, te_time ) return &t_time;
         if( isa( left, &t_string ) && isa( right, &t_string ) ) return &t_string;
         if( isa( left, &t_string ) && isa( right, &t_int ) ) return &t_string;
@@ -1395,6 +1589,10 @@ t_CKTYPE type_engine_check_op( Chuck_Env * env, ae_Operator op, a_Exp lhs, a_Exp
         LR( te_int, te_int ) return &t_int;
         LR( te_float, te_float ) return &t_float;
         LR( te_dur, te_dur ) return &t_dur;
+        LR( te_complex, te_complex ) return &t_complex;
+        LR( te_polar, te_polar ) return &t_polar;
+        // COMMUTE( te_float, te_complex ) return &t_complex;
+        // COMMUTE( te_float, te_polar ) return &t_polar;
     break;
 
     // take care of non-commutative
@@ -1403,12 +1601,20 @@ t_CKTYPE type_engine_check_op( Chuck_Env * env, ae_Operator op, a_Exp lhs, a_Exp
         LR( te_float, te_float ) return &t_float;
         LR( te_dur, te_dur ) return &t_dur;
         LR( te_dur, te_time ) return &t_time;
+        LR( te_complex, te_complex ) return &t_complex;
+        LR( te_polar, te_polar ) return &t_polar;
+        // COMMUTE( te_float, te_complex ) return &t_complex;
+        // COMMUTE( te_float, te_polar ) return &t_polar;
     break;
 
     case ae_op_times_chuck:
     case ae_op_times:
         LR( te_int, te_int ) return &t_int;
         LR( te_float, te_float ) return &t_float;
+        LR( te_complex, te_complex ) return &t_complex;
+        LR( te_polar, te_polar ) return &t_polar;
+        // COMMUTE( te_float, te_complex ) return &t_complex;
+        // COMMUTE( te_float, te_polar ) return &t_polar;
         COMMUTE( te_float, te_dur ) return &t_dur;
     break;
 
@@ -1418,6 +1624,10 @@ t_CKTYPE type_engine_check_op( Chuck_Env * env, ae_Operator op, a_Exp lhs, a_Exp
         LR( te_dur, te_float ) return &t_dur;
         LR( te_int, te_int ) return &t_int;
         LR( te_float, te_float ) return &t_float;
+        LR( te_complex, te_complex ) return &t_complex;
+        LR( te_polar, te_polar ) return &t_polar;
+        // COMMUTE( te_float, te_complex ) return &t_complex;
+        // COMMUTE( te_float, te_polar ) return &t_polar;
     break;
 
     // take care of non-commutative
@@ -1425,6 +1635,10 @@ t_CKTYPE type_engine_check_op( Chuck_Env * env, ae_Operator op, a_Exp lhs, a_Exp
         LR( te_int, te_int ) return &t_int;
         LR( te_float, te_float ) return &t_float;
         LR( te_float, te_dur ) return &t_dur;
+        LR( te_complex, te_complex ) return &t_complex;
+        LR( te_polar, te_polar ) return &t_polar;
+        // COMMUTE( te_float, te_complex ) return &t_complex;
+        // COMMUTE( te_float, te_polar ) return &t_polar;
     break;
 
     case ae_op_eq:
@@ -1434,15 +1648,32 @@ t_CKTYPE type_engine_check_op( Chuck_Env * env, ae_Operator op, a_Exp lhs, a_Exp
     case ae_op_lt:
     case ae_op_gt:
     case ae_op_le:
+        // file output
+        if( isa( left, &t_io ) )
+        {
+            if( isa( right, &t_int ) ) return left;
+            else if( isa( right, &t_float ) ) return left;
+            else if( isa( right, &t_string ) ) return left;
+            else // error
+            {
+                EM_error2( lhs->linepos, "on suitable IO action for '%s' <= '%s'...",
+                    left->c_name(), right->c_name() );
+                return NULL;
+            }
+        }
     case ae_op_ge:
     case ae_op_neq:
         LR( te_int, te_int ) return &t_int;
         LR( te_float, te_float ) return &t_int;
         LR( te_dur, te_dur ) return &t_int;
         LR( te_time, te_time ) return &t_int;
+        LR( te_complex, te_complex ) return &t_int;
+        LR( te_polar, te_polar ) return &t_int;
+        // COMMUTE( te_float, te_complex ) return &t_int;
+        // COMMUTE( te_float, te_polar ) return &t_int;
         if( isa( left, &t_object ) && isa( right, &t_object ) ) return &t_int;
     break;
-    
+
     case ae_op_s_and_chuck:
     case ae_op_s_or_chuck:
     case ae_op_s_xor_chuck:
@@ -1455,8 +1686,21 @@ t_CKTYPE type_engine_check_op( Chuck_Env * env, ae_Operator op, a_Exp lhs, a_Exp
     case ae_op_s_and:
     case ae_op_s_or:
     case ae_op_shift_left:
+        // prepend || append
+        if( isa( left, &t_array ) )
+        {
+            // sanity check
+            assert( left->array_type != NULL );
+            // check type
+            if( isa( right, left->array_type ) ) return left;
+            // both arrays
+            if( right->array_depth > 0 && left->array_depth > 0 )
+                if( right->array_type == left->array_type && 
+                    right->array_depth + 1 == left->array_depth ) return left;
+        }
     case ae_op_shift_right:
-        LR( te_int, te_int ) return &t_int;        
+        // shift
+        LR( te_int, te_int ) return &t_int;
     break;
 
     case ae_op_percent:
@@ -1511,28 +1755,84 @@ t_CKTYPE type_engine_check_op_chuck( Chuck_Env * env, a_Exp lhs, a_Exp rhs,
     }
 
     // ugen => ugen
-    if( isa( left, &t_ugen ) && isa( right, &t_ugen ) )
+    // ugen[] => ugen[]
+    if( ( isa( left, &t_ugen ) || ( isa( left, &t_array ) && isa( left->array_type, &t_ugen ) ) ) &&
+        ( isa( right, &t_ugen ) || ( isa( right, &t_array ) && isa( right->array_type, &t_ugen ) ) ) )
     {
+        t_CKTYPE left_ugen_type = NULL;
+        t_CKTYPE right_ugen_type = NULL;
+        
+        if( isa( left, &t_array ) )
+        {
+            left_ugen_type = left->array_type;
+            
+            if( left->array_depth > 1 )
+            {
+                EM_error2( lhs->linepos, "array ugen type has more than one dimension - can only => one-dimensional array of mono ugens" );
+                return NULL;
+            }
+            
+            if( left_ugen_type->ugen_info->num_outs > 1 )
+            {
+                // error
+                EM_error2( lhs->linepos,
+                           "array ugen type '%s' has more than one output channel - can only => one-dimensional array of mono ugens",
+                           left_ugen_type->c_name() );
+                return NULL;
+            }
+        }
+        else
+        {
+            left_ugen_type = left;
+        }
+        
+        if( isa( right, &t_array ) )
+        {
+            right_ugen_type = right->array_type;
+            
+            if( right->array_depth > 1 )
+            {
+                EM_error2( rhs->linepos,
+                           "array ugen type has more than one dimension - can only => one-dimensional array of mono ugens" );
+                return NULL;
+            }
+            
+            if( right_ugen_type->ugen_info->num_ins > 1 )
+            {
+                // error
+                EM_error2( rhs->linepos,
+                           "array ugen type '%s' has more than one input channel - can only => array of mono ugens",
+                           right_ugen_type->c_name() );
+                return NULL;
+            }
+        }
+        else
+        {
+            right_ugen_type = right;
+        }
+        
         // make sure non-zero
-        if( left->ugen_info->num_outs == 0 )
+        if( left_ugen_type->ugen_info->num_outs == 0 )
         {
             // error
             EM_error2( lhs->linepos,
                 "ugen's of type '%s' have no output - cannot => to another ugen...",
-                left->c_name() );
+                left_ugen_type->c_name() );
             return NULL;
         }
-        else if( right->ugen_info->num_ins == 0 )
+        else if( right_ugen_type->ugen_info->num_ins == 0 )
         {
             // error
             EM_error2( rhs->linepos,
                 "ugen's of type '%s' have no input - cannot => from another ugen...",
-                right->c_name() );
+                right_ugen_type->c_name() );
             return NULL;
         }
 
         return right;
     }
+    
+    
 
     // time advance ( dur => now )
     if( isa( left, &t_dur ) && isa( right, &t_time ) && rhs->s_meta == ae_meta_var
@@ -1547,9 +1847,39 @@ t_CKTYPE type_engine_check_op_chuck( Chuck_Env * env, a_Exp lhs, a_Exp rhs,
     {
         return right;
     }
+    
+    // input ( IO => int ), (IO => float)
+    if( isa( left, &t_io ) )
+    {
+        // right hand side
+        if( rhs->s_meta != ae_meta_var )
+        {
+            // error
+            EM_error2( rhs->linepos,
+                "cannot perform I/O assignment via '=>' to non-mutable value" );
+            return NULL;
+        }
+
+        // check right
+        if( isa( right, &t_int ) || isa( right, &t_float ) )
+        {
+            // emit ref
+            rhs->emit_var = TRUE;
+            return left;
+        }
+        
+        if( isa( right, &t_string ) )
+        {
+            return left;
+        }
+    }
+
+    // object.toString
 
     // implicit cast
     LR( te_int, te_float ) left = lhs->cast_to = &t_float;
+    LR( te_int, te_complex ) left = lhs->cast_to = &t_complex;
+    LR( te_int, te_polar ) left = lhs->cast_to = &t_polar;
 
     // assignment or something else
     if( isa( left, right ) )
@@ -1601,6 +1931,7 @@ t_CKTYPE type_engine_check_op_chuck( Chuck_Env * env, a_Exp lhs, a_Exp rhs,
     EM_error2( lhs->linepos,
         "cannot resolve operator '=>' on types '%s' and '%s'...",
         left->c_name(), right->c_name() );
+
     return NULL;
 }
 
@@ -1626,6 +1957,33 @@ t_CKTYPE type_engine_check_op_unchuck( Chuck_Env * env, a_Exp lhs, a_Exp rhs )
     EM_error2( lhs->linepos, 
         "...on types '%s' and '%s'",
         left->c_name(), right->c_name() );
+
+    return NULL;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: type_engine_check_op_upchuck()
+// desc: ...
+//-----------------------------------------------------------------------------
+t_CKTYPE type_engine_check_op_upchuck( Chuck_Env * env, a_Exp lhs, a_Exp rhs )
+{
+    t_CKTYPE left = lhs->type, right = rhs->type;
+    
+    // uana =^ uana
+    if( isa( left, &t_uana ) && isa( right, &t_uana ) ) return right;
+    
+    // TODO: check overloading of =^
+    
+    // no match
+    EM_error2( lhs->linepos,
+        "no suitable resolution for binary operator '=^'..." );
+    EM_error2( lhs->linepos, 
+        "...on types '%s' and '%s'",
+        left->c_name(), right->c_name() );
+
     return NULL;
 }
 
@@ -1710,6 +2068,13 @@ t_CKTYPE type_engine_check_exp_unary( Chuck_Env * env, a_Exp_Unary unary )
         if( !t ) return NULL;
     }
 
+    // check code stmt; this is to eventually support sporking of code (added 1.3.0.0)
+    //if( unary->code )
+    //{
+    //    // check it!
+    //    if( !type_engine_check_stmt( env, unary->code ) ) return NULL;
+    //}
+
     // check the op
     switch( unary->op )
     {
@@ -1744,8 +2109,11 @@ t_CKTYPE type_engine_check_exp_unary( Chuck_Env * env, a_Exp_Unary unary )
         break;
         
         case ae_op_spork:
-            // spork shred
-            if( unary->exp->s_type == ae_exp_func_call ) return &t_shred;
+            // spork shred (by function call)
+            if( unary->exp && unary->exp->s_type == ae_exp_func_call ) return &t_shred;
+            // spork shred (by code segment)
+            // else if( unary->code ) return &t_shred;
+            // got a problem
             else
             {
                  EM_error2( unary->linepos,
@@ -1988,6 +2356,17 @@ t_CKTYPE type_engine_check_exp_primary( Chuck_Env * env, a_Exp_Primary exp )
                         S_name(exp->var) );
                     return NULL;
                 }
+                
+                // 1.3.1.0: hack catch "pi"
+                // if( v->name == "pi" )
+                // {
+                //    // check level
+                //    if( env->deprecate_level < 2 )
+                //    {
+                //        EM_error2( exp->linepos, "deprecated: '%s' --> use: '%s'...",
+                //                   "pi", "Math.PI" );
+                //    }
+                // }
 
                 // the type
                 t = v->type;
@@ -1995,17 +2374,17 @@ t_CKTYPE type_engine_check_exp_primary( Chuck_Env * env, a_Exp_Primary exp )
                 exp->value = v;
             }
         break;
-        
+
         // int
         case ae_primary_num:
             t = &t_int;
         break;
-        
+
         // float
         case ae_primary_float:
             t = &t_float;
         break;
-        
+
         // string
         case ae_primary_str:
             // escape the thing
@@ -2016,11 +2395,31 @@ t_CKTYPE type_engine_check_exp_primary( Chuck_Env * env, a_Exp_Primary exp )
             t = &t_string;
         break;
 
+        // char
+        case ae_primary_char:
+            // check escape sequences
+            if( str2char( exp->chr, exp->linepos ) == -1 )
+                return NULL;
+            
+            // a string
+            t = &t_int;
+            break;
+
         // array literal
         case ae_primary_array:
             t = type_engine_check_exp_array_lit( env, exp );
         break;
         
+        // complex literal
+        case ae_primary_complex:
+            t = type_engine_check_exp_complex_lit( env, exp );
+        break;
+        
+        // polar literal
+        case ae_primary_polar:
+            t = type_engine_check_exp_polar_lit( env, exp );
+        break;
+
         // expression
         case ae_primary_exp:
             t = type_engine_check_exp( env, exp->exp );
@@ -2174,6 +2573,135 @@ t_CKTYPE type_engine_check_exp_array_lit( Chuck_Env * env, a_Exp_Primary exp )
 
 
 //-----------------------------------------------------------------------------
+// name: type_engine_check_exp_complex_lit()
+// desc: ...
+//-----------------------------------------------------------------------------
+t_CKTYPE type_engine_check_exp_complex_lit( Chuck_Env * env, a_Exp_Primary exp )
+{
+    // make sure
+    assert( exp->s_type == ae_primary_complex );
+
+    // type
+    Chuck_Type * type_re = NULL, * type_im = NULL;
+    
+    // get the complex
+    a_Complex val = exp->complex;
+    
+    // check if we have enough
+    if( val->im == NULL )
+    {
+        EM_error2( exp->linepos,
+            "missing imaginary component in complex value...\n"
+            "    --> format: #(re,im)" );
+        return NULL;
+    }
+    // check if we have too much
+    if( val->im->next != NULL )
+    {
+        EM_error2( exp->linepos,
+            "extraneous arguments in complex value...\n"
+            "    --> format #(re,im)" );
+        return NULL;
+    }
+
+    // find types (only need real, since imag is linked after real)
+    if( !(type_re = type_engine_check_exp( env, val->re )) )
+        // || !(type_im = type_engine_check_exp( env, val->im )) ) 
+        return NULL;
+
+    // imaginary
+    type_im = val->im->type;
+
+    // check types
+    if( !isa( type_re, &t_float ) && !isa( type_re, &t_int ) )
+    {
+        EM_error2( exp->linepos,
+            "invalid type '%s' in real component of complex value...\n"
+            "    (must be of type 'int' or 'float')", type_re->c_name() );
+        return NULL;
+    }
+    if( !isa( type_im, &t_float ) && !isa( type_im, &t_int ) )
+    {
+        EM_error2( exp->linepos,
+            "invalid type '%s' in imaginary component of complex value...\n"
+            "    (must be of type 'int' or 'float')", type_im->c_name() );
+        return NULL;
+    }
+
+    // implcit cast
+    if( isa( type_re, &t_int ) ) val->re->cast_to = &t_float;
+    if( isa( type_im, &t_int ) ) val->im->cast_to = &t_float;
+
+    return &t_complex;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: type_engine_check_exp_polar_lit()
+// desc: ...
+//-----------------------------------------------------------------------------
+t_CKTYPE type_engine_check_exp_polar_lit( Chuck_Env * env, a_Exp_Primary exp )
+{
+    // make sure
+    assert( exp->s_type == ae_primary_polar );
+
+    // type
+    Chuck_Type * type_mod = NULL, * type_phase = NULL;
+    
+    // get the polar
+    a_Polar val = exp->polar;
+    
+    // check if we have enough
+    if( val->phase == NULL )
+    {
+        EM_error2( exp->linepos,
+            "missing phase component in polar value...\n"
+            "    --> format: %%(mag,phase)" );
+        return NULL;
+    }
+    // check if we have extra
+    if( val->phase->next != NULL )
+    {
+        EM_error2( exp->linepos,
+            "extraneous arguments in polar value...\n"
+            "    --> format: %%(mag,phase)" );
+        return NULL;
+    }
+
+    // find types
+    if( !(type_mod = type_engine_check_exp( env, val->mod )) ||
+        !(type_phase = type_engine_check_exp( env, val->phase )) )
+        return NULL;
+
+    // check types
+    if( !isa( type_mod, &t_float ) && !isa( type_mod, &t_int ) )
+    {
+        EM_error2( exp->linepos,
+            "invalid type '%s' in magnitude component of polar value...\n"
+            "    (must be of type 'int' or 'float')", type_mod->c_name() );
+        return NULL;
+    }
+    if( !isa( type_phase, &t_float ) && !isa( type_phase, &t_int ) )
+    {
+        EM_error2( exp->linepos,
+            "invalid type '%s' in phase component of polar value...\n"
+            "    (must be of type 'int' or 'float')", type_phase->c_name() );
+        return NULL;
+    }
+
+    // implcit cast
+    if( isa( type_mod, &t_int ) ) val->mod->cast_to = &t_float;
+    if( isa( type_phase, &t_int ) ) val->phase->cast_to = &t_float;
+
+    return &t_polar;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
 // name: type_engine_check_exp_cast()
 // desc: ...
 //-----------------------------------------------------------------------------
@@ -2224,6 +2752,12 @@ t_CKBOOL type_engine_check_cast_valid( Chuck_Env * env, t_CKTYPE to, t_CKTYPE fr
     // int to float, float to int
     if( isa( to, &t_float ) && isa( from, &t_int ) ) return TRUE;
     if( isa( to, &t_int ) && isa( from, &t_float ) ) return TRUE;
+    if( isa( to, &t_complex ) && isa( from, &t_int ) ) return TRUE;
+    if( isa( to, &t_polar ) && isa( from, &t_int ) ) return TRUE;
+    if( isa( to, &t_complex ) && isa( from, &t_float ) ) return TRUE;
+    if( isa( to, &t_polar ) && isa( from, &t_float ) ) return TRUE;
+    if( isa( to, &t_complex ) && isa( from, &t_polar ) ) return TRUE;
+    if( isa( to, &t_polar ) && isa( from, &t_complex ) ) return TRUE;
 
     return FALSE;
 }
@@ -2439,8 +2973,15 @@ t_CKTYPE type_engine_check_exp_decl( Chuck_Env * env, a_Exp_Decl decl )
         {
             // offset
             value->offset = env->curr->offset;
+
+            /*******************************************************************************
+             * spencer: added this into function to provide the same logic path
+             * for type_engine_check_exp_decl() and ck_add_mvar() when they determine
+             * offsets for mvars 
+             ******************************************************************************/
             // move the offset (TODO: check the size)
-            env->curr->offset += type->size;
+            env->curr->offset = type_engine_next_offset( env->curr->offset, type );
+            // env->curr->offset += type->size;
         }
         else if( decl->is_static ) // static
         {
@@ -2527,15 +3068,17 @@ string type_engine_print_exp_dot_member( Chuck_Env * env, a_Exp_Dot_Member membe
 
 
 //-----------------------------------------------------------------------------
-// name: find_func_match()
+// name: find_func_match_actual()
 // desc: ...
 //-----------------------------------------------------------------------------
-Chuck_Func * find_func_match( Chuck_Func * up, a_Exp args, t_CKBOOL implicit )
+Chuck_Func * find_func_match_actual( Chuck_Func * up, a_Exp args, 
+                                     t_CKBOOL implicit, t_CKBOOL specific )
 {
     a_Exp e;
     a_Arg_List e1;
     t_CKUINT count;
     Chuck_Func * func;
+    t_CKBOOL match = FALSE;
 
     // see if args is nil
     if( args && args->type == &t_void )
@@ -2558,8 +3101,11 @@ Chuck_Func * find_func_match( Chuck_Func * up, a_Exp args, t_CKBOOL implicit )
                 // check for extra arguments
                 if( e1 == NULL ) goto moveon;
 
+                // get match
+                match = specific ? e->type == e1->type : isa( e->type, e1->type );
+
                 // no match
-                if( !isa( e->type, e1->type ) )
+                if( !match )
                 {
                     // TODO: fix this for overload implicit cast (multiple matches)
                     if( implicit && *e->type == t_int && *e1->type == t_float )
@@ -2589,6 +3135,36 @@ moveon:
     }
 
     // not found
+    return NULL;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: find_func_match()
+// desc: ...
+//-----------------------------------------------------------------------------
+Chuck_Func * find_func_match( Chuck_Func * up, a_Exp args )
+{
+    Chuck_Func * func = NULL;
+
+    // try to find specific
+    func = find_func_match_actual( up, args, FALSE, TRUE );
+    if( func ) return func;
+
+    // try to find specific with implicit
+    func = find_func_match_actual( up, args, TRUE, TRUE );
+    if( func ) return func;
+
+    // try to find non-specific
+    func = find_func_match_actual( up, args, FALSE, FALSE );
+    if( func ) return func;
+
+    // try to find non-specific with implicit
+    func = find_func_match_actual( up, args, TRUE, FALSE );
+    if( func ) return func;
+
     return NULL;
 }
 
@@ -2631,9 +3207,7 @@ t_CKTYPE type_engine_check_exp_func_call( Chuck_Env * env, a_Exp exp_func, a_Exp
     }
 
     // look for a match
-    func = find_func_match( up, args, FALSE );
-    // look for a match (with implicit cast)
-    if( !func ) func = find_func_match( up, args, TRUE );
+    func = find_func_match( up, args );
 
     // no func
     if( !func )
@@ -2737,6 +3311,60 @@ t_CKTYPE type_engine_check_exp_dot_member( Chuck_Env * env, a_Exp_Dot_Member mem
     // type check the base
     member->t_base = type_engine_check_exp( env, member->base );
     if( !member->t_base ) return NULL;
+    
+    // if complex or polar
+    if( member->t_base->xid == te_complex ) // TODO: constants!!!
+    {
+        // get as string
+        string str = S_name(member->xid);
+        // verify member is either re or im
+        if( str == "re" || str == "im" )
+        {
+            // check addressing consistency (ISSUE: emit_var set after!)
+            if( member->self->emit_var && member->base->s_meta == ae_meta_var )
+            {
+                // error
+                EM_error2( member->base->linepos,
+                    "cannot assign value to literal complex value..." );
+                return NULL;
+            }
+
+            return &t_float;
+        }
+        else
+        {
+            // not valid
+            EM_error2( member->linepos,
+                "type '%s' has no member named '%s'...", member->t_base->c_name(), str.c_str() );
+            return NULL;
+        }
+    }
+    else if( member->t_base->xid == te_polar )
+    {
+        // get as string
+        string str = S_name(member->xid);
+        // verify member is either re or im
+        if( str == "mag" || str == "phase" )
+        {
+            // check addressing consistency (ISSUE: emit_var set after!)
+            if( member->self->emit_var && member->base->s_meta == ae_meta_var )
+            {
+                // error
+                EM_error2( member->base->linepos,
+                    "cannot assign value to literal polar value..." );
+                return NULL;
+            }
+
+            return &t_float;
+        }
+        else
+        {
+            // not valid
+            EM_error2( member->linepos,
+                "type '%s' has no member named '%s'...", member->t_base->c_name(), str.c_str() );
+            return NULL;
+        }
+    }
 
     // is the base a class/namespace or a variable
     base_static = isa( member->t_base, &t_class );
@@ -3435,7 +4063,7 @@ void Chuck_Namespace::get_values( vector<Chuck_Value *> & out )
     // temporary vector
     vector<Chuck_VM_Object *> list;
     // get it from the scope
-    this->value.get_toplevel( list );
+    this->value.get_level( 0, list );
     // clear
     out.clear();
     
@@ -3456,7 +4084,7 @@ void Chuck_Namespace::get_funcs( vector<Chuck_Func *> & out )
     // temporary vector
     vector<Chuck_VM_Object *> list;
     // get it from the scope
-    this->type.get_toplevel( list );
+    this->func.get_level( 0, list );
     // clear
     out.clear();
     
@@ -3685,7 +4313,8 @@ t_CKBOOL type_engine_check_reserved( Chuck_Env * env, S_Symbol xid, int pos )
 t_CKBOOL type_engine_check_primitive( Chuck_Type * type )
 {
     return ( isa(type, &t_int) || isa(type, &t_float) || isa(type, &t_dur) ||
-             isa(type, &t_time) ) && ( type->array_depth == 0 );
+             isa(type, &t_time) || isa(type, &t_complex) || isa(type, &t_polar) )
+             && ( type->array_depth == 0 );
 }
 t_CKBOOL isprim( Chuck_Type * type )
 {   return type_engine_check_primitive( type ); }
@@ -3693,6 +4322,24 @@ t_CKBOOL isobj( Chuck_Type * type )
 {   return !type_engine_check_primitive( type ); }
 t_CKBOOL isfunc( Chuck_Type * type )
 {   return isa( type, &t_function ); }
+t_CKBOOL iskindofint( Chuck_Type * type ) // added 1.3.1.0
+{   return isa( type, &t_int ) || isobj( type ); }
+t_CKUINT getkindof( Chuck_Type * type ) // added 1.3.1.0
+{
+    // the kind (1.3.1.0)
+    t_CKUINT kind = kindof_VOID;
+
+    // check size
+    if( type->size == sz_INT && iskindofint(type) )
+        kind = kindof_INT;
+    else if( type->size == sz_FLOAT )
+        kind = kindof_FLOAT;
+    else if( type->size == sz_COMPLEX )
+        kind = kindof_COMPLEX;
+    
+    // done
+    return kind;
+}
 
 
 
@@ -3795,8 +4442,8 @@ t_CKBOOL type_engine_get_deprecate( Chuck_Env * env,
 //-----------------------------------------------------------------------------
 Chuck_Type * type_engine_find_deprecated_type( Chuck_Env * env, a_Id_List path )
 {
-    S_Symbol xid = NULL;
-    Chuck_Type * t = NULL;
+    // S_Symbol xid = NULL;
+    // Chuck_Type * t = NULL;
     std::string actual;
 
     // find mapping
@@ -4000,6 +4647,18 @@ Chuck_Namespace * type_engine_find_nspc( Chuck_Env * env, a_Id_List path )
 
 
 //-----------------------------------------------------------------------------
+// name: type_engine_next_offset()
+// desc: compute next offset based on current offset and type
+//-----------------------------------------------------------------------------
+t_CKUINT type_engine_next_offset( t_CKUINT current_offset, Chuck_Type * type )
+{
+    return current_offset + type->size;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
 // name: type_engine_compat_func()
 // desc: see if two function signatures are compatible
 //-----------------------------------------------------------------------------
@@ -4059,7 +4718,8 @@ t_CKBOOL type_engine_compat_func( a_Func_Def lhs, a_Func_Def rhs, int pos, strin
 //-----------------------------------------------------------------------------
 Chuck_Type * type_engine_import_class_begin( Chuck_Env * env, Chuck_Type * type, 
                                              Chuck_Namespace * where,
-                                             f_ctor pre_ctor, f_dtor dtor )
+                                             f_ctor pre_ctor, f_dtor dtor,
+                                             const char * doc )
 {
     Chuck_Value * value = NULL;
     Chuck_Type * type_type = NULL;
@@ -4158,7 +4818,9 @@ Chuck_Type * type_engine_import_class_begin( Chuck_Env * env, Chuck_Type * type,
     // push the class def
     env->class_stack.push_back( env->class_def );
     env->class_def = type;
-
+    
+    if( doc != NULL) type->doc = doc;
+    
     // ref count
     type->add_ref();
 
@@ -4175,7 +4837,8 @@ Chuck_Type * type_engine_import_class_begin( Chuck_Env * env, Chuck_Type * type,
 Chuck_Type * type_engine_import_class_begin( Chuck_Env * env, const char * name, 
                                              const char * parent_str,
                                              Chuck_Namespace * where, 
-                                             f_ctor pre_ctor, f_dtor dtor )
+                                             f_ctor pre_ctor, f_dtor dtor,
+                                             const char * doc )
 {
     // which namespace
     Chuck_Type * parent = NULL;
@@ -4202,7 +4865,7 @@ Chuck_Type * type_engine_import_class_begin( Chuck_Env * env, const char * name,
     where->type.add( name, type );
 
     // do the rest
-    if( !type_engine_import_class_begin( env, type, where, pre_ctor, dtor ) )
+    if( !type_engine_import_class_begin( env, type, where, pre_ctor, dtor, doc ) )
         goto error;
 
     // done
@@ -4222,24 +4885,24 @@ cleanup:
 }
 
 
-
-
 //-----------------------------------------------------------------------------
 // name: type_engine_import_ugen_begin()
 // desc: ...
+// note: tickf added 1.3.0.0
 //-----------------------------------------------------------------------------
 Chuck_Type * type_engine_import_ugen_begin( Chuck_Env * env, const char * name, 
                                             const char * parent, Chuck_Namespace * where,
                                             f_ctor pre_ctor, f_dtor dtor,
-                                            f_tick tick, f_pmsg pmsg,
-                                            t_CKUINT num_ins, t_CKUINT num_outs )
+                                            f_tick tick, f_tickf tickf, f_pmsg pmsg,
+                                            t_CKUINT num_ins, t_CKUINT num_outs,
+                                            const char * doc )
 {
     Chuck_Type * type = NULL;
     Chuck_UGen_Info * info = NULL;
 
     // construct class
-    if( !(type = type_engine_import_class_begin( env, name, parent, where, pre_ctor, dtor ) ) )
-        return FALSE;
+    if( !(type = type_engine_import_class_begin( env, name, parent, where, pre_ctor, dtor, doc ) ) )
+        return NULL;
 
     // make sure parent is ugen
     assert( type->parent != NULL );
@@ -4249,22 +4912,107 @@ Chuck_Type * type_engine_import_ugen_begin( Chuck_Env * env, const char * name,
         EM_error2( 0,
             "imported class '%s' does not have a ugen as parent",
             type->c_name() );
-        return FALSE;
+        return NULL;
     }
 
     // do the ugen part
     info = new Chuck_UGen_Info;
     info->add_ref();
     info->tick = type->parent->ugen_info->tick;
+    info->tickf = type->parent->ugen_info->tickf; // added 1.3.0.0
     info->pmsg = type->parent->ugen_info->pmsg;
     info->num_ins = type->parent->ugen_info->num_ins;
     info->num_outs = type->parent->ugen_info->num_outs;
     if( tick ) info->tick = tick;
+    if( tickf ) { info->tickf = tickf; info->tick = NULL; } // added 1.3.0.0
     if( pmsg ) info->pmsg = pmsg;
     if( num_ins != 0xffffffff ) info->num_ins = num_ins;
     if( num_outs != 0xffffffff ) info->num_outs = num_outs;
     // set in type
     type->ugen_info = info;
+
+    return type;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: type_engine_import_ugen_begin()
+// desc: old version (added 1.3.0.0)
+//-----------------------------------------------------------------------------
+Chuck_Type * type_engine_import_ugen_begin( Chuck_Env * env, const char * name,
+                                           const char * parent, Chuck_Namespace * where,
+                                           f_ctor pre_ctor, f_dtor dtor,
+                                           f_tick tick, f_pmsg pmsg,
+                                           t_CKUINT num_ins, t_CKUINT num_outs,
+                                           const char * doc )
+{
+    return type_engine_import_ugen_begin( env, name, parent, where,
+                                         pre_ctor, dtor, tick, NULL, pmsg,
+                                         num_ins, num_outs, doc );
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: type_engine_import_ugen_begin()
+// desc: doc version (added 1.3.5.0)
+//-----------------------------------------------------------------------------
+Chuck_Type * type_engine_import_ugen_begin( Chuck_Env * env, const char * name,
+                                            const char * parent, Chuck_Namespace * where,
+                                            f_ctor pre_ctor, f_dtor dtor,
+                                            f_tick tick, f_pmsg pmsg,
+                                            const char * doc )
+{
+    return type_engine_import_ugen_begin( env, name, parent, where,
+                                          pre_ctor, dtor, tick, NULL, pmsg,
+                                          0xffffffff, 0xffffffff, doc );
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: type_engine_import_uana_begin()
+// desc: ...
+//-----------------------------------------------------------------------------
+Chuck_Type * type_engine_import_uana_begin( Chuck_Env * env, const char * name, 
+                                            const char * parent, Chuck_Namespace * where,
+                                            f_ctor pre_ctor, f_dtor dtor,
+                                            f_tick tick, f_tock tock, f_pmsg pmsg,
+                                            t_CKUINT num_ins, t_CKUINT num_outs,
+                                            t_CKUINT num_ins_ana, t_CKUINT num_outs_ana,
+                                            const char * doc )
+{
+    Chuck_Type * type = NULL;
+    Chuck_UGen_Info * info = NULL;
+
+    // construct class
+    if( !(type = type_engine_import_ugen_begin( env, name, parent, where, pre_ctor, dtor,
+                                                tick, pmsg, num_ins, num_outs, doc ) ) )
+        return NULL;
+
+    // make sure parent is ugen
+    assert( type->parent != NULL );
+    if( !isa( type->parent, &t_uana ) )
+    {
+        // error
+        EM_error2( 0,
+            "imported class '%s' does not have a uana as parent",
+            type->c_name() );
+        return NULL;
+    }
+
+    // do the info
+    info = type->ugen_info;
+    // sanity
+    assert( info != NULL );
+    // set
+    if( tock ) info->tock = tock;
+    if( num_ins_ana != 0xffffffff ) info->num_ins_ana = num_ins_ana;
+    if( num_outs_ana != 0xffffffff ) info->num_outs_ana = num_outs_ana;
 
     return type;
 }
@@ -4332,6 +5080,9 @@ t_CKBOOL type_engine_import_mfun( Chuck_Env * env, Chuck_DL_Func * mfun )
     if( !type_engine_check_func_def( env, func_def ) )
         return FALSE;
 
+    if( mfun->doc.size() > 0 )
+        func_def->ck_func->doc = mfun->doc;
+    
     return TRUE;
 }
 
@@ -4367,6 +5118,9 @@ t_CKBOOL type_engine_import_sfun( Chuck_Env * env, Chuck_DL_Func * sfun )
     if( !type_engine_check_func_def( env, func_def ) )
         return FALSE;
 
+    if( sfun->doc.size() > 0 )
+        func_def->ck_func->doc = sfun->doc;
+    
     return TRUE;
 }
 
@@ -4378,7 +5132,8 @@ t_CKBOOL type_engine_import_sfun( Chuck_Env * env, Chuck_DL_Func * sfun )
 // desc: import member variable (must be between class_begin/end)
 //-----------------------------------------------------------------------------
 t_CKUINT type_engine_import_mvar( Chuck_Env * env, const char * type, 
-                                  const char * name, t_CKUINT is_const )
+                                  const char * name, t_CKUINT is_const,
+                                  const char * doc )
 {
     // make sure we are in class
     if( !env->class_def )
@@ -4412,6 +5167,18 @@ t_CKUINT type_engine_import_mvar( Chuck_Env * env, const char * type,
     }
     // make var decl
     a_Var_Decl var_decl = new_var_decl( (char *)name, NULL, 0 );
+    
+    // added 2013-10-22 - spencer
+    // allow array-type mvars
+    // check for array
+    if( array_depth )
+    {
+        // add the array
+        var_decl->array = new_array_sub( NULL, 0 );
+        // set the depth
+        var_decl->array->depth = array_depth;
+    }
+
     // make var decl list
     a_Var_Decl_List var_decl_list = new_var_decl_list( var_decl, 0 );
     // make exp decl
@@ -4424,7 +5191,10 @@ t_CKUINT type_engine_import_mvar( Chuck_Env * env, const char * type,
         delete_id_list( path );
         return CK_INVALID_OFFSET;
     }
-
+    
+    if( doc != NULL )
+        var_decl->value->doc = doc;
+    
     // cleanup
     delete_id_list( path );
 
@@ -4441,7 +5211,7 @@ t_CKUINT type_engine_import_mvar( Chuck_Env * env, const char * type,
 //-----------------------------------------------------------------------------
 t_CKBOOL type_engine_import_svar( Chuck_Env * env, const char * type,
                                   const char * name, t_CKUINT is_const,
-                                  t_CKUINT addr )
+                                  t_CKUINT addr, const char * doc )
 {
     // make sure we are in class
     if( !env->class_def )
@@ -4481,13 +5251,38 @@ t_CKBOOL type_engine_import_svar( Chuck_Env * env, const char * type,
         delete_id_list( path );
         return FALSE;
     }
-
+    
+    if( doc != NULL )
+        var_decl->value->doc = doc;
+    
     // cleanup
     delete_id_list( path );
 
     return TRUE;
 }
 
+
+
+//-----------------------------------------------------------------------------
+// name: type_engine_import_add_ex()
+// desc: ...
+//-----------------------------------------------------------------------------
+t_CKBOOL type_engine_import_add_ex( Chuck_Env * env, const char * ex )
+{
+    // make sure we are in class
+    if( !env->class_def )
+    {
+        // error
+        EM_error2( 0,
+                   "import error: import_add_ex '%s' invoked between begin/end",
+                   ex );
+        return FALSE;
+    }
+    
+    env->class_def->examples.push_back( ex );
+    
+    return TRUE;
+}
 
 
 
@@ -4803,6 +5598,11 @@ a_Arg_List make_dll_arg_list( Chuck_DL_Func * dl_fun )
     // loop backwards
     for( i = dl_fun->args.size() - 1; i >= 0; i-- )
     {
+        // clear array
+        // added 1.3.2.0 - spencer
+        array_depth = array_depth2 = 0;
+        array_sub = NULL;
+        
         // copy into variable
         arg = dl_fun->args[i];
 
@@ -5099,13 +5899,133 @@ t_CKBOOL type_engine_add_dll( Chuck_Env * env, Chuck_DLL * dll, const string & d
 error:
     // error
     EM_error2( 0, "...(in object import '%s' in DLL '%s')", 
-        query ? ( query->dll_name.c_str() == "" ? query->dll_name.c_str() : "[empty]" ) : "[null]", dll->name() );
+        query ? ( query->dll_name == "" ? query->dll_name.c_str() : "[empty]" ) : "[null]", dll->name() );
 
     // free the path
     delete_id_list( path );
     
     // TODO: free the absyn stuff?
 
+    return FALSE;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: type_engine_add_dll2()
+// desc: add the DLL using type_engine functions (added 1.3.0.0)
+//-----------------------------------------------------------------------------
+t_CKBOOL type_engine_add_dll2( Chuck_Env * env, Chuck_DLL * dll, 
+                               const string &  )
+{
+    const Chuck_DL_Query * query = NULL;
+    
+    // get the query
+    query = dll->query();
+    
+    for( int i = 0; i < query->classes.size(); i++ )
+    {
+        if( !type_engine_add_class_from_dl(env, query->classes[i]) )
+        {
+            EM_log(CK_LOG_SEVERE,
+                   "error importing class '%s' from dynamic library (%s)",
+                   query->classes[i]->name.c_str(), dll->name());
+            
+            return FALSE;
+        }
+    }
+    
+    return TRUE;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: type_engine_add_class_from_dl()
+// desc: add the DLL using type_engine functions (added 1.3.0.0)
+//-----------------------------------------------------------------------------
+t_CKBOOL type_engine_add_class_from_dl( Chuck_Env * env, Chuck_DL_Class * c )
+{    
+    Chuck_DL_Func * ctor = NULL, * dtor = c->dtor;
+    if(c->ctors.size() > 0)
+        ctor = c->ctors[0]; // TODO: uh, is more than one possible?
+    
+    if((c->ugen_tick || c->ugen_tickf) && c->ugen_num_out)
+    {
+        // begin import as ugen
+        if(!type_engine_import_ugen_begin(env, c->name.c_str(),
+                                          c->parent.c_str(), env->global(),
+                                          ctor ? (f_ctor) ctor->addr : NULL,
+                                          dtor ? (f_dtor) dtor->addr : NULL,
+                                          c->ugen_tick, c->ugen_tickf, c->ugen_pmsg,
+                                          c->ugen_num_in, c->ugen_num_out,
+                                          c->doc.length() > 0 ? c->doc.c_str() : NULL ))
+            goto error;
+    }
+    else
+    {
+        // begin import as normal class (non-ugen)
+        if(!type_engine_import_class_begin(env, c->name.c_str(),
+                                           c->parent.c_str(), env->global(),
+                                           ctor ? (f_ctor) ctor->addr : NULL,
+                                           dtor ? (f_dtor) dtor->addr : NULL,
+                                           c->doc.length() > 0 ? c->doc.c_str() : NULL))
+            goto error;
+    }
+    
+    int j;
+    
+    // import member variables
+    for(j = 0; j < c->mvars.size(); j++)
+    {
+        Chuck_DL_Value * mvar = c->mvars[j];
+        if(type_engine_import_mvar(env, mvar->type.c_str(),
+                                   mvar->name.c_str(), mvar->is_const,
+                                   mvar->doc.size() ? mvar->doc.c_str() : NULL)
+           == CK_INVALID_OFFSET)
+            goto error;
+    }
+    
+    // import static variables
+    for(j = 0; j < c->svars.size(); j++)
+    {
+        Chuck_DL_Value * svar = c->svars[j];
+        if(!type_engine_import_svar(env, svar->type.c_str(), svar->name.c_str(),
+                                    svar->is_const, (t_CKUINT) svar->static_addr,
+                                    svar->doc.size() ? svar->doc.c_str() : NULL))
+            goto error;
+    }
+    
+    // import member functions
+    for(j = 0; j < c->mfuns.size(); j++)
+    {
+        Chuck_DL_Func * func = c->mfuns[j];
+        if(!type_engine_import_mfun(env, func)) goto error;
+    }
+    
+    // import static functions
+    for(j = 0; j < c->sfuns.size(); j++)
+    {
+        Chuck_DL_Func * func = c->sfuns[j];
+        if(!type_engine_import_sfun(env, func)) goto error;
+    }
+    
+    // import examples (if any)
+    for(j = 0; j < c->examples.size(); j++)
+    {
+        if(!type_engine_import_add_ex(env, c->examples[j].c_str())) goto error;
+    }
+    
+    // end class import
+    type_engine_import_class_end(env);
+    
+    return TRUE;
+    
+error:
+    type_engine_import_class_end(env);
+    
     return FALSE;
 }
 
@@ -5162,12 +6082,12 @@ t_CKBOOL escape_str( char * str_lit, int linepos )
     // create if not yet
     if( !g_escape_ready )
         escape_table( );
-
+    
     // write pointer
     char * str = str_lit;
     // unsigned because we index array of 256
     unsigned char c, c2, c3;
-
+    
     // iterate
     while( *str_lit )
     {
@@ -5176,18 +6096,18 @@ t_CKBOOL escape_str( char * str_lit, int linepos )
         {
             // advance pointer
             str_lit++;
-
+            
             // make sure next char
             if( *str_lit == '\0' )
             {
                 EM_error2( linepos, "invalid: string ends with escape charactor '\\'" );
                 return FALSE;
             }
-
+            
             // next characters
             c = *(str_lit);
             c2 = *(str_lit+1);
-
+            
             // is octal?
             if( c >= '0' && c <= '7' )
             {
@@ -5198,7 +6118,7 @@ t_CKBOOL escape_str( char * str_lit, int linepos )
                 {
                     // get next
                     c3 = *(str_lit+2);
-
+                    
                     // all three should be within range
                     if( c2 >= '0' && c2 <= '7' && c3 >= '0' && c3 <= '7' )
                     {
@@ -5236,16 +6156,44 @@ t_CKBOOL escape_str( char * str_lit, int linepos )
             // char
             *str++ = *str_lit;
         }
-
+        
         // advance pointer
         str_lit++;
     }
-
+    
     // make sure
     assert( str <= str_lit );
-
+    
     // terminate
     *str = '\0';
-
+    
     return TRUE;
+}
+
+t_CKINT str2char( const char * c, int linepos )
+{
+    if(c[0] == '\\')
+    {
+        switch(c[1])
+        {
+            case '0': return '\0';
+            case '\'': return '\'';
+            case '\\': return '\\';
+            case 'a': return '\a';
+            case 'b': return '\b';
+            case 'f': return '\f';
+            case 'n': return '\n';
+            case 'r': return '\r';
+            case 't': return '\t';
+            case 'v': return 'v';
+                
+            default:
+                EM_error2( linepos, "unrecognized escape sequence '\\%c'", c[1] );
+                return -1;
+        }
+    }
+    else
+    {
+        return c[0];
+    }
 }

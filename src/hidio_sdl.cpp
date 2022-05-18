@@ -1,41 +1,42 @@
-
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // file: hidio_sdl.cpp
-// desc: HID io over SDL
+// desc: HID io over SDL header
 //
 // author: Spencer Salazar (ssalazar@cs.princeton.edu)
 //         Ge Wang (gewang@cs.princeton.edu)
 //         Ananya Misra (amisra@cs.princeton.edu)
 //         Perry R. Cook (prc@cs.princeton.edu)
-// date: spring 2006
+// date: Summer 2005
 //-----------------------------------------------------------------------------
 #include "hidio_sdl.h"
 #include "util_hid.h"
 #include "chuck_errmsg.h"
+#include "chuck_globals.h"
+#include "chuck_vm.h"
 
 #ifndef __PLATFORM_WIN32__
 #include <unistd.h>
@@ -48,7 +49,7 @@
 #include <map>
 using namespace std;
 
-static Chuck_Hid_Driver default_drivers[CK_HID_DEV_COUNT];
+Chuck_Hid_Driver * default_drivers = NULL;
 
 struct PhyHidDevIn
 {
@@ -87,7 +88,7 @@ struct PhyHidDevOut
 // global variables
 //-----------------------------------------------------------------------------
 // per-physical device buffer size
-#define BUFFER_SIZE 8192
+#define BUFFER_SIZE 1024
 
 std::vector< std::vector<PhyHidDevIn *> > HidInManager::the_matrix;
 XThread * HidInManager::the_thread = NULL;
@@ -95,6 +96,7 @@ t_CKBOOL HidInManager::thread_going = FALSE;
 t_CKBOOL HidInManager::has_init = FALSE;
 CBufferSimple * HidInManager::msg_buffer = NULL;
 std::vector<PhyHidDevOut *> HidOutManager::the_phouts;
+CBufferSimple * HidInManager::m_event_buffer = NULL;
 
 //-----------------------------------------------------------------------------
 // name: PhyHidDevIn()
@@ -164,7 +166,7 @@ t_CKBOOL PhyHidDevIn::open( t_CKINT type, t_CKUINT number )
     
     // allocate the buffer
     cbuf = new CBufferAdvance;
-    if( !cbuf->initialize( BUFFER_SIZE, sizeof(HidMsg) ) )
+    if( !cbuf->initialize( BUFFER_SIZE, sizeof(HidMsg), HidInManager::m_event_buffer ) )
     {
         // log
         EM_log( CK_LOG_WARNING, "PhyHidDevIn: open operation failed: cannot initialize buffer" );
@@ -398,7 +400,7 @@ HidIn::HidIn()
     phin = NULL;
     m_device_num = 0;
     m_valid = FALSE;
-    m_read_index = 0;
+    m_read_index = UINT_MAX;
     m_buffer = NULL;
     m_suppress_output = FALSE;
     SELF = NULL;
@@ -429,7 +431,7 @@ t_CKBOOL HidIn::open( t_CKINT device_type, t_CKINT device_num )
     // close if already opened
     if( m_valid )
         this->close();
-
+    
     // open
     return m_valid = HidInManager::open( this, device_type, device_num );
 }
@@ -437,13 +439,31 @@ t_CKBOOL HidIn::open( t_CKINT device_type, t_CKINT device_num )
 
 
 
+//-----------------------------------------------------------------------------
+// name: open()
+// desc: open
+//-----------------------------------------------------------------------------
+t_CKBOOL HidIn::open( std::string & name, t_CKUINT device_type )
+{
+    // close if already opened
+    if( m_valid )
+        this->close();
+    
+    // open
+    return m_valid = HidInManager::open( this, device_type, name );
+}
+
+
+
+
 void HidInManager::init()
 {
-    // log
-    EM_log( CK_LOG_INFO, "initializing HID..." );
-	EM_pushlog();
     if( has_init == FALSE )
     {
+        // log
+        EM_log( CK_LOG_INFO, "initializing HID..." );
+        EM_pushlog();
+
         init_default_drivers();
         
         // allocate the matrix
@@ -468,19 +488,35 @@ void HidInManager::init()
                 default_drivers[j].init();
         }
         
+#ifdef __MACOSX_CORE__
+        // start thread
+        if( the_thread == NULL )
+        {
+            // allocate
+            the_thread = new XThread;
+            // flag
+            thread_going = TRUE;
+            // start
+            the_thread->start( cb_hid_input, NULL );
+        }
+#endif
+        
         has_init = TRUE;
+        
+        EM_poplog();
     }
-
-	EM_poplog();
 }
 
 void HidInManager::init_default_drivers()
 {
+    default_drivers = new Chuck_Hid_Driver[CK_HID_DEV_COUNT];
+    
     memset( default_drivers, 0, CK_HID_DEV_COUNT * sizeof( Chuck_Hid_Driver ) );
     
     default_drivers[CK_HID_DEV_JOYSTICK].init = Joystick_init;
     default_drivers[CK_HID_DEV_JOYSTICK].quit = Joystick_quit;
     default_drivers[CK_HID_DEV_JOYSTICK].count = Joystick_count;
+    default_drivers[CK_HID_DEV_JOYSTICK].count_elements = Joystick_count_elements;
     default_drivers[CK_HID_DEV_JOYSTICK].open = Joystick_open;
     default_drivers[CK_HID_DEV_JOYSTICK].close = Joystick_close;
     default_drivers[CK_HID_DEV_JOYSTICK].name = Joystick_name;
@@ -489,6 +525,7 @@ void HidInManager::init_default_drivers()
     default_drivers[CK_HID_DEV_MOUSE].init = Mouse_init;
     default_drivers[CK_HID_DEV_MOUSE].quit = Mouse_quit;
     default_drivers[CK_HID_DEV_MOUSE].count = Mouse_count;
+    default_drivers[CK_HID_DEV_MOUSE].count_elements = Mouse_count_elements;
     default_drivers[CK_HID_DEV_MOUSE].open = Mouse_open;
     default_drivers[CK_HID_DEV_MOUSE].close = Mouse_close;
     default_drivers[CK_HID_DEV_MOUSE].name = Mouse_name;
@@ -497,6 +534,7 @@ void HidInManager::init_default_drivers()
     default_drivers[CK_HID_DEV_KEYBOARD].init = Keyboard_init;
     default_drivers[CK_HID_DEV_KEYBOARD].quit = Keyboard_quit;
     default_drivers[CK_HID_DEV_KEYBOARD].count = Keyboard_count;
+    default_drivers[CK_HID_DEV_KEYBOARD].count_elements = Keyboard_count_elements;
     default_drivers[CK_HID_DEV_KEYBOARD].open = Keyboard_open;
     default_drivers[CK_HID_DEV_KEYBOARD].close = Keyboard_close;
     default_drivers[CK_HID_DEV_KEYBOARD].send = Keyboard_send;
@@ -520,6 +558,14 @@ void HidInManager::init_default_drivers()
     default_drivers[CK_HID_DEV_TILTSENSOR].read = TiltSensor_read;
     default_drivers[CK_HID_DEV_TILTSENSOR].name = TiltSensor_name;
     default_drivers[CK_HID_DEV_TILTSENSOR].driver_name = "tilt sensor";
+    
+    default_drivers[CK_HID_DEV_MULTITOUCH].init = MultiTouchDevice_init;
+    default_drivers[CK_HID_DEV_MULTITOUCH].quit = MultiTouchDevice_quit;
+    default_drivers[CK_HID_DEV_MULTITOUCH].count = MultiTouchDevice_count;
+    default_drivers[CK_HID_DEV_MULTITOUCH].open = MultiTouchDevice_open;
+    default_drivers[CK_HID_DEV_MULTITOUCH].close = MultiTouchDevice_close;
+    default_drivers[CK_HID_DEV_MULTITOUCH].name = MultiTouchDevice_name;
+    default_drivers[CK_HID_DEV_MULTITOUCH].driver_name = "multitouch";
 }
 
 void HidInManager::cleanup()
@@ -563,6 +609,12 @@ void HidInManager::cleanup()
             SAFE_DELETE( msg_buffer );
         }
         
+        if(m_event_buffer)
+        {
+            if(g_vm) g_vm->destroy_event_buffer(m_event_buffer);
+            m_event_buffer = NULL;
+        }
+        
         // init
         has_init = FALSE;
         //*/
@@ -576,6 +628,11 @@ t_CKBOOL HidInManager::open( HidIn * hin, t_CKINT device_type, t_CKINT device_nu
     if( has_init == FALSE )
     {
         init();
+    }
+    
+    if(m_event_buffer == NULL)
+    {
+        m_event_buffer = g_vm->create_event_buffer();
     }
 
     // check type
@@ -642,6 +699,95 @@ t_CKBOOL HidInManager::open( HidIn * hin, t_CKINT device_type, t_CKINT device_nu
     return TRUE;
 }
 
+
+
+t_CKBOOL HidInManager::open( HidIn * hin, t_CKINT device_type, std::string & device_name )
+{
+    // init?
+    if( has_init == FALSE )
+    {
+        init();
+    }
+    
+    if(m_event_buffer == NULL)
+    {
+        m_event_buffer = g_vm->create_event_buffer();
+    }
+    
+    t_CKINT device_type_start = 1;
+    t_CKINT device_type_finish = CK_HID_DEV_COUNT;
+    
+    if(device_type != CK_HID_DEV_COUNT)
+    {
+        // check type
+        if( device_type < 1 || device_type >= CK_HID_DEV_COUNT )
+        {
+            // log
+            EM_log( CK_LOG_WARNING, "HidInManager: open() failed -> invalid type '%d'...", 
+                    device_type );
+            return FALSE;
+        }
+        
+        device_type_start = device_type;
+        device_type_finish = device_type + 1;
+    }
+    
+    for(t_CKINT i = device_type_start; i < device_type_finish; i++)
+    {
+        if(default_drivers[i].count == NULL)
+            continue;
+        
+        t_CKINT max_devices = default_drivers[i].count();
+        
+        for(t_CKINT j = 0; j < max_devices; j++)
+        {
+            const char * _name = NULL;
+            
+            if( !default_drivers[i].name )
+                _name = default_drivers[i].driver_name;
+            else
+            {
+                _name = default_drivers[i].name( ( int ) j );
+            }
+            
+            if(!_name)
+            {
+                continue;
+            }
+            
+            std::string name = _name;
+            
+//            PhyHidDevIn * phyHid = devices[j];
+//            if(!phyHid)
+//                continue;
+//            
+//            std::string name = phyHid->name();
+            
+            if(name == device_name)
+            {
+                return open( hin, i, j );
+            }
+        }
+    }
+    
+    EM_log( CK_LOG_WARNING, "HidInManager: open() failed -> no device named '%s'...", 
+            device_name.c_str() );
+    
+    return FALSE;
+}
+
+
+//-----------------------------------------------------------------------------
+// name: close()
+// desc: close
+//-----------------------------------------------------------------------------
+t_CKBOOL HidInManager::close( HidIn * hin )
+{
+    return TRUE;
+}
+
+
+
 //-----------------------------------------------------------------------------
 // name: close()
 // desc: close
@@ -651,8 +797,15 @@ t_CKBOOL HidIn::close()
     if( !m_valid )
         return FALSE;
 
+    if(m_read_index != UINT_MAX && m_buffer)
+    {
+        m_buffer->resign(m_read_index);
+        m_read_index = UINT_MAX;
+        m_buffer = NULL;
+    }
+    
     // close
-    //HidInManager::close( this );
+    HidInManager::close( this );
 
     m_valid = FALSE;
 
@@ -772,28 +925,40 @@ unsigned __stdcall HidInManager::cb_hid_input( void * stuff )
 //-----------------------------------------------------------------------------
 void HidInManager::probeHidIn()
 {
-    if( !has_init )
-    {
-        for( size_t i = 0; i < CK_HID_DEV_COUNT; i++ )
-        {
-            if( default_drivers[i].init && default_drivers[i].probe )
-                default_drivers[i].init();
-        }
-    }
+    t_CKBOOL do_cleanup = !has_init;
+    
+    init();
     
     for( size_t i = 0; i < CK_HID_DEV_COUNT; i++ )
     {
-        if( default_drivers[i].probe )
-            default_drivers[i].probe();
+        if( !default_drivers[i].count )
+            continue;
+        
+        int count = default_drivers[i].count();
+        if( count == 0 )
+            continue;
+        
+        EM_error2b( 0, "------( chuck -- %i %s device%s )------", 
+                    count, default_drivers[i].driver_name,
+                    count > 1 ? "s" : "" );
+        
+        for( int j = 0; j < count; j++ )
+        {
+            const char * name;
+            if( default_drivers[i].name )
+                name = default_drivers[i].name( j );
+            if( !name )
+                name = "(no name)";
+            
+            EM_error2b( 0, "    [%i] : \"%s\"", j, name );
+        }
+        
+        EM_error2b( 0, "" );
     }
     
-    if( !has_init )
+    if( do_cleanup )
     {
-        for( size_t i = 0; i < CK_HID_DEV_COUNT; i++ )
-        {
-            if( default_drivers[i].quit )
-                default_drivers[i].quit();
-        }
+        cleanup();
     }
 }
 

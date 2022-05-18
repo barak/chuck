@@ -1,34 +1,35 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // file: ugen_osc.cpp
-// desc: ...
+// desc: oscilliator unit generators
 //
-// author: Ge Wang (gewang@cs.princeton.edu)
-//         Perry R. Cook (prc@cs.princeton.edu)
+// author: Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
 //         Philip L. Davidson (philipd@alumni.princeton.edu)
+//         Perry R. Cook (prc@cs.princeton.edu)
+//         Dan Trueman (dtrueman@princeton.edu)
 // date: Summer 2004
 //-----------------------------------------------------------------------------
 #include "ugen_osc.h"
@@ -64,11 +65,15 @@ DLL_QUERY osc_query( Chuck_DL_Query * QUERY )
     type_engine_register_deprecate( env, "pulseosc", "PulseOsc" );
     type_engine_register_deprecate( env, "sqrosc", "SqrOsc" );
 
+    std::string doc;
+    
     //---------------------------------------------------------------------
     // init as base class: osc
     //---------------------------------------------------------------------
+    doc = "Base class for simple oscillator unit generators.";
     if( !type_engine_import_ugen_begin( env, "Osc", "UGen", env->global(), 
-                                        osc_ctor, osc_dtor, osc_tick, osc_pmsg ) )
+                                        osc_ctor, osc_dtor, osc_tick, osc_pmsg,
+                                        doc.c_str() ) )
         return FALSE;
 
     // add member variable
@@ -78,17 +83,21 @@ DLL_QUERY osc_query( Chuck_DL_Query * QUERY )
     // add ctrl: freq
     func = make_new_mfun( "float", "freq", osc_ctrl_freq );
     func->add_arg( "float", "hz" );
+    func->doc = "Frequency of oscillator in Hertz (cycles per second).";
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "float", "freq", osc_cget_freq );
+    func->doc = "Frequency of oscillator in Hertz (cycles per second).";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add ctrl: period
     func = make_new_mfun( "dur", "period", osc_ctrl_period );
     func->add_arg( "dur", "value" );
+    func->doc = "Period of oscillator (inverse of frequency).";
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "dur", "period", osc_cget_period );
+    func->doc = "Period of oscillator (inverse of frequency).";
     if( !type_engine_import_mfun( env, func ) ) goto error;
-
+    
     // add ctrl: sfreq ( == freq ) 
     func = make_new_mfun( "float", "sfreq", osc_ctrl_freq );
     func->add_arg( "float", "hz" );
@@ -97,15 +106,19 @@ DLL_QUERY osc_query( Chuck_DL_Query * QUERY )
     // add ctrl: phase
     func = make_new_mfun( "float", "phase", osc_ctrl_phase );
     func->add_arg( "float", "phase" );
+    func->doc = "Oscillator phase, in range [0,1). ";
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "float", "phase", osc_cget_phase );
+    func->doc = "Oscillator phase, in range [0,1). ";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add ctrl: sync
     func = make_new_mfun( "int", "sync", osc_ctrl_sync );
     func->add_arg( "int", "type" );
+    func->doc = "Mode for input (if any). 0: sync frequency to input, 1: sync phase to input, 2: frequency modulation (add input to set frequency)";
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "int", "sync", osc_cget_sync );
+    func->doc = "Mode for input (if any). 0: sync frequency to input, 1: sync phase to input, 2: frequency modulation (add input to set frequency)";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // end the class import
@@ -115,8 +128,10 @@ DLL_QUERY osc_query( Chuck_DL_Query * QUERY )
     //---------------------------------------------------------------------
     // phasor
     //---------------------------------------------------------------------
+    doc = "Phasor oscillator. Linearly rises from 0 to 1. Can be used as a phase control.";
     if( !type_engine_import_ugen_begin( env, "Phasor", "Osc", env->global(), 
-                                        NULL, NULL, osc_tick, NULL ) )
+                                        NULL, NULL, osc_tick, NULL,
+                                        doc.c_str() ) )
         return FALSE;
 
     // end the class import
@@ -125,9 +140,13 @@ DLL_QUERY osc_query( Chuck_DL_Query * QUERY )
     //---------------------------------------------------------------------
     // sinosc
     //---------------------------------------------------------------------
-    if( !type_engine_import_ugen_begin( env, "SinOsc", "Osc", env->global(), 
-                                        NULL, NULL, sinosc_tick, NULL ) )
+    doc = "Sine wave oscillator.";
+    if( !type_engine_import_ugen_begin( env, "SinOsc", "Osc", env->global(),
+                                        NULL, NULL, sinosc_tick, NULL,
+                                        doc.c_str() ) )
         return FALSE;
+    
+    type_engine_import_add_ex( env, "basic/whirl.ck" );
 
     // end the class import
     type_engine_import_class_end( env );
@@ -136,13 +155,20 @@ DLL_QUERY osc_query( Chuck_DL_Query * QUERY )
     //---------------------------------------------------------------------
     // triosc - triangle oscillator
     //---------------------------------------------------------------------
-    if( !type_engine_import_ugen_begin( env, "TriOsc", "Osc", env->global(), 
-                                        NULL, NULL, triosc_tick, NULL ) )
+    doc = "Triangle wave oscillator.";
+    if( !type_engine_import_ugen_begin( env, "TriOsc", "Osc", env->global(),
+                                        NULL, NULL, triosc_tick, NULL,
+                                        doc.c_str() ) )
         return FALSE;
-
+    
     func = make_new_mfun( "float", "width", osc_ctrl_width );
     func->add_arg( "float", "width" );
-    if( !type_engine_import_mfun( env, func ) ) goto error;    
+    func->doc = "Width of triangle wave (ratio of rise time to fall time).";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    func = make_new_mfun( "float", "width", osc_cget_width );
+    func->doc = "Width of triangle wave (ratio of rise time to fall time).";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // end the class import
     type_engine_import_class_end( env );
@@ -151,13 +177,20 @@ DLL_QUERY osc_query( Chuck_DL_Query * QUERY )
     //---------------------------------------------------------------------
     // sawosc - sawtooth oscillator  (  0 | 1  triangle wave  )
     //---------------------------------------------------------------------
-    if( !type_engine_import_ugen_begin( env, "SawOsc", "TriOsc", env->global(), 
-                                        sawosc_ctor, NULL, NULL, NULL ) )
+    doc = "Sawtooth wave oscillator.";
+    if( !type_engine_import_ugen_begin( env, "SawOsc", "TriOsc", env->global(),
+                                        sawosc_ctor, NULL, NULL, NULL,
+                                        doc.c_str() ) )
         return FALSE;
 
     func = make_new_mfun( "float", "width", sawosc_ctrl_width );
     func->add_arg( "float", "width" );
-    if( !type_engine_import_mfun( env, func ) ) goto error;    
+    func->doc = "Whether falling sawtooth wave (0) or rising sawtooth wave (1).";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    func = make_new_mfun( "float", "width", osc_cget_width );
+    func->doc = "Whether falling sawtooth wave (0) or rising sawtooth wave (1).";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // end the class import
     type_engine_import_class_end( env );
@@ -166,13 +199,20 @@ DLL_QUERY osc_query( Chuck_DL_Query * QUERY )
     //---------------------------------------------------------------------
     // pulseosc - pulse-width oscillator
     //---------------------------------------------------------------------
-    if( !type_engine_import_ugen_begin( env, "PulseOsc", "Osc", env->global(), 
-                                        NULL, NULL, pulseosc_tick, NULL ) )
+    doc = "Pulse width oscillator.";
+    if( !type_engine_import_ugen_begin( env, "PulseOsc", "Osc", env->global(),
+                                        NULL, NULL, pulseosc_tick, NULL,
+                                        doc.c_str() ) )
         return FALSE;
 
     func = make_new_mfun( "float", "width", osc_ctrl_width );
     func->add_arg( "float", "width" );
+    func->doc = "Length of duty cycle [0,1).";
     if( !type_engine_import_mfun( env, func ) ) goto error;    
+
+    func = make_new_mfun( "float", "width", osc_cget_width );
+    func->doc = "Length of duty cycle [0,1).";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // end the class import
     type_engine_import_class_end( env );
@@ -181,12 +221,14 @@ DLL_QUERY osc_query( Chuck_DL_Query * QUERY )
     //---------------------------------------------------------------------
     // sqrosc - square_wave oscillator ( 0.5 pulse ) 
     //---------------------------------------------------------------------
-    if( !type_engine_import_ugen_begin( env, "SqrOsc", "PulseOsc", env->global(), 
-                                        sqrosc_ctor, NULL, NULL, NULL ) )
+    doc = "Square wave oscillator (pulse with 0.5 duty cycle).";
+    if( !type_engine_import_ugen_begin( env, "SqrOsc", "PulseOsc", env->global(),
+                                        sqrosc_ctor, NULL, NULL, NULL,
+                                        doc.c_str() ) )
         return FALSE;
-
+    
     func = make_new_mfun( "float", "width", sqrosc_ctrl_width );
-    func->add_arg( "float", "width" );
+    func->doc = "Length of duty cycle (always 0.5)";
     if( !type_engine_import_mfun( env, func ) ) goto error;    
 
     // end the class import
@@ -247,7 +289,7 @@ CK_DLL_CTOR( osc_ctor )
     Chuck_DL_Return r;
     // return data to be used later
     OBJ_MEMBER_UINT(SELF, osc_offset_data) = (t_CKUINT)d;
-    osc_ctrl_freq( SELF, &(d->freq), &r, SHRED );
+    osc_ctrl_freq( SELF, &(d->freq), &r, SHRED, Chuck_DL_Api::Api::instance() );
 }
 
 
@@ -304,8 +346,7 @@ CK_DLL_TICK( osc_tick )
             // phase increment
             d->num = d->freq / d->srate;
             // bound it
-            if( d->num >= 1.0 ) d->num -= floor( d->num );
-            else if( d->num <= 1.0 ) d->num += floor( d->num );
+            if( d->num >= 1.0 || d->num < 0.0 ) d->num -= floor( d->num );
         }
         // synch phase to input
         else if( d->sync == 1 )
@@ -314,6 +355,8 @@ CK_DLL_TICK( osc_tick )
             d->phase = in;
             // no update
             inc_phase = FALSE;
+            // bound it (thanks Pyry)
+            if( d->phase > 1.0 || d->phase < 0.0 ) d->phase -= floor( d->phase );
         }
         // fm synthesis
         else if( d->sync == 2 )
@@ -323,8 +366,7 @@ CK_DLL_TICK( osc_tick )
             // phase increment
             d->num = freq / d->srate;
             // bound it
-            if( d->num >= 1.0 ) d->num -= floor( d->num );
-            else if( d->num <= 1.0 ) d->num += floor( d->num );
+            if( d->num >= 1.0 || d->num < 0.0 ) d->num -= floor( d->num );
         }
         // sync to now
         // else if( d->sync == 3 )
@@ -344,6 +386,7 @@ CK_DLL_TICK( osc_tick )
         d->phase += d->num;
         // keep the phase between 0 and 1
         if( d->phase > 1.0 ) d->phase -= 1.0;
+        else if( d->phase < 0.0 ) d->phase += 1.0;
     }
 
     return TRUE;
@@ -375,7 +418,7 @@ CK_DLL_TICK( sinosc_tick )
             d->num = d->freq / d->srate;
             // bound it
             if( d->num >= 1.0 ) d->num -= floor( d->num );
-            else if( d->num <= 1.0 ) d->num += floor( d->num );
+            else if( d->num <= -1.0 ) d->num += floor( d->num );
         }
         // sync phase to input
         else if( d->sync == 1 )
@@ -393,7 +436,7 @@ CK_DLL_TICK( sinosc_tick )
             d->num = freq / d->srate;
             // bound it
             if( d->num >= 1.0 ) d->num -= floor( d->num );
-            else if( d->num <= 1.0 ) d->num += floor( d->num );
+            else if( d->num <= -1.0 ) d->num += floor( d->num );
         }
         // sync phase to now
         // else if( d->sync == 3 )
@@ -412,6 +455,7 @@ CK_DLL_TICK( sinosc_tick )
         d->phase += d->num;
         // keep the phase between 0 and 1
         if( d->phase > 1.0 ) d->phase -= 1.0;
+        else if( d->phase < 0.0 ) d->phase += 1.0;
     }
 
     return TRUE;
@@ -443,7 +487,7 @@ CK_DLL_TICK( triosc_tick )
             d->num = d->freq / d->srate;
             // bound it
             if( d->num >= 1.0 ) d->num -= floor( d->num );
-            else if( d->num <= 1.0 ) d->num += floor( d->num );
+            else if( d->num <= -1.0 ) d->num += floor( d->num );
         }
         // sync phase to input
         else if( d->sync == 1 )
@@ -461,7 +505,7 @@ CK_DLL_TICK( triosc_tick )
             d->num = freq / d->srate;
             // bound it
             if( d->num >= 1.0 ) d->num -= floor( d->num );
-            else if( d->num <= 1.0 ) d->num += floor( d->num );
+            else if( d->num <= -1.0 ) d->num += floor( d->num );
         }
         // sync to now
         // if( d->sync == 3 )
@@ -482,6 +526,7 @@ CK_DLL_TICK( triosc_tick )
         d->phase += d->num;
         // keep the phase between 0 and 1
         if( d->phase > 1.0 ) d->phase -= 1.0;
+        else if( d->phase < 0.0 ) d->phase += 1.0;
     }
 
     return TRUE;
@@ -514,7 +559,7 @@ CK_DLL_TICK( pulseosc_tick )
             d->num = d->freq / d->srate;
             // bound it
             if( d->num >= 1.0 ) d->num -= floor( d->num );
-            else if( d->num <= 1.0 ) d->num += floor( d->num );
+            else if( d->num <= -1.0 ) d->num += floor( d->num );
         }
         // sync phase to input
         else if( d->sync == 1 )
@@ -532,7 +577,7 @@ CK_DLL_TICK( pulseosc_tick )
             d->num = freq / d->srate;
             // bound it
             if( d->num >= 1.0 ) d->num -= floor( d->num );
-            else if( d->num <= 1.0 ) d->num += floor( d->num );
+            else if( d->num <= -1.0 ) d->num += floor( d->num );
         }
         // sync to now
         // if( d->sync == 3 )
@@ -551,6 +596,7 @@ CK_DLL_TICK( pulseosc_tick )
         d->phase += d->num;
         // keep the phase between 0 and 1
         if( d->phase > 1.0 ) d->phase -= 1.0;
+		else if( d->phase < 0.0 ) d->phase += 1.0;
     }
 
     return TRUE;
@@ -715,7 +761,7 @@ CK_DLL_CTOR( sqrosc_ctor )
 {
     Osc_Data * d = new Osc_Data;
     Chuck_DL_Return r;
-    sqrosc_ctrl_width( SELF, &(d->width), &r, SHRED );
+    sqrosc_ctrl_width( SELF, &(d->width), &r, SHRED, Chuck_DL_Api::Api::instance() );
 }
 
 
@@ -746,7 +792,7 @@ CK_DLL_CTOR( sawosc_ctor )
 {
     Osc_Data * d = new Osc_Data;
     Chuck_DL_Return r;
-    sawosc_ctrl_width( SELF, &(d->width), &r, SHRED );
+    sawosc_ctrl_width( SELF, &(d->width), &r, SHRED, Chuck_DL_Api::Api::instance() );
 }
 
 
@@ -762,7 +808,7 @@ CK_DLL_CTRL( sawosc_ctrl_width )
     Osc_Data * d = (Osc_Data *)OBJ_MEMBER_UINT(SELF, osc_offset_data );
     // set freq
     d->width = GET_CK_FLOAT(ARGS);
-    //bound ( this could be set arbitrarily high or low ) 
+    // bound ( this could be set arbitrarily high or low ) 
     d->width = ( d->width < 0.5 ) ? 0.0 : 1.0;  //rising or falling
     // return
     RETURN->v_float = (t_CKFLOAT)d->width;
@@ -1091,7 +1137,7 @@ CK_DLL_TICK( genX_tick )
     // get the data
     genX_Data * d = (genX_Data *)OBJ_MEMBER_UINT(SELF, genX_offset_data );
     Chuck_UGen * ugen = (Chuck_UGen *)SELF;
-    t_CKBOOL inc_phase = TRUE;
+//    t_CKBOOL inc_phase = TRUE;
     
     t_CKDOUBLE in_index = 0.0;
     t_CKDOUBLE scaled_index = 0.0;
@@ -1447,7 +1493,7 @@ CK_DLL_CTRL( curve_coeffs )
     // get data
     genX_Data * d = (genX_Data *)OBJ_MEMBER_UINT(SELF, genX_offset_data);
     t_CKINT i, points, nargs, seglen = 0, len = genX_tableSize;
-    t_CKDOUBLE factor, *ptr, xmax=0.0;
+    t_CKDOUBLE factor, *ptr;//, xmax=0.0;
     t_CKDOUBLE time[MAX_CURVE_PTS], value[MAX_CURVE_PTS], alpha[MAX_CURVE_PTS];
     t_CKFLOAT coeffs[genX_MAX_COEFFS];
     t_CKUINT ii = 0;
@@ -1621,7 +1667,7 @@ t_CKDOUBLE _symwarp(t_CKDOUBLE inval, t_CKDOUBLE k)
 //-----------------------------------------------------------------------------
 CK_DLL_PMSG( genX_pmsg )
 {
-    genX_Data * d = (genX_Data *)OBJ_MEMBER_UINT(SELF, genX_offset_data );
+    //genX_Data * d = (genX_Data *)OBJ_MEMBER_UINT(SELF, genX_offset_data );
     if( !strcmp( MSG, "print" ) )
     {
         // fprintf( stdout, "genX:" );

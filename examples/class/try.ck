@@ -22,7 +22,7 @@ e => dac;
 3000::ms => e2.max => e2.delay;
 1 => g.gain;
 .5 => e.gain;
-.25 => e.gain;
+.25 => e2.gain;
 .1 => r.mix;
 
 // connect the Dinky
@@ -38,8 +38,8 @@ imp.radius( .999 );
 while( true )
 {
     // trigger
-    45 + Std.rand2(0,3) * 12 + 
-         hi[Std.rand2(0,hi.cap()-1)] => imp.t;
+    45 + Math.random2(0,3) * 12 + 
+         hi[Math.random2(0,hi.cap()-1)] => imp.t;
     // let time pass
     195::ms => now;
     // close the envelope

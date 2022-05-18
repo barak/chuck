@@ -1,38 +1,39 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2003 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
-
+  
 //-----------------------------------------------------------------------------
 // file: chuck_main.cpp
 // desc: chuck entry point
 //
-// author: Ge Wang (gewang@cs.princeton.edu)
-//         Perry R. Cook (prc@cs.princeton.edu)
+// author: Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
 // additional contributors:
 //         Ananya Misra (amisra@cs.princeton.edu)
-//         Spencer Salazar (salazar@cs.princeton.edu)
+//         Spencer Salazar (spencer@ccrma.stanford.edu)
+//         Perry R. Cook (prc@cs.princeton.edu)
 // date: version 1.1.x.x - Autumn 2002
 //       version 1.2.x.x - Autumn 2004
+//       version 1.3.x.x - Spring 2012
 //-----------------------------------------------------------------------------
 #include <stdio.h>
 #include <string.h>
@@ -48,9 +49,11 @@
 #include "chuck_console.h"
 #include "chuck_globals.h"
 
+#include "util_math.h"
 #include "util_string.h"
 #include "util_thread.h"
 #include "util_network.h"
+#include "ulib_machine.h"
 #include "hidio_sdl.h"
 
 #include <signal.h>
@@ -58,8 +61,11 @@
   #include <unistd.h>
   #include <netinet/in.h>
   #include <arpa/inet.h>
-#endif
-
+  #include <sys/param.h>   // added 1.3.0.0
+#else
+  #include <direct.h>      // added 1.3.0.0
+  #define MAXPATHLEN (255) // addec 1.3.0.0
+#endif // #ifndef __PLATFORM_WIN32__
 
 // global variables
 #if defined(__MACOSX_CORE__)
@@ -83,7 +89,6 @@ char g_host[256] = "127.0.0.1";
 
 
 
-
 //-----------------------------------------------------------------------------
 // name: signal_int()
 // desc: ...
@@ -96,8 +101,10 @@ extern "C" void signal_int( int sig_num )
     {
         // get vm
         Chuck_VM * vm = g_vm;
+        Chuck_Compiler * compiler = g_compiler;
         // flag the global one
         g_vm = NULL;
+        g_compiler = NULL;
         // if not NULL
         if( vm )
         {
@@ -113,12 +120,14 @@ extern "C" void signal_int( int sig_num )
         if( g_tid_otf ) pthread_cancel( g_tid_otf );
         if( g_tid_whatever ) pthread_cancel( g_tid_whatever );
         // if( g_tid_otf ) usleep( 50000 );
-        SAFE_DELETE( vm );
-        SAFE_DELETE( g_compiler );
 #else
         // close handle
         if( g_tid_otf ) CloseHandle( g_tid_otf );
 #endif
+        // will this work for windows?
+        SAFE_DELETE( vm );
+        SAFE_DELETE( compiler );
+
         // ck_close( g_sock );
     }
 
@@ -133,25 +142,10 @@ extern "C" void signal_int( int sig_num )
 
 
 //-----------------------------------------------------------------------------
-// name: next_power_2()
-// desc: ...
-// thanks: to Niklas Werner / music-dsp
-//-----------------------------------------------------------------------------
-t_CKUINT next_power_2( t_CKUINT n )
-{
-    t_CKUINT nn = n;
-    for( ; n &= n-1; nn = n );
-    return nn * 2;
-}
-
-
-
-
-//-----------------------------------------------------------------------------
 // name: uh()
 // desc: ...
 //-----------------------------------------------------------------------------
-void uh( )
+static void uh( )
 {
     // TODO: play white noise and/or sound effects
     srand( time( NULL ) );
@@ -170,7 +164,7 @@ void uh( )
 // name: init_shell()
 // desc: ...
 //-----------------------------------------------------------------------------
-t_CKBOOL init_shell( Chuck_Shell * shell, Chuck_Shell_UI * ui, Chuck_VM * vm )
+static t_CKBOOL init_shell( Chuck_Shell * shell, Chuck_Shell_UI * ui, Chuck_VM * vm )
 {
     // initialize shell UI
     if( !ui->init() )
@@ -196,7 +190,7 @@ t_CKBOOL init_shell( Chuck_Shell * shell, Chuck_Shell_UI * ui, Chuck_VM * vm )
 // name: get_count()
 // desc: ...
 //-----------------------------------------------------------------------------
-t_CKBOOL get_count( const char * arg, t_CKUINT * out )
+static t_CKBOOL get_count( const char * arg, t_CKUINT * out )
 {
     // no comment
     if( !strncmp( arg, "--", 2 ) ) arg += 2;
@@ -221,30 +215,39 @@ t_CKBOOL get_count( const char * arg, t_CKUINT * out )
 // name: version()
 // desc: ...
 //-----------------------------------------------------------------------------
-void version()
+static void version()
 {
     fprintf( stderr, "\n" );
     fprintf( stderr, "chuck version: %s\n", CK_VERSION );
+
+    // platform string
+    string platform = "";
+
 #if defined(__PLATFORM_WIN32__)
-    fprintf( stderr, "   exe target: microsoft win32\n" );
+    platform = "microsoft win32";
 #elif defined(__WINDOWS_DS__)
-    fprintf( stderr, "   exe target: microsoft win32 + cygwin\n" );
+    platform = "microsoft win32 + cygwin";
 #elif defined(__LINUX_ALSA__)
-    fprintf( stderr, "   exe target: linux (alsa)\n" );
+    platform = "linux (alsa)";
 #elif defined(__LINUX_OSS__)
-    fprintf( stderr, "   exe target: linux (oss)\n" );
-#elif defined(__LINUX_JACK__)
-    fprintf( stderr, "   exe target: linux (jack)\n" );
+    platform = "linux (oss)";
+#elif defined(__LINUX_JACK__) || defined(__UNIX_JACK__)
+    platform = "linux (jack)";
+#elif defined(__LINUX_PULSE__)
+    platform = "linux (pulse)";
 #elif defined(__MACOSX_UB__)
-    fprintf( stderr, "   exe target: mac os x : universal binary\n" );
+    platform = "mac os x : universal binary";
 #elif defined(__MACOSX_CORE__) && defined(__LITTLE_ENDIAN__)
-    fprintf( stderr, "   exe target: mac os x : intel\n" );
+    platform = "mac os x : intel";
 #elif defined(__MACOSX_CORE__)
-    fprintf( stderr, "   exe target: mac os x : powerpc\n" );
+    platform = "mac os x : powerpc";
 #else
-    fprintf( stderr, "   exe target: uh... unknown\n" );
+    platform = "uh... unknown";
 #endif
-    fprintf( stderr, "   http://chuck.cs.princeton.edu/\n\n" );
+    
+    fprintf( stderr, "   %s : %ld-bit\n", platform.c_str(), machine_intsize() );
+    fprintf( stderr, "   http://chuck.cs.princeton.edu/\n" );
+    fprintf( stderr, "   http://chuck.stanford.edu/\n\n" );
 }
 
 
@@ -254,15 +257,17 @@ void version()
 // name: usage()
 // desc: ...
 //-----------------------------------------------------------------------------
-void usage()
+static void usage()
 {
+    // (note: optional colon added 1.3.0.0)
     fprintf( stderr, "usage: chuck --[options|commands] [+-=^] file1 file2 file3 ...\n" );
-    fprintf( stderr, "   [options] = halt|loop|audio|silent|dump|nodump|server|about|\n" );
-    fprintf( stderr, "               srate<N>|bufsize<N>|bufnum<N>|dac<N>|adc<N>|\n" );
-    fprintf( stderr, "               remote<hostname>|port<N>|verbose<N>|probe|\n" );
-    fprintf( stderr, "               channels<N>|out<N>|in<N>|shell|empty|level<N>|\n" );
-    fprintf( stderr, "               blocking|callback|deprecate:{stop|warn|ignore}\n" );
-    fprintf( stderr, "   [commands] = add|remove|replace|removeall|status|time|kill\n" );
+    fprintf( stderr, "   [options] = halt|loop|audio|silent|dump|nodump|server|about|probe|\n" );
+    fprintf( stderr, "               channels:<N>|out:<N>|in:<N>|dac:<N>|adc:<N>|\n" );
+    fprintf( stderr, "               srate:<N>|bufsize:<N>|bufnum:<N>|shell|empty|\n" );
+    fprintf( stderr, "               remote:<hostname>|port:<N>|verbose:<N>|level:<N>|\n" );
+    fprintf( stderr, "               blocking|callback|deprecate:{stop|warn|ignore}|\n" );
+    fprintf( stderr, "               chugin-load:{auto|off}|chugin-path:<path>|chugin:<name>\n" );
+    fprintf( stderr, "   [commands] = add|remove|replace|remove.all|status|time|kill\n" );
     fprintf( stderr, "   [+-=^] = shortcuts for add, remove, replace, status\n" );
     version();
 }
@@ -274,8 +279,12 @@ void usage()
 // name: main()
 // desc: entry point
 //-----------------------------------------------------------------------------
-int main( int argc, char ** argv )
-{
+#ifndef __ALTER_ENTRY_POINT__
+  int main( int argc, const char ** argv )
+#else
+  extern "C" int chuck_main( int argc, const char ** argv )
+#endif
+{    
     Chuck_Compiler * compiler = NULL;
     Chuck_VM * vm = NULL;
     Chuck_VM_Code * code = NULL;
@@ -284,10 +293,13 @@ int main( int argc, char ** argv )
     t_CKBOOL enable_audio = TRUE;
     t_CKBOOL vm_halt = TRUE;
     t_CKUINT srate = SAMPLING_RATE_DEFAULT;
+    t_CKBOOL force_srate = FALSE; // added 1.3.1.2
     t_CKUINT buffer_size = BUFFER_SIZE_DEFAULT;
     t_CKUINT num_buffers = NUM_BUFFERS_DEFAULT;
     t_CKUINT dac = 0;
     t_CKUINT adc = 0;
+    std::string dac_name = ""; // added 1.3.0.0
+    std::string adc_name = ""; // added 1.3.0.0
     t_CKUINT dac_chans = 2;
     t_CKUINT adc_chans = 2;
     t_CKBOOL dump = FALSE;
@@ -300,13 +312,36 @@ int main( int argc, char ** argv )
     t_CKBOOL load_hid = FALSE;
     t_CKBOOL enable_server = TRUE;
     t_CKBOOL do_watchdog = TRUE;
+    t_CKINT  adaptive_size = 0;
     t_CKINT  log_level = CK_LOG_CORE;
-    t_CKINT  deprecate_level = 1; // warn
-
+    t_CKINT  deprecate_level = 1; // 1 == warn
+    t_CKINT  chugin_load = 1; // 1 == auto (variable added 1.3.0.0)
     string   filename = "";
     vector<string> args;
 
-#if defined(__MACOSX_CORE__)
+    // list of search pathes (added 1.3.0.0)
+    std::list<std::string> dl_search_path;
+    // initial chug-in path (added 1.3.0.0)
+    std::string initial_chugin_path;
+    // if set as environment variable (added 1.3.0.0)
+    if( getenv( g_chugin_path_envvar ) )
+    {
+        // get it from the env var
+        initial_chugin_path = getenv( g_chugin_path_envvar );
+    }
+    else
+    {
+        // default it
+        initial_chugin_path = g_default_chugin_path;
+    }
+    // parse the colon list into STL list (added 1.3.0.0)
+    parse_path_list( initial_chugin_path, dl_search_path );
+    // list of individually named chug-ins (added 1.3.0.0)
+    std::list<std::string> named_dls;
+
+#if defined(__DISABLE_WATCHDOG__)
+    do_watchdog = FALSE;
+#elif defined(__MACOSX_CORE__)
     do_watchdog = TRUE;
 #elif defined(__PLATFORM_WIN32__) && !defined(__WINDOWS_PTHREAD__)
     do_watchdog = TRUE;
@@ -354,34 +389,104 @@ int main( int argc, char ** argv )
             {   enable_shell = TRUE; vm_halt = FALSE; }
             else if( !strcmp(argv[i], "--empty") )
                 no_vm = TRUE;
+            else if( !strncmp(argv[i], "--srate:", 8) ) // (added 1.3.0.0)
+            {   srate = atoi( argv[i]+8 ) > 0 ? atoi( argv[i]+8 ) : srate; force_srate = TRUE; }
             else if( !strncmp(argv[i], "--srate", 7) )
-                srate = atoi( argv[i]+7 ) > 0 ? atoi( argv[i]+7 ) : srate;
+            {   srate = atoi( argv[i]+7 ) > 0 ? atoi( argv[i]+7 ) : srate; force_srate = TRUE; }
             else if( !strncmp(argv[i], "-r", 2) )
-                srate = atoi( argv[i]+2 ) > 0 ? atoi( argv[i]+2 ) : srate;
+            {   srate = atoi( argv[i]+2 ) > 0 ? atoi( argv[i]+2 ) : srate; force_srate = TRUE; }
+            else if( !strncmp(argv[i], "--bufsize:", 10) ) // (added 1.3.0.0)
+                buffer_size = atoi( argv[i]+10 ) > 0 ? atoi( argv[i]+10 ) : buffer_size;
             else if( !strncmp(argv[i], "--bufsize", 9) )
                 buffer_size = atoi( argv[i]+9 ) > 0 ? atoi( argv[i]+9 ) : buffer_size;
             else if( !strncmp(argv[i], "-b", 2) )
                 buffer_size = atoi( argv[i]+2 ) > 0 ? atoi( argv[i]+2 ) : buffer_size;
+            else if( !strncmp(argv[i], "--bufnum:", 9) ) // (added 1.3.0.0)
+                num_buffers = atoi( argv[i]+9 ) > 0 ? atoi( argv[i]+9 ) : num_buffers;
             else if( !strncmp(argv[i], "--bufnum", 8) )
                 num_buffers = atoi( argv[i]+8 ) > 0 ? atoi( argv[i]+8 ) : num_buffers;
             else if( !strncmp(argv[i], "-n", 2) )
                 num_buffers = atoi( argv[i]+2 ) > 0 ? atoi( argv[i]+2 ) : num_buffers;
+            else if( !strncmp(argv[i], "--dac:", 6) ) // (added 1.3.0.0)
+            {
+                // advance pointer to beginning of argument
+                const char * str = argv[i]+6;
+                char * endptr = NULL;
+                long dev = strtol(str, &endptr, 10);
+                
+                // check if arg was a number (added 1.3.0.0)
+                if( endptr != NULL && *endptr == '\0' )
+                {
+                    // successful conversion to # -- clear adc_name
+                    dac = dev;
+                    dac_name = "";
+                }
+                // check if arg was not a number and not empty (added 1.3.0.0)
+                else if( *str != '\0' )
+                {
+                    // incomplete conversion to #; see if its a possible device name
+                    dac_name = std::string(str);
+                }
+                else
+                {
+                    // error
+                    fprintf( stderr, "[chuck]: invalid arguments for '--dac:'\n" );
+                    fprintf( stderr, "[chuck]: (see 'chuck --help' for more info)\n" );
+                    exit( 1 );
+                }
+            }
             else if( !strncmp(argv[i], "--dac", 5) )
-                dac = atoi( argv[i]+5 ) > 0 ? atoi( argv[i]+5 ) : 0;
+                dac = atoi( argv[i]+6 ) > 0 ? atoi( argv[i]+6 ) : 0;
+            else if( !strncmp(argv[i], "--adc:", 6) ) // (added 1.3.0.0)
+            {
+                // advance pointer to beginning of argument
+                const char * str = argv[i]+6;
+                char * endptr = NULL;
+                long dev = strtol(str, &endptr, 10);
+                
+                // check if arg was a number (added 1.3.0.0)
+                if( endptr != NULL && *endptr == '\0' )
+                {
+                    // successful conversion to # -- clear adc_name
+                    adc = dev;
+                    adc_name = "";
+                }
+                // check if arg was number a number and not empty (added 1.3.0.0)
+                else if( *str != '\0' )
+                {
+                    // incomplete conversion to #; see if its a possible device name
+                    adc_name = std::string(str);
+                }
+                else
+                {
+                    // error
+                    fprintf( stderr, "[chuck]: invalid arguments for '--adc:'\n" );
+                    fprintf( stderr, "[chuck]: (see 'chuck --help' for more info)\n" );
+                    exit( 1 );
+                }
+            }
             else if( !strncmp(argv[i], "--adc", 5) )
                 adc = atoi( argv[i]+5 ) > 0 ? atoi( argv[i]+5 ) : 0;
+            else if( !strncmp(argv[i], "--channels:", 11) ) // (added 1.3.0.0)
+                dac_chans = adc_chans = atoi( argv[i]+11 ) > 0 ? atoi( argv[i]+11 ) : 2;
             else if( !strncmp(argv[i], "--channels", 10) )
                 dac_chans = adc_chans = atoi( argv[i]+10 ) > 0 ? atoi( argv[i]+10 ) : 2;
             else if( !strncmp(argv[i], "-c", 2) )
                 dac_chans = adc_chans = atoi( argv[i]+2 ) > 0 ? atoi( argv[i]+2 ) : 2;
+            else if( !strncmp(argv[i], "--out:", 6) ) // (added 1.3.0.0)
+                dac_chans = atoi( argv[i]+6 ) > 0 ? atoi( argv[i]+6 ) : 2;
             else if( !strncmp(argv[i], "--out", 5) )
                 dac_chans = atoi( argv[i]+5 ) > 0 ? atoi( argv[i]+5 ) : 2;
             else if( !strncmp(argv[i], "-o", 2) )
                 dac_chans = atoi( argv[i]+2 ) > 0 ? atoi( argv[i]+2 ) : 2;
+            else if( !strncmp(argv[i], "--in:", 5) ) // (added 1.3.0.0)
+                adc_chans = atoi( argv[i]+5 ) > 0 ? atoi( argv[i]+5 ) : 2;
             else if( !strncmp(argv[i], "--in", 4) )
                 adc_chans = atoi( argv[i]+4 ) > 0 ? atoi( argv[i]+4 ) : 2;
             else if( !strncmp(argv[i], "-i", 2) )
                 adc_chans = atoi( argv[i]+2 ) > 0 ? atoi( argv[i]+2 ) : 2;
+            else if( !strncmp(argv[i], "--level:", 8) ) // (added 1.3.0.0)
+            {   g_priority = atoi( argv[i]+8 ); set_priority = TRUE; }
             else if( !strncmp(argv[i], "--level", 7) )
             {   g_priority = atoi( argv[i]+7 ); set_priority = TRUE; }
             else if( !strncmp(argv[i], "--watchdog", 10) )
@@ -390,10 +495,14 @@ int main( int argc, char ** argv )
                 do_watchdog = TRUE; }
             else if( !strncmp(argv[i], "--nowatchdog", 12) )
                 do_watchdog = FALSE;
+            else if( !strncmp(argv[i], "--remote:", 9) ) // (added 1.3.0.0)
+                strcpy( g_host, argv[i]+9 );
             else if( !strncmp(argv[i], "--remote", 8) )
                 strcpy( g_host, argv[i]+8 );
             else if( !strncmp(argv[i], "@", 1) )
                 strcpy( g_host, argv[i]+1 );
+            else if( !strncmp(argv[i], "--port:", 7) ) // (added 1.3.0.0)
+                g_port = atoi( argv[i]+7 );
             else if( !strncmp(argv[i], "--port", 6) )
                 g_port = atoi( argv[i]+6 );
             else if( !strncmp(argv[i], "-p", 2) )
@@ -402,12 +511,20 @@ int main( int argc, char ** argv )
                 auto_depend = TRUE;
             else if( !strncmp(argv[i], "-u", 2) )
                 auto_depend = TRUE;
+            else if( !strncmp(argv[i], "--log:", 6) ) // (added 1.3.0.0)
+                log_level = argv[i][6] ? atoi( argv[i]+6 ) : CK_LOG_INFO;
             else if( !strncmp(argv[i], "--log", 5) )
                 log_level = argv[i][5] ? atoi( argv[i]+5 ) : CK_LOG_INFO;
+            else if( !strncmp(argv[i], "--verbose:", 10) ) // (added 1.3.0.0)
+                log_level = argv[i][10] ? atoi( argv[i]+10 ) : CK_LOG_INFO;
             else if( !strncmp(argv[i], "--verbose", 9) )
                 log_level = argv[i][9] ? atoi( argv[i]+9 ) : CK_LOG_INFO;
             else if( !strncmp(argv[i], "-v", 2) )
                 log_level = argv[i][2] ? atoi( argv[i]+2 ) : CK_LOG_INFO;
+            else if( !strncmp(argv[i], "--adaptive:", 11) ) // (added 1.3.0.0)
+                adaptive_size = argv[i][11] ? atoi( argv[i]+11 ) : -1;
+            else if( !strncmp(argv[i], "--adaptive", 10) )
+                adaptive_size = argv[i][10] ? atoi( argv[i]+10 ) : -1;
             else if( !strncmp(argv[i], "--deprecate", 11) )
             {
                 // get the rest
@@ -423,10 +540,49 @@ int main( int argc, char ** argv )
                     exit( 1 );
                 }
             }
+            // (added 1.3.0.0)
+            else if( !strncmp(argv[i], "--chugin-load:", sizeof("--chugin-load:")-1) )
+            {
+                // get the rest
+                string arg = argv[i]+sizeof("--chugin-load:")-1;
+                if( arg == "off" ) chugin_load = 0;
+                else if( arg == "auto" ) chugin_load = 1;
+                else
+                {
+                    // error
+                    fprintf( stderr, "[chuck]: invalid arguments for '--chugin-load'...\n" );
+                    fprintf( stderr, "[chuck]: ... (looking for :auto or :off)\n" );
+                    exit( 1 );
+                }
+            }
+            // (added 1.3.0.0)
+            else if( !strncmp(argv[i], "--chugin-path:", sizeof("--chugin-path:")-1) )
+            {
+                // get the rest
+                dl_search_path.push_back( argv[i]+sizeof("--chugin-path:")-1 );
+            }
+            // (added 1.3.0.0)
+            else if( !strncmp(argv[i], "-G", sizeof("-G")-1) )
+            {
+                // get the rest
+                dl_search_path.push_back( argv[i]+sizeof("-G")-1 );
+            }
+            // (added 1.3.0.0)
+            else if( !strncmp(argv[i], "--chugin:", sizeof("--chugin:")-1) )
+            {
+                named_dls.push_back(argv[i]+sizeof("--chugin:")-1);
+            }
+            // (added 1.3.0.0)
+            else if( !strncmp(argv[i], "-g", sizeof("-g")-1) )
+            {
+                named_dls.push_back(argv[i]+sizeof("-g")-1);
+            }
             else if( !strcmp( argv[i], "--probe" ) )
                 probe = TRUE;
             else if( !strcmp( argv[i], "--poop" ) )
                 uh();
+            else if( !strcmp( argv[i], "--caution-to-the-wind" ) )
+                g_enable_system_cmd = TRUE;
             else if( !strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")
                  || !strcmp(argv[i], "--about") )
             {
@@ -459,8 +615,11 @@ int main( int argc, char ** argv )
                 exit( 1 );
             }
         }
-        else
+        else // doesn't look like an argument
+        {
+            // increase number of files
             files++;
+        }
     }
 
     // log level
@@ -471,18 +630,22 @@ int main( int argc, char ** argv )
     {
         Digitalio::probe();
 
+#ifndef __DISABLE_MIDI__
         EM_error2b( 0, "" );
         probeMidiIn();
         EM_error2b( 0, "" );
         probeMidiOut();
         EM_error2b( 0, "" );
-    
+#endif  // __DISABLE_MIDI__
+
+        // HidInManager::probeHidIn();
+        
         // exit
         exit( 0 );
     }
     
     // check buffer size
-    buffer_size = next_power_2( buffer_size-1 );
+    buffer_size = ensurepow2( buffer_size );
     // check mode and blocking
     if( !enable_audio && !block ) block = TRUE;
     // audio, boost
@@ -492,6 +655,8 @@ int main( int argc, char ** argv )
     Chuck_VM::our_priority = g_priority;
     // set watchdog
     g_do_watchdog = do_watchdog;
+    // set adaptive size
+    if( adaptive_size < 0 ) adaptive_size = buffer_size;
 
     if ( !files && vm_halt && !enable_shell )
     {
@@ -522,19 +687,62 @@ int main( int argc, char ** argv )
         exit( 1 );
     }
     
+    // find dac_name if appropriate (added 1.3.0.0)
+    if( dac_name.size() > 0 )
+    {
+        // check with RtAudio
+        int dev = Digitalio::device_named( dac_name, TRUE, FALSE );
+        if( dev >= 0 )
+        {
+            dac = dev;
+        }
+        else
+        {
+            fprintf( stderr, "[chuck]: unable to find dac '%s'...\n", dac_name.c_str() );
+            fprintf( stderr, "[chuck]: | (try --probe to enumerate audio device info)\n" );
+            exit( 1 );
+        }
+    }
+    
+    // find adc_name if appropriate (added 1.3.0.0)
+    if( adc_name.size() > 0 )
+    {
+        // check with RtAudio
+        int dev = Digitalio::device_named( adc_name, FALSE, TRUE );
+        if( dev >= 0 )
+        {
+            adc = dev;
+        }
+        else
+        {
+            fprintf( stderr, "[chuck]: unable to find adc '%s'...\n", adc_name.c_str() );
+            fprintf( stderr, "[chuck]: | (try --probe to enumerate audio device info)\n" );
+            exit( 1 );
+        }
+    }
+    
     // allocate the vm - needs the type system
     vm = g_vm = new Chuck_VM;
     if( !vm->initialize( enable_audio, vm_halt, srate, buffer_size,
-                         num_buffers, dac, adc, dac_chans, adc_chans, block ) )
+                         num_buffers, dac, adc, dac_chans, adc_chans,
+                         block, adaptive_size, force_srate ) )
     {
         fprintf( stderr, "[chuck]: %s\n", vm->last_error() );
         exit( 1 );
     }
-
+    
+    // if chugin load is off, then clear the lists (added 1.3.0.0 -- TODO: refactor)
+    if( chugin_load == 0 )
+    {
+        // turn off chugin load
+        dl_search_path.clear();
+        named_dls.clear();
+    }
+    
     // allocate the compiler
     compiler = g_compiler = new Chuck_Compiler;
-    // initialize the compiler
-    if( !compiler->initialize( vm ) )
+    // initialize the compiler (search_apth and named_dls added 1.3.0.0 -- TODO: refactor)
+    if( !compiler->initialize( vm, dl_search_path, named_dls ) )
     {
         fprintf( stderr, "[chuck]: error initializing compiler...\n" );
         exit( 1 );
@@ -551,8 +759,10 @@ int main( int argc, char ** argv )
         exit( 1 );
     }
 
+#ifndef __ALTER_HID__
     // pre-load hid
     if( load_hid ) HidInManager::init();
+#endif // __ALTER_HID__
 
     // catch SIGINT
     signal( SIGINT, signal_int );
@@ -576,12 +786,78 @@ int main( int argc, char ** argv )
 
     // reset count
     count = 1;
+    
+    // figure out current working directory (added 1.3.0.0)
+    std::string cwd;
+    {
+        char cstr_cwd[MAXPATHLEN];
+        if( getcwd(cstr_cwd, MAXPATHLEN) == NULL )
+        {
+            // uh...
+            EM_log( CK_LOG_SEVERE, "error: unable to determine current working directory!" );
+        }
+        else
+        {
+            cwd = std::string(cstr_cwd);
+            cwd = normalize_directory_separator(cwd) + "/";
+        }
+    }
 
+    // whether or not chug should be enabled (added 1.3.0.0)
+    if( chugin_load )
+    {
+        // log
+        EM_log( CK_LOG_SEVERE, "pre-loading ChucK libs..." );
+        EM_pushlog();
+        
+        // iterate over list of ck files that the compiler found
+        for( std::list<std::string>::iterator j = compiler->m_cklibs_to_preload.begin();
+             j != compiler->m_cklibs_to_preload.end(); j++)
+        {
+            // the filename
+            std::string filename = *j;
+            
+            // log
+            EM_log( CK_LOG_SEVERE, "preloading '%s'...", filename.c_str() );
+            // push indent
+            EM_pushlog();
+            
+            // SPENCERTODO: what to do for full path
+            std::string full_path = filename;
+            
+            // parse, type-check, and emit
+            if( compiler->go( filename, NULL, NULL, full_path ) )
+            {
+                // TODO: how to compilation handle?
+                //return 1;
+
+                // get the code
+                code = compiler->output();
+                // name it - TODO?
+                // code->name += string(argv[i]);
+
+                // spork it
+                shred = vm->spork( code, NULL );
+            }
+            
+            // pop indent
+            EM_poplog();
+        }
+        
+        // clear the list of chuck files to preload
+        compiler->m_cklibs_to_preload.clear();
+        
+        // pop log
+        EM_poplog();
+    }
+    
+    compiler->env->load_user_namespace();
+    
     // log
     EM_log( CK_LOG_SEVERE, "starting compilation..." );
     // push indent
     EM_pushlog();
-
+    
     // loop through and process each file
     for( i = 1; i < argc; i++ )
     {
@@ -612,8 +888,12 @@ int main( int argc, char ** argv )
         // push indent
         EM_pushlog();
 
-        // parse, type-check, and emit
-        if( !compiler->go( filename, NULL ) )
+        // construct full path to be associated with the file so me.sourceDir() works
+        // (added 1.3.0.0)
+        std::string full_path = get_full_path(filename);
+        
+        // parse, type-check, and emit (full_path added 1.3.0.0)
+        if( !compiler->go( filename, NULL, NULL, full_path ) )
             return 1;
 
         // get the code
@@ -662,6 +942,7 @@ int main( int argc, char ** argv )
     // server
     if( enable_server )
     {
+#ifndef __DISABLE_OTF_SERVER__
         // log
         EM_log( CK_LOG_SYSTEM, "starting listener on port: %d...", g_port );
 
@@ -669,7 +950,7 @@ int main( int argc, char ** argv )
         g_sock = ck_tcp_create( 1 );
         if( !g_sock || !ck_bind( g_sock, g_port ) || !ck_listen( g_sock, 10 ) )
         {
-            fprintf( stderr, "[chuck]: cannot bind to tcp port %i...\n", g_port );
+            fprintf( stderr, "[chuck]: cannot bind to tcp port %li...\n", g_port );
             ck_close( g_sock );
             g_sock = NULL;
         }
@@ -681,6 +962,7 @@ int main( int argc, char ** argv )
             g_tid_otf = CreateThread( NULL, 0, (LPTHREAD_START_ROUTINE)otf_cb, NULL, 0, 0 );
     #endif
         }
+#endif // __DISABLE_OTF_SERVER__
     }
     else
     {
@@ -705,9 +987,9 @@ int main( int argc, char ** argv )
     all_detach();
 
     // free vm
-    g_vm = NULL; SAFE_DELETE( vm );
+    vm = NULL; SAFE_DELETE( g_vm );
     // free the compiler
-    SAFE_DELETE( compiler );
+    compiler = NULL; SAFE_DELETE( g_compiler );
 
     // wait for the shell, if it is running
     // does the VM reset its priority to normal before exiting?

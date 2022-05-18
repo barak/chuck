@@ -1,33 +1,34 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // file: ugen_filter.cpp
-// desc: ...
+// desc: filter related unit generators
 //
 // author: Ge Wang (gewang@cs.princeton.edu)
 //         Perry R. Cook (prc@cs.princeton.edu)
+//         Philip L. Davidson (philipd@cs.princeton.edu)
 // date: Spring 2004
 //-----------------------------------------------------------------------------
 #include "ugen_filter.h"
@@ -40,7 +41,10 @@ static t_CKUINT g_srate = 0;
 static t_CKFLOAT g_radians_per_sample = 0;
 // filter member data offset
 static t_CKUINT FilterBasic_offset_data = 0;
+static t_CKUINT Teabox_offset_data = 0;
 static t_CKUINT biquad_offset_data = 0;
+
+
 
 
 //-----------------------------------------------------------------------------
@@ -53,6 +57,8 @@ DLL_QUERY filter_query( Chuck_DL_Query * QUERY )
     g_srate = QUERY->srate;
     // set radians per sample
     g_radians_per_sample = TWO_PI / (t_CKFLOAT)g_srate;
+    
+    std::string doc;
     
     Chuck_Env * env = Chuck_Env::instance();
 
@@ -72,9 +78,11 @@ DLL_QUERY filter_query( Chuck_DL_Query * QUERY )
     //---------------------------------------------------------------------
     // init as base class: FilterBasic
     //---------------------------------------------------------------------
+    doc = "Filter base class.";
     if( !type_engine_import_ugen_begin( env, "FilterBasic", "UGen", env->global(), 
                                         FilterBasic_ctor, FilterBasic_dtor,
-                                        FilterBasic_tick, FilterBasic_pmsg ) )
+                                        FilterBasic_tick, FilterBasic_pmsg,
+                                        doc.c_str() ) )
         return FALSE;
 
     // member variable
@@ -84,21 +92,26 @@ DLL_QUERY filter_query( Chuck_DL_Query * QUERY )
     // freq
     func = make_new_mfun( "float", "freq", FilterBasic_ctrl_freq );
     func->add_arg( "float", "val" );
+    func->doc = "Filter cutoff/center frequency.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "float", "freq", FilterBasic_cget_freq );
+    func->doc = "Filter cutoff/center frequency.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // Q
     func = make_new_mfun( "float", "Q", FilterBasic_ctrl_Q );
     func->add_arg( "float", "val" );
+    func->doc = "Filter resonance.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "float", "Q", FilterBasic_cget_Q );
+    func->doc = "Filter resonance.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // set
     func = make_new_mfun( "void", "set", FilterBasic_ctrl_set );
     func->add_arg( "float", "freq" );
     func->add_arg( "float", "Q" );
+    func->doc = "Set filter frequency and resonance at the same time.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // end the class import
@@ -146,28 +159,34 @@ DLL_QUERY filter_query( Chuck_DL_Query * QUERY )
     //---------------------------------------------------------------------
     // init class: BPF
     //---------------------------------------------------------------------
+    doc = "Bandpass filter (2nd order Butterworth).";
     if( !type_engine_import_ugen_begin( env, "BPF", "FilterBasic", env->global(),
-                                        BPF_ctor, NULL, BPF_tick, BPF_pmsg ) )
+                                        BPF_ctor, NULL, BPF_tick, BPF_pmsg, doc.c_str() ) )
         return FALSE;
 
     // freq
     func = make_new_mfun( "float", "freq", BPF_ctrl_freq );
     func->add_arg( "float", "val" );
+    func->doc = "Filter center frequency.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "float", "freq", BPF_cget_freq );
+    func->doc = "Filter center frequency.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // Q
     func = make_new_mfun( "float", "Q", BPF_ctrl_Q );
     func->add_arg( "float", "val" );
+    func->doc = "Filter resonance.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "float", "Q", BPF_cget_Q );
+    func->doc = "Filter resonance.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // set
     func = make_new_mfun( "void", "set", BPF_ctrl_set );
     func->add_arg( "float", "freq" );
     func->add_arg( "float", "Q" );
+    func->doc = "Set filter frequency and resonance at the same time.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // end the class import
@@ -177,28 +196,34 @@ DLL_QUERY filter_query( Chuck_DL_Query * QUERY )
     //---------------------------------------------------------------------
     // init class: BRF
     //---------------------------------------------------------------------
+    doc = "Band-reject filter (2nd order Butterworth).";
     if( !type_engine_import_ugen_begin( env, "BRF", "FilterBasic", env->global(),
-                                        BRF_ctor, NULL, BRF_tick, BRF_pmsg ) )
+                                        BRF_ctor, NULL, BRF_tick, BRF_pmsg, doc.c_str() ) )
         return FALSE;
 
     // freq
     func = make_new_mfun( "float", "freq", BRF_ctrl_freq );
     func->add_arg( "float", "val" );
+    func->doc = "Filter center frequency.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "float", "freq", BRF_cget_freq );
+    func->doc = "Filter center frequency.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // Q
     func = make_new_mfun( "float", "Q", BRF_ctrl_Q );
     func->add_arg( "float", "val" );
+    func->doc = "Filter resonance.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "float", "Q", BRF_cget_Q );
+    func->doc = "Filter resonance.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // set
     func = make_new_mfun( "void", "set", BRF_ctrl_set );
     func->add_arg( "float", "freq" );
     func->add_arg( "float", "Q" );
+    func->doc = "Set filter frequency and resonance at the same time.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // end the class import
@@ -208,28 +233,34 @@ DLL_QUERY filter_query( Chuck_DL_Query * QUERY )
     //---------------------------------------------------------------------
     // init class: RLPF
     //---------------------------------------------------------------------
+    doc = "Resonant low-pass filter (2nd order Butterworth).";
     if( !type_engine_import_ugen_begin( env, "LPF", "FilterBasic", env->global(),
-                                        RLPF_ctor, NULL, RLPF_tick, RLPF_pmsg ) )
+                                        RLPF_ctor, NULL, RLPF_tick, RLPF_pmsg, doc.c_str() ) )
         return FALSE;
 
     // freq
     func = make_new_mfun( "float", "freq", RLPF_ctrl_freq );
     func->add_arg( "float", "val" );
+    func->doc = "Filter cutoff frequency.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "float", "freq", RLPF_cget_freq );
+    func->doc = "Filter cutoff frequency.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // Q
     func = make_new_mfun( "float", "Q", RLPF_ctrl_Q );
     func->add_arg( "float", "val" );
+    func->doc = "Filter resonance.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "float", "Q", RLPF_cget_Q );
+    func->doc = "Filter resonance.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // set
     func = make_new_mfun( "void", "set", RLPF_ctrl_set );
     func->add_arg( "float", "freq" );
     func->add_arg( "float", "Q" );
+    func->doc = "Set filter frequency and resonance at the same time.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // end the class import
@@ -239,28 +270,34 @@ DLL_QUERY filter_query( Chuck_DL_Query * QUERY )
     //---------------------------------------------------------------------
     // init class: RHPF
     //---------------------------------------------------------------------
+    doc = "Resonant high-pass filter (2nd order Butterworth).";
     if( !type_engine_import_ugen_begin( env, "HPF", "FilterBasic", env->global(),
-                                        RHPF_ctor, NULL, RHPF_tick, RHPF_pmsg ) )
+                                        RHPF_ctor, NULL, RHPF_tick, RHPF_pmsg, doc.c_str() ) )
         return FALSE;
 
     // freq
     func = make_new_mfun( "float", "freq", RHPF_ctrl_freq );
     func->add_arg( "float", "val" );
+    func->doc = "Filter cutoff frequency.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "float", "freq", RHPF_cget_freq );
+    func->doc = "Filter cutoff frequency.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // Q
     func = make_new_mfun( "float", "Q", RHPF_ctrl_Q );
     func->add_arg( "float", "val" );
+    func->doc = "Filter resonance.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "float", "Q", RHPF_cget_Q );
+    func->doc = "Filter resonance.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // set
     func = make_new_mfun( "void", "set", RHPF_ctrl_set );
     func->add_arg( "float", "freq" );
     func->add_arg( "float", "Q" );
+    func->doc = "Set filter frequency and resonance at the same time.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // end the class import
@@ -270,28 +307,34 @@ DLL_QUERY filter_query( Chuck_DL_Query * QUERY )
     //---------------------------------------------------------------------
     // init class: ResonZ
     //---------------------------------------------------------------------
+    doc = "Resonant filter. BiQuad with equal-gain zeros, keeps gain under control independent of frequency.";
     if( !type_engine_import_ugen_begin( env, "ResonZ", "FilterBasic", env->global(),
-                                        ResonZ_ctor, NULL, ResonZ_tick, ResonZ_pmsg ) )
+                                        ResonZ_ctor, NULL, ResonZ_tick, ResonZ_pmsg, doc.c_str() ) )
         return FALSE;
 
     // freq
     func = make_new_mfun( "float", "freq", ResonZ_ctrl_freq );
     func->add_arg( "float", "val" );
+    func->doc = "Filter center frequency.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "float", "freq", ResonZ_cget_freq );
+    func->doc = "Filter center frequency.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // reson
     func = make_new_mfun( "float", "Q", ResonZ_ctrl_Q );
     func->add_arg( "float", "val" );
+    func->doc = "Filter resonance.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "float", "Q", ResonZ_cget_Q );
+    func->doc = "Filter resonance.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // set
     func = make_new_mfun( "void", "set", ResonZ_ctrl_set );
     func->add_arg( "float", "freq" );
     func->add_arg( "float", "Q" );
+    func->doc = "Set filter frequency and resonance at the same time.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // end the class import
@@ -301,8 +344,9 @@ DLL_QUERY filter_query( Chuck_DL_Query * QUERY )
     //---------------------------------------------------------------------
     // init as base class: BiQuad
     //---------------------------------------------------------------------
+    doc = "STK biquad (two-pole, two-zero) filter class. A method is provided for creating a resonance in the frequency response while maintaining a constant filter gain.";
     if( !type_engine_import_ugen_begin( env, "BiQuad", "UGen", env->global(), 
-                                        biquad_ctor, biquad_dtor, biquad_tick, NULL ) )
+                                        biquad_ctor, biquad_dtor, biquad_tick, NULL, doc.c_str() ) )
         return FALSE;
 
     // member variable
@@ -312,96 +356,138 @@ DLL_QUERY filter_query( Chuck_DL_Query * QUERY )
     // pfreq
     func = make_new_mfun ( "float", "pfreq", biquad_ctrl_pfreq );
     func->add_arg ( "float", "freq" );
+    func->doc = "Resonance frequency (poles).";
     if( !type_engine_import_mfun( env, func ) ) goto error;    
     func = make_new_mfun ( "float", "pfreq", biquad_cget_pfreq );
-    if( !type_engine_import_mfun( env, func ) ) goto error;    
+    func->doc = "Resonance frequency (poles).";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // prad
     func = make_new_mfun ( "float", "prad", biquad_ctrl_prad );
     func->add_arg ( "float", "value" );
+    func->doc = "Pole radius (values greater than 1 will be unstable).";
     if( !type_engine_import_mfun( env, func ) ) goto error;    
     func = make_new_mfun ( "float", "prad", biquad_cget_prad );
-    if( !type_engine_import_mfun( env, func ) ) goto error;    
+    func->doc = "Pole radius (values greater than 1 will be unstable).";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // zfreq
     func = make_new_mfun ( "float", "zfreq", biquad_ctrl_zfreq );
     func->add_arg ( "float", "freq" );
+    func->doc = "Notch frequency.";
     if( !type_engine_import_mfun( env, func ) ) goto error;    
     func = make_new_mfun ( "float", "zfreq", biquad_cget_zfreq );
-    if( !type_engine_import_mfun( env, func ) ) goto error;    
+    func->doc = "Notch frequency.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // zrad
     func = make_new_mfun ( "float", "zrad", biquad_ctrl_zrad );
     func->add_arg ( "float", "value" );
+    func->doc = "Zero radius.";
     if( !type_engine_import_mfun( env, func ) ) goto error;    
     func = make_new_mfun ( "float", "zrad", biquad_cget_zrad );
-    if( !type_engine_import_mfun( env, func ) ) goto error;    
+    func->doc = "Zero radius.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // norm
     func = make_new_mfun ( "int", "norm", biquad_ctrl_norm );
     func->add_arg ( "int", "value" );
+    func->doc = "Toggle normalization.";
     if( !type_engine_import_mfun( env, func ) ) goto error;    
     func = make_new_mfun ( "int", "norm", biquad_cget_norm );
-    if( !type_engine_import_mfun( env, func ) ) goto error;    
+    func->doc = "Toggle normalization.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // pregain
     func = make_new_mfun ( "float", "pregain", biquad_ctrl_pregain );
     func->add_arg ( "float", "level" );
-    if( !type_engine_import_mfun( env, func ) ) goto error;    
+    if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun ( "float", "pregain", biquad_cget_pregain );
     if( !type_engine_import_mfun( env, func ) ) goto error;    
 
     // eqzs
     func = make_new_mfun ( "int", "eqzs", biquad_ctrl_eqzs );
     func->add_arg ( "int", "value" );
-    if( !type_engine_import_mfun( env, func ) ) goto error;    
+    func->doc = "Toggle equal-gain zeroes. ";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // b0
     func = make_new_mfun ( "float", "b0", biquad_ctrl_b0 );
     func->add_arg ( "float", "value" );
+    func->doc = "b0 filter coefficient.";
     if( !type_engine_import_mfun( env, func ) ) goto error;    
     func = make_new_mfun ( "float", "b0", biquad_cget_b0 );
-    if( !type_engine_import_mfun( env, func ) ) goto error;    
+    func->doc = "b0 filter coefficient.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // b1
     func = make_new_mfun ( "float", "b1", biquad_ctrl_b1 );
     func->add_arg ( "float", "value" );
-    if( !type_engine_import_mfun( env, func ) ) goto error;    
+    func->doc = "b1 filter coefficient.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun ( "float", "b1", biquad_cget_b1 );
-    if( !type_engine_import_mfun( env, func ) ) goto error;    
+    func->doc = "b1 filter coefficient.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // b2
     func = make_new_mfun ( "float", "b2", biquad_ctrl_b2 );
     func->add_arg ( "float", "value" );
-    if( !type_engine_import_mfun( env, func ) ) goto error;    
+    func->doc = "b2 filter coefficient.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun ( "float", "b2", biquad_cget_b2 );
-    if( !type_engine_import_mfun( env, func ) ) goto error;    
+    func->doc = "b2 filter coefficient.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // a0
     func = make_new_mfun ( "float", "a0", biquad_ctrl_a0 );
     func->add_arg ( "float", "value" );
-    if( !type_engine_import_mfun( env, func ) ) goto error;    
+    func->doc = "a0 filter coefficient.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun ( "float", "a0", biquad_cget_a0 );
-    if( !type_engine_import_mfun( env, func ) ) goto error;    
+    func->doc = "a0 filter coefficient.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // a1
     func = make_new_mfun ( "float", "a1", biquad_ctrl_a1 );
     func->add_arg ( "float", "value" );
-    if( !type_engine_import_mfun( env, func ) ) goto error;    
+    func->doc = "a1 filter coefficient.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun ( "float", "a1", biquad_cget_a1 );
-    if( !type_engine_import_mfun( env, func ) ) goto error;    
+    func->doc = "a1 filter coefficient.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // a2
     func = make_new_mfun ( "float", "a2", biquad_ctrl_a2 );
     func->add_arg ( "float", "value" );
-    if( !type_engine_import_mfun( env, func ) ) goto error;    
+    func->doc = "a2 filter coefficient.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun ( "float", "a2", biquad_cget_a2 );
-    if( !type_engine_import_mfun( env, func ) ) goto error;    
+    func->doc = "a2 filter coefficient.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // end the class import
     type_engine_import_class_end( env );
+	
+	 //---------------------------------------------------------------------
+    // init class: Teabox
+    //---------------------------------------------------------------------
+    if( !type_engine_import_ugen_begin( env, "Teabox", "FilterBasic", env->global(),
+                                        teabox_ctor, NULL, teabox_tick, teabox_pmsg ) )
+        return FALSE;
 
+    // analog
+    func = make_new_mfun( "float", "analog", teabox_cget_analog );
+	func->add_arg( "int", "which" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+	
+	// digital
+    func = make_new_mfun( "float", "digital", teabox_cget_digital );
+	func->add_arg( "int", "which" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
 
+    // end the class import
+    type_engine_import_class_end( env );
+	
     /*
     //----------------------------------
     // begin onepole ugen
@@ -846,8 +932,52 @@ struct FilterBasic_data
 
         return result;
     }
+
 };
 
+struct Teabox_data
+{
+	//Teabox sensor interface read
+	t_CKINT		teabox_counter;
+	t_CKFLOAT	teabox_data[9];		// one container for the data from each sensor
+	t_CKFLOAT	teabox_hw_version;	// version number (major.minor) of the connected Teabox
+	t_CKFLOAT	teabox_last_value;	
+	t_CKINT		teabox_bitmask;
+	//tick for teabox
+	inline SAMPLE teabox_tick( SAMPLE in )
+	{
+	
+		if(in < 0.0 || teabox_counter > 9){			// If the sample is the start flag...
+			if(teabox_last_value < 0.0)					// Actually - if all 16 toggles on the Teabox digital inputs
+				teabox_data[8] = teabox_last_value;			//	are high, it will look identical to the start flag - so
+													//  so we compensate for that here.
+			teabox_counter = 0;
+		}
+		else if(teabox_counter == 0){					// if the sample is hardware version number...
+			teabox_hw_version = in * 8.0;							
+			teabox_counter++;
+		}	
+		else{
+			teabox_data[teabox_counter - 1] = in * 8.0;	// Normalize the range
+			teabox_counter++;
+		}
+		
+		// POST-PROCESS TOGGLE INPUT BITMASK
+		if(teabox_data[8] < 0){
+			teabox_bitmask = (t_CKINT)(teabox_data[8] * 32768);			// 4096 = 32768 / 8 (we already multiplied by 8)
+			teabox_bitmask ^= -32768;
+			teabox_bitmask = 32768 + (teabox_bitmask);			// 2^3
+		}
+		else
+			teabox_bitmask = (t_CKINT)(teabox_data[8] * 4096);			// 4096 = 32768 / 8 (we already multiplied by 8)
+		
+		teabox_last_value = in;						// store the input value for the next time around
+
+		return in;
+		
+	}
+	
+};
 
 //-----------------------------------------------------------------------------
 // name: FilterBasic_ctor()
@@ -1448,7 +1578,7 @@ CK_DLL_CTOR( ResonZ_ctor )
     FilterBasic_data * f =  new FilterBasic_data;
     memset( f, 0, sizeof(FilterBasic_data) );
     // default
-    f->m_Q = 1.0;
+    f->set_resonz( 220, 1 );
     OBJ_MEMBER_UINT(SELF, FilterBasic_offset_data) = (t_CKUINT)f;
 }
 
@@ -1668,6 +1798,82 @@ CK_DLL_PMSG( RHPF_pmsg )
 
 
 
+//-----------------------------------------------------------------------------
+// name: teabox_ctor()
+// desc: CTOR function ...
+//-----------------------------------------------------------------------------
+CK_DLL_CTOR( teabox_ctor )
+{
+    Teabox_data * f =  new Teabox_data;
+    memset( f, 0, sizeof(Teabox_data) );
+	f->teabox_hw_version = 0.;		// version number (major.minor) of the connected Teabox
+	f->teabox_last_value = 0.;	
+    OBJ_MEMBER_UINT(SELF, Teabox_offset_data) = (t_CKUINT)f;
+}
+
+//-----------------------------------------------------------------------------
+// name: teabox_tick()
+// desc: TICK function ...
+//-----------------------------------------------------------------------------
+CK_DLL_TICK( teabox_tick )
+{
+    Teabox_data * d = (Teabox_data *)OBJ_MEMBER_UINT(SELF, Teabox_offset_data);
+    *out = d->teabox_tick( in );
+    return TRUE;
+}
+
+
+//-----------------------------------------------------------------------------
+// name: teabox_cget_analog()
+// desc: CGET function
+//-----------------------------------------------------------------------------
+CK_DLL_CGET( teabox_cget_analog )
+{
+	t_CKINT which_in;
+    Teabox_data * d = (Teabox_data *)OBJ_MEMBER_UINT(SELF, Teabox_offset_data);
+	
+	which_in = GET_CK_INT(ARGS);
+	
+	//constrain
+	if(which_in < 0) which_in = 0;
+	if(which_in > 7) which_in = 7;
+	
+    // return
+    RETURN->v_float = d->teabox_data[which_in];
+}
+
+CK_DLL_CGET( teabox_cget_digital )
+{
+	t_CKINT which_in;
+	t_CKFLOAT out_val;
+	t_CKINT which_pow;
+	
+    Teabox_data * d = (Teabox_data *)OBJ_MEMBER_UINT(SELF, Teabox_offset_data);
+	
+	which_in = GET_CK_INT(ARGS);
+	
+	//constrain
+	if(which_in < 0) which_in = 0;
+	if(which_in > 15) which_in = 15;
+
+	// grab the needed bit from bitmask
+    // which_pow = (t_CKINT)(::pow( 2, which_in ));
+    which_pow = 1 >> which_in;
+	out_val = ( d->teabox_bitmask & which_pow ) > 0;
+	
+    // return
+    RETURN->v_float = out_val;
+}
+
+//-----------------------------------------------------------------------------
+// name: teabox_pmsg()
+// desc: PMSG function ...
+//-----------------------------------------------------------------------------
+CK_DLL_PMSG( teabox_pmsg )
+{
+    return FALSE;
+}
+
 
 //-----------------------------------------------------------------------------
 // name: biquad
@@ -1712,7 +1918,7 @@ struct biquad_data
 CK_DLL_CTOR( biquad_ctor )
 {    
     biquad_data* d = new biquad_data;
-    OBJ_MEMBER_UINT( SELF, biquad_offset_data ) = ( t_CKUINT ) d;
+    OBJ_MEMBER_UINT( SELF, biquad_offset_data ) = (t_CKUINT)d;
 }
 
 //-----------------------------------------------------------------------------

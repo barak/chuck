@@ -1,32 +1,32 @@
 /*----------------------------------------------------------------------------
-ChucK Concurrent, On-the-fly Audio Programming Language
-Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-http://chuck.cs.princeton.edu/
-http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-This program is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // file: util_hid.cpp
 // desc: refactored HID joystick, keyboard, mouse support
 //
-// author: Spencer Salazar (ssalazar@cs.princeton.edu)
+// author: Spencer Salazar (spencer@ccrma.stanford.edu)
 // date: summer 2006
 //-----------------------------------------------------------------------------
 
@@ -35,13 +35,45 @@ U.S.A.
 #include "util_hid.h"
 #include "hidio_sdl.h"
 
+#include <limits.h>
 #include <vector>
 #include <map>
-#include <climits>
 
 using namespace std;
 
-#ifdef __PLATFORM_MACOSX__
+/* device types */
+const t_CKUINT CK_HID_DEV_NONE = 0;
+const t_CKUINT CK_HID_DEV_JOYSTICK = 1;
+const t_CKUINT CK_HID_DEV_MOUSE = 2;
+const t_CKUINT CK_HID_DEV_KEYBOARD = 3;
+const t_CKUINT CK_HID_DEV_WIIREMOTE = 4;
+const t_CKUINT CK_HID_DEV_TILTSENSOR = 5;
+const t_CKUINT CK_HID_DEV_TABLET = 6;
+const t_CKUINT CK_HID_DEV_MULTITOUCH = 7;
+const t_CKUINT CK_HID_DEV_COUNT = 8;
+
+/* message types */
+const t_CKUINT CK_HID_JOYSTICK_AXIS = 0;
+const t_CKUINT CK_HID_BUTTON_DOWN = 1;
+const t_CKUINT CK_HID_BUTTON_UP = 2;
+const t_CKUINT CK_HID_JOYSTICK_HAT = 3;
+const t_CKUINT CK_HID_JOYSTICK_BALL = 4;
+const t_CKUINT CK_HID_MOUSE_MOTION = 5;
+const t_CKUINT CK_HID_MOUSE_WHEEL = 6;
+const t_CKUINT CK_HID_DEVICE_CONNECTED = 7;
+const t_CKUINT CK_HID_DEVICE_DISCONNECTED = 8;
+const t_CKUINT CK_HID_ACCELEROMETER = 9;
+const t_CKUINT CK_HID_WIIREMOTE_IR = 10;
+const t_CKUINT CK_HID_LED = 11;
+const t_CKUINT CK_HID_FORCE_FEEDBACK = 12;
+const t_CKUINT CK_HID_SPEAKER = 13;
+const t_CKUINT CK_HID_TABLET_PRESSURE = 14;
+const t_CKUINT CK_HID_TABLET_MOTION = 15;
+const t_CKUINT CK_HID_TABLET_ROTATION = 16;
+const t_CKUINT CK_HID_MULTITOUCH_TOUCH = 17;
+const t_CKUINT CK_HID_MSG_COUNT = 18;
+
+#if defined(__PLATFORM_MACOSX__) && !defined(__CHIP_MODE__)
 #pragma mark OS X General HID support
 
 /* TODO: ***********************************************************************
@@ -52,6 +84,8 @@ and ->startQueue calls on the Hid thread).  *** DONE
 Make ->disconnect delete the element list *** worked around
 
 Make Keyboard, Mouse dis/reattachment work *** DONE
+
+Hid Probe
 
 *******************************************************************************/
 
@@ -178,7 +212,7 @@ public:
         wheels = -1;
         refcount = 0;
         hidProperties = NULL;
-        removal_notification = NULL;
+        removal_notification = 0; // NULL;
         vendorID = productID = locationID = NULL;
         manufacturer = product = NULL;
     }
@@ -283,7 +317,7 @@ static void Hid_do_operation( void * info );
 
 // IO iterator for new hid devices
 // we only keep track of this so we can release it later
-io_iterator_t hid_iterator = NULL;
+io_iterator_t hid_iterator = 0; // NULL;
 
 // notification port for device add/remove events
 static IONotificationPortRef newDeviceNotificationPort = NULL;
@@ -335,6 +369,14 @@ t_CKINT OSX_Hid_Device::preconfigure( io_object_t ioHIDDeviceObject )
     
     switch( type )
     {
+        case CK_HID_DEV_NONE:
+            strncpy( name, "Human Interface Device", 256 );
+            buttons = 0;
+            axes = 0;
+            wheels = 0;
+            hats = 0;
+            break;
+            
         case CK_HID_DEV_JOYSTICK:
             strncpy( name, "Joystick", 256 );
             buttons = 0;
@@ -438,7 +480,7 @@ t_CKINT OSX_Hid_Device::preconfigure( io_object_t ioHIDDeviceObject )
     
 #ifdef __LITTLE_ENDIAN__ 
     /* MacBooks and MacBook Pros have some sort of "phantom" trackpad, which 
-       shows up in the HID registry and claims to no wheels.  The device
+       shows up in the HID registry and claims to have no wheels.  The device
        name is usually Trackpad with the manufacturer being Apple.  This may
        disable legitimate Trackpads, but hopefully not... */
     if( type == CK_HID_DEV_MOUSE && strncmp( "Trackpad", name, 256 ) == 0 )
@@ -834,7 +876,7 @@ void OSX_Hid_Device::enumerate_elements( CFArrayRef cfElements )
                                 break;
                                 
                             default:
-                                EM_log( CK_LOG_INFO, "unknown page: %i usage: %i\n", usage_page, usage );
+                                EM_log( CK_LOG_INFO, "unknown page: %i usage: %i", usage_page, usage );
                         }
                         
                         break;
@@ -882,7 +924,7 @@ void OSX_Hid_Device::enumerate_elements( CFArrayRef cfElements )
                         break;
                         
                     default:
-                        EM_log( CK_LOG_FINER, "unknown page: %i usage: %i\n", usage_page, usage );
+                        EM_log( CK_LOG_FINER, "unknown page: %i usage: %i", usage_page, usage );
                 }
                 
                 break;
@@ -1137,7 +1179,7 @@ void OSX_Hid_Device::disconnect()
     if( removal_notification )
     {
         IOObjectRelease( removal_notification );
-        removal_notification = NULL;
+        removal_notification = 0; // NULL;
     }
     
     configed = FALSE;
@@ -1378,8 +1420,8 @@ void Hid_init2()
         
     IOReturn result = kIOReturnSuccess;
     io_iterator_t hidObjectIterator = 0;
-    CFTypeRef refCF;
-    t_CKINT filter_usage_page = kHIDPage_GenericDesktop;
+//    CFTypeRef refCF;
+//    t_CKINT filter_usage_page = kHIDPage_GenericDesktop;
     
     // allocate vectors of device records
     joysticks = new xvector< OSX_Hid_Device * >;
@@ -1400,11 +1442,11 @@ void Hid_init2()
         return;
     }
     
-    refCF = ( CFTypeRef ) CFNumberCreate( kCFAllocatorDefault, 
+    /*refCF = ( CFTypeRef ) CFNumberCreate( kCFAllocatorDefault, 
                                           kCFNumberLongType, 
                                           &filter_usage_page );
     CFDictionarySetValue( hidMatchDictionary, 
-                          CFSTR( kIOHIDPrimaryUsagePageKey ), refCF );
+                          CFSTR( kIOHIDPrimaryUsagePageKey ), refCF );*/
     
     newDeviceNotificationPort = IONotificationPortCreate( kIOMasterPortDefault );
     
@@ -1421,7 +1463,7 @@ void Hid_init2()
         return;
     }
 
-    CFRelease( refCF );
+    //CFRelease( refCF );
     
     Hid_new_devices( NULL, hidObjectIterator );
 }
@@ -1440,8 +1482,15 @@ static void Hid_new_devices( void * refcon, io_iterator_t iterator )
         mice_seen = mice->size(), 
         keyboards_seen = keyboards->size();
     
-    while( ioHIDDeviceObject = IOIteratorNext( iterator ) )
+    while( 1 )
     {        
+        if( ioHIDDeviceObject ) 
+            IOObjectRelease( ioHIDDeviceObject );
+        
+        ioHIDDeviceObject = IOIteratorNext( iterator );
+        if( ioHIDDeviceObject == 0 )
+            break;
+        
         // ascertain device information
         
         // first, determine the device usage page and usage
@@ -1467,6 +1516,53 @@ static void Hid_new_devices( void * refcon, io_iterator_t iterator )
         CFNumberGetValue( ( CFNumberRef )refCF, kCFNumberLongType, &usage );
         CFRelease( refCF );
         
+        if( usage_page != kHIDPage_GenericDesktop )
+        {
+            // some sort of HID device we dont recognize
+            // lets probe its input/output reports and try to categorize it
+            EM_log( CK_LOG_INFO, "hid: device not recognized, attempting to determine HID type" );
+            
+            // allocate the device record, set usage page and usage
+            OSX_Hid_Device * new_device = new OSX_Hid_Device;
+            new_device->type = CK_HID_DEV_NONE;
+            new_device->num = 0;
+            new_device->usage_page = usage_page;
+            new_device->usage = usage;
+            
+            if( !new_device->preconfigure( ioHIDDeviceObject ) && !new_device->configure() )
+            {
+                if( new_device->hats > 0 || new_device->axes > 2 )
+                    // make it a joystick
+                {
+                    usage_page = kHIDPage_GenericDesktop;
+                    usage = kHIDUsage_GD_Joystick;
+                }
+                
+                else if( new_device->axes == 2 )
+                    // make it a mouse
+                {
+                    usage_page = kHIDPage_GenericDesktop;
+                    usage = kHIDUsage_GD_Mouse;
+                }
+                
+                else if( new_device->buttons > 0 )
+                    // make it a keyboard
+                {
+                    usage_page = kHIDPage_GenericDesktop;
+                    usage = kHIDUsage_GD_Keyboard;
+                }
+                
+                new_device->cleanup();
+            }
+            
+            else
+            {
+                //EM_log( );
+            }
+
+            delete new_device;
+        }
+
         if ( usage_page == kHIDPage_GenericDesktop )
         {
             if( usage == kHIDUsage_GD_Joystick || 
@@ -1561,7 +1657,7 @@ static void Hid_new_devices( void * refcon, io_iterator_t iterator )
                 else
                 {
                     EM_log( CK_LOG_INFO, 
-                            "hid: error during preconfiguration of joystick %i",
+                            "hid: ignoring %i, invalid joystick",
                             joysticks_seen );
                     delete new_device;
                 }
@@ -1662,7 +1758,7 @@ static void Hid_new_devices( void * refcon, io_iterator_t iterator )
                 else
                 {
                     EM_log( CK_LOG_INFO, 
-                            "hid: error during preconfiguration of mouse %i",
+                            "hid: ignoring %i, invalid mouse",
                             mice_seen );
                     delete new_device;
                 }
@@ -1764,7 +1860,7 @@ static void Hid_new_devices( void * refcon, io_iterator_t iterator )
                 else
                 {
                     EM_log( CK_LOG_INFO, 
-                            "hid: error during preconfiguration of keyboard %i",
+                            "hid: ignoring %i, invalid keyboard",
                             keyboards_seen );
                     delete new_device;
                 }
@@ -1802,8 +1898,38 @@ void Hid_device_removed( void * refcon, io_service_t service,
     }
 }
 
+#ifdef __CK_HID_WIIREMOTE__
+
+#include "objc/objc.h"
+#include "objc/objc-runtime.h"
+#include "objc/objc-class.h"
+
+static id createAutoReleasePool()
+{
+    Class NSAutoreleasePoolClass = ( Class ) objc_getClass( "NSAutoreleasePool" );
+    
+    id autoReleasePool = class_createInstance( NSAutoreleasePoolClass, 0 );
+    
+    SEL initSelector = sel_registerName( "init" );
+    
+    autoReleasePool = objc_msgSend( autoReleasePool, initSelector );
+    
+    return autoReleasePool;
+}
+
+static void releaseAutoReleasePool()
+{
+    
+}
+
+#endif
+
 void Hid_poll()
-{    
+{
+#ifdef __CK_HID_WIIREMOTE__
+    id auto_release_pool = createAutoReleasePool();
+#endif
+    
     CFRunLoopRunInMode( kCFRunLoopChuckHidMode, 60 * 60 * 24, false );
 }
 
@@ -1863,27 +1989,29 @@ void Hid_callback( void * target, IOReturn result,
                 }
                 
 #ifndef __CK_HID_CURSOR_TRACK__
-                Point p;
-                GetGlobalMouse( &p );
                 
-                msg.idata[2] = p.h;
-                msg.idata[3] = p.v;
+                CGEventRef event = CGEventCreate(NULL);
+                CGPoint cursor = CGEventGetLocation(event);
+                CFRelease(event);
+                
+                msg.idata[2] = cursor.x;
+                msg.idata[3] = cursor.y;
                 
                 CGDirectDisplayID display;
                 CGDisplayCount displayCount;
                 
                 CGPoint cgp;
-                cgp.x = p.h;
-                cgp.y = p.v;
+                cgp.x = cursor.x;
+                cgp.y = cursor.y;
                 
                 if( CGGetDisplaysWithPoint( cgp, 1, &display, &displayCount ) ==
                     kCGErrorSuccess )
                 {
                     CGRect bounds = CGDisplayBounds( display );
                     
-                    msg.fdata[0] = ( ( t_CKFLOAT ) ( p.h - bounds.origin.x ) ) /
+                    msg.fdata[0] = ( ( t_CKFLOAT ) ( cursor.x - bounds.origin.x ) ) /
                                    ( bounds.size.width - 1 );
-                    msg.fdata[1] = ( ( t_CKFLOAT ) ( p.v - bounds.origin.y ) ) /
+                    msg.fdata[1] = ( ( t_CKFLOAT ) ( cursor.y - bounds.origin.y ) ) /
                                    ( bounds.size.height - 1 );
                 }
 #else
@@ -2052,6 +2180,68 @@ int Hid_count( xvector< OSX_Hid_Device * > * v )
     return count;
 }
 
+int Hid_count_elements( xvector< OSX_Hid_Device * >  * v, int i, int type )
+{
+    if( v == NULL || i < 0 )
+        return -1;
+    
+    int r = 0;
+    
+    v->lock();
+    
+    if( i >= v->size() )
+    {
+        v->unlock();
+        return -1;
+    }
+    
+    OSX_Hid_Device * device = v->at( i );
+    
+    device->lock();
+    
+    v->unlock();
+        
+    switch( type )
+    {
+        case CK_HID_JOYSTICK_AXIS:
+            if( device->type == CK_HID_DEV_JOYSTICK )
+                r = device->axes;
+            break;
+            
+        case CK_HID_BUTTON_DOWN:
+        case CK_HID_BUTTON_UP:
+            r = device->buttons;
+            break;
+            
+        case CK_HID_JOYSTICK_HAT:
+            r = device->hats;
+            break;
+            
+        case CK_HID_JOYSTICK_BALL:
+            r = 0;
+            break;
+            
+        case CK_HID_MOUSE_MOTION:
+            if( device->type == CK_HID_DEV_MOUSE )
+                r = device->axes;
+            break;
+            
+        case CK_HID_MOUSE_WHEEL:
+            if( device->type == CK_HID_DEV_MOUSE )
+                r = device->wheels;
+            break;
+            
+        case CK_HID_LED:
+            if( ( *device->outputs )[type] )
+                r = ( *device->outputs )[type]->size();
+            break;
+    }
+    
+    device->unlock();
+    
+    return r;
+}
+
 int Hid_open( xvector< OSX_Hid_Device * > * v, int i )
 {
     if( v == NULL || i < 0 )
@@ -2161,6 +2351,11 @@ int Joystick_count()
     return Hid_count( joysticks );
 }
 
+int Joystick_count_elements( int js, int type )
+{
+    return Hid_count_elements( joysticks, js, type );
+}
+
 int Joystick_open( int js )
 {
     return Hid_open( joysticks, js );
@@ -2195,6 +2390,11 @@ void Mouse_quit()
 int Mouse_count()
 {
     return Hid_count( mice );
+}
+
+int Mouse_count_elements( int m, int type )
+{
+    return Hid_count_elements( mice, m, type );
 }
 
 int Mouse_open( int m )
@@ -2345,6 +2545,11 @@ int Keyboard_count()
     return Hid_count( keyboards );
 }
 
+int Keyboard_count_elements( int k, int type )
+{
+    return Hid_count_elements( keyboards, k, type );
+}
+
 int Keyboard_open( int k )
 {
     return Hid_open( keyboards, k );
@@ -2453,16 +2658,162 @@ static struct t_TiltSensor_data
     
 } TiltSensor_data;
 
-static int TiltSensor_test( int kernFunc, char * servMatch, int dataType )
+// ge: SMS multi-threading
+static int TiltSensor_do_read();
+
+//-----------------------------------------------------------------------------
+// name: class SMSManager
+// desc: ...
+//-----------------------------------------------------------------------------
+class SMSManager
+{
+public:
+    static t_CKBOOL init();
+    static void shutdown();
+    static void on();
+    static void off();
+
+public:
+    static t_CKINT the_onoff;
+    static t_CKBOOL the_init;
+    static t_CKINT wait_time;
+    static XThread * the_thread;
+    static t_CKINT x;
+    static t_CKINT y;
+    static t_CKINT z;
+};
+
+// designate new poll rate
+t_CKINT TiltSensor_setPollRate( t_CKINT usec )
+{
+    // sanity
+    assert( usec >= 0 );
+    
+    SMSManager::wait_time = usec;
+    
+    return SMSManager::wait_time;
+}
+
+// query current poll rate
+t_CKINT TiltSensor_getPollRate( )
+{
+    return SMSManager::wait_time;
+}
+
+// initialize
+t_CKINT SMSManager::the_onoff = 0;
+t_CKBOOL SMSManager::the_init = FALSE;
+t_CKINT SMSManager::wait_time = 3000;
+XThread * SMSManager::the_thread = NULL;
+t_CKINT SMSManager::x = 0;
+t_CKINT SMSManager::y = 0;
+t_CKINT SMSManager::z = 0;
+
+
+#if !defined(__PLATFORM_WIN32__) || defined(__WINDOWS_PTHREAD__)
+static void * sms_loop( void * )
+#else
+static unsigned int __stdcall sms_loop( void * )
+#endif
+{
+//    t_CKINT c;
+    EM_log( CK_LOG_INFO, "starting SMS multi-threaded loop..." );
+
+    // go
+    while( SMSManager::the_init )
+    {
+        // if on
+        if( SMSManager::the_onoff )
+        {
+            // poll SMS
+            TiltSensor_do_read();
+            
+            // save data
+            if( TiltSensor_data.dataType == kSMSPowerbookDataType )
+            {
+                SMSManager::x = TiltSensor_data.data.powerbook.x;
+                SMSManager::y = TiltSensor_data.data.powerbook.y;
+                SMSManager::z = TiltSensor_data.data.powerbook.z;
+            }
+
+            else if( TiltSensor_data.dataType == kSMSMacBookProDataType )
+            {
+                SMSManager::x = TiltSensor_data.data.macbookpro.x;
+                SMSManager::y = TiltSensor_data.data.macbookpro.y;
+                SMSManager::z = TiltSensor_data.data.macbookpro.z;
+            }
+            // wait
+            usleep( SMSManager::wait_time );
+        }
+        else
+        {
+            // wait
+            usleep( 1000 );
+        }
+    }
+    
+    // TODO: hack!
+    SAFE_DELETE( SMSManager::the_thread );
+
+    return 0;
+}
+
+
+// init
+t_CKBOOL SMSManager::init()
+{
+    // sanity
+    if( the_thread != NULL )
+        return FALSE;
+
+    EM_log( CK_LOG_INFO, "initializing SMSManager..." );
+
+    the_onoff = 0;
+    the_init = TRUE;
+    the_thread = new XThread;
+    the_thread->start( sms_loop, NULL );
+
+    return TRUE;
+}
+
+
+// shutdown
+void SMSManager::shutdown()
+{
+    EM_log( CK_LOG_INFO, "shutting down SMSManager..." );
+
+    the_onoff = 0;
+    the_init = FALSE;
+}
+
+
+// on()
+void SMSManager::on()
+{
+    the_onoff++;
+}
+
+
+// off()
+void SMSManager::off()
+{
+    the_onoff--;
+}
+
+
+static int TiltSensor_test( int kernFunc, const char * servMatch, int dataType )
 {
     kern_return_t result;
     io_iterator_t iterator;
     io_object_t aDevice;
     io_connect_t dataPort;
-    
+
     IOItemCount structureInputSize;
-    IOByteCount structureOutputSize;
-        
+    size_t structureOutputSize;
+    
+    // log
+    EM_log( CK_LOG_FINE, "testing for SMS sensor..." );
+
     CFMutableDictionaryRef matchingDictionary = IOServiceMatching( servMatch );
     
     result = IOServiceGetMatchingServices( kIOMasterPortDefault, matchingDictionary, &iterator );
@@ -2502,12 +2853,18 @@ static int TiltSensor_test( int kernFunc, char * servMatch, int dataType )
     memset( &TiltSensor_data.data, 0, sizeof( TiltSensor_data.data ) );
     memset( &TiltSensor_data.data, 0, sizeof( TiltSensor_data.data ) );
     
-    result = IOConnectMethodStructureIStructureO( dataPort, 
-                                                  kernFunc, 
-                                                  structureInputSize,
-                                                  &structureOutputSize, 
-                                                  &TiltSensor_data.data, 
-                                                  &TiltSensor_data.data );
+//    result = IOConnectMethodStructureIStructureO( dataPort,
+//                                                 kernFunc,
+//                                                 structureInputSize,
+//                                                 &structureOutputSize,
+//                                                 &TiltSensor_data.data,
+//                                                 &TiltSensor_data.data );
+    result = IOConnectCallStructMethod( dataPort,
+                                        kernFunc,
+                                        &TiltSensor_data.data,
+                                        structureInputSize,
+                                        &TiltSensor_data.data,
+                                        &structureOutputSize );
     
     if ( result != KERN_SUCCESS )
     {
@@ -2525,7 +2882,10 @@ static int TiltSensor_do_read()
 {
     kern_return_t result;
     IOItemCount structureInputSize;
-    IOByteCount structureOutputSize;
+    size_t structureOutputSize;
+
+    // log
+    EM_log( CK_LOG_FINE, "reading SMS sensor..." );
 
     switch( TiltSensor_data.dataType )
     {
@@ -2546,13 +2906,19 @@ static int TiltSensor_do_read()
     memset( &TiltSensor_data.data, 0, sizeof( TiltSensor_data.data ) );
     memset( &TiltSensor_data.data, 0, sizeof( TiltSensor_data.data ) );
     
-    result = IOConnectMethodStructureIStructureO( TiltSensor_data.dataPort, 
-                                                  TiltSensor_data.kernFunc, 
-                                                  structureInputSize,
-                                                  &structureOutputSize, 
-                                                  &TiltSensor_data.data, 
-                                                  &TiltSensor_data.data );
-    
+//    result = IOConnectMethodStructureIStructureO( TiltSensor_data.dataPort, 
+//                                                  TiltSensor_data.kernFunc, 
+//                                                  structureInputSize,
+//                                                  &structureOutputSize, 
+//                                                  &TiltSensor_data.data, 
+//                                                  &TiltSensor_data.data );
+    result = IOConnectCallStructMethod( TiltSensor_data.dataPort,
+                                        TiltSensor_data.kernFunc,
+                                        &TiltSensor_data.data,
+                                        structureInputSize,
+                                        &TiltSensor_data.data,
+                                        &structureOutputSize );
+
     return 1;
 }
 
@@ -2562,6 +2928,9 @@ static int TiltSensor_detect()
     
     SInt32 osx_version;
     int powerbookKernFunc = 0;
+
+    // log
+    EM_log( CK_LOG_FINE, "detecting SMS sensor..." );
     
     Gestalt( gestaltSystemVersion, &osx_version );
     
@@ -2573,6 +2942,9 @@ static int TiltSensor_detect()
     
     else
         powerbookKernFunc = 21;
+
+    // 1.3.1.0: added cast to t_CKINT
+	fprintf( stdout, "osx_version = %ld \n", (t_CKINT)osx_version );
     
     // ibook/powerbook (OS X 10.4.x) tilt sensor interface
     if( TiltSensor_test( powerbookKernFunc, "IOI2CMotionSensor", kSMSPowerbookDataType ) )
@@ -2613,6 +2985,9 @@ void TiltSensor_init()
 
 void TiltSensor_quit()
 {
+    // log
+    EM_log( CK_LOG_FINE, "quiting SMS bridge..." );
+
     if( TiltSensor_data.dataPort == 0 )
         IOServiceClose( TiltSensor_data.dataPort );
 }
@@ -2624,6 +2999,9 @@ void TiltSensor_probe()
 
 int TiltSensor_count()
 {
+    // log
+    EM_log( CK_LOG_FINE, "counting SMS sensors..." );
+
     if( TiltSensor_data.detected == 0 )
         TiltSensor_detect();
 
@@ -2638,6 +3016,10 @@ int TiltSensor_count()
 
 int TiltSensor_open( int ts )
 {
+    // log
+    EM_log( CK_LOG_FINE, "opening SMS sensor..." );
+    EM_pushlog();
+
     if( TiltSensor_data.detected == 0 )
         TiltSensor_detect();
     
@@ -2646,6 +3028,13 @@ int TiltSensor_open( int ts )
     
     TiltSensor_data.refcount++;
     
+    // ge: init manager
+    SMSManager::init();
+    SMSManager::on();
+    
+    // log
+    EM_poplog();
+    
     return 0;
 }
 
@@ -2653,6 +3042,11 @@ int TiltSensor_close( int ts )
 {
     TiltSensor_data.refcount--;
     
+    // ge: notify
+    SMSManager::off();
+    if( TiltSensor_data.refcount <= 0 )
+        SMSManager::shutdown();
+
     return 0;
 }
 
@@ -2669,25 +3063,298 @@ int TiltSensor_read( int ts, int type, int num, HidMsg * msg )
     if( TiltSensor_data.detected == -1 )
         return -1;
     
-    if( !TiltSensor_do_read() )
+    // ge: no longer need in the multi-threaded case...
+    // if( !TiltSensor_do_read() )
+    //     return -1;
+    
+    // ge: use sms multi-threaded
+    msg->idata[0] = SMSManager::x;
+    msg->idata[1] = SMSManager::y;
+    msg->idata[2] = SMSManager::z;
+    
+    return 0;
+}
+
+
+typedef struct { float x,y; } mtPoint;
+typedef struct { mtPoint pos,vel; } mtReadout;
+
+typedef struct {
+    int frame;
+    double timestamp;
+    int identifier, state, foo3, foo4;
+    mtReadout normalized;
+    float size;
+    int zero1;
+    float angle, majorAxis, minorAxis; // ellipsoid
+    mtReadout mm;
+    int zero2[2];
+    float unk2;
+} Finger;
+
+typedef void *MTDeviceRef;
+typedef int (*MTContactCallbackFunction)(MTDeviceRef,Finger*,int,double,int);
+
+extern "C"
+{
+//    MTDeviceRef MTDeviceCreateDefault();
+    CFMutableArrayRef MTDeviceCreateList(void);
+    void MTRegisterContactFrameCallback(MTDeviceRef, MTContactCallbackFunction);
+    void MTUnregisterContactFrameCallback(MTDeviceRef, MTContactCallbackFunction);
+    void MTDeviceStart(MTDeviceRef, int);
+    void MTDeviceStop(MTDeviceRef);
+}
+
+
+class MTDManager
+{
+public:
+    static bool checkedAvailability;
+    static bool available;
+    
+    static bool inited;
+    static int numDevices;
+    static CFMutableArrayRef deviceList;
+    static map<MTDeviceRef, bool> openDevices;
+};
+
+
+bool MTDManager::checkedAvailability = false;
+bool MTDManager::available = false;
+bool MTDManager::inited = false;
+int MTDManager::numDevices = -1;
+CFMutableArrayRef MTDManager::deviceList = NULL;
+map<MTDeviceRef, bool> MTDManager::openDevices;
+
+
+int MultiTouchDevice_callback(MTDeviceRef device, Finger *data, int nFingers, double timestamp, int frame)
+{
+    int device_num = CFArrayGetFirstIndexOfValue(MTDManager::deviceList, 
+                                                 CFRangeMake(0, MTDManager::numDevices),
+                                                 device);
+    
+    for (int i=0; i<nFingers; i++)
+    {
+        Finger *f = &data[i];
+//        printf("Frame %7d: Angle %6.2f, ellipse %6.3f x%6.3f; "
+//               "position (%6.3f,%6.3f) vel (%6.3f,%6.3f) "
+//               "ID %d, state %d [%d %d?] size %6.3f, %6.3f?\n",
+//               f->frame,
+//               f->angle * 90 / atan2(1,0),
+//               f->majorAxis,
+//               f->minorAxis,
+//               f->normalized.pos.x,
+//               f->normalized.pos.y,
+//               f->normalized.vel.x,
+//               f->normalized.vel.y,
+//               f->identifier, f->state, f->foo3, f->foo4,
+//               f->size, f->unk2);
+        
+        HidMsg msg;
+        
+        msg.device_type = CK_HID_DEV_MULTITOUCH;
+        msg.device_num = device_num;
+        msg.type = CK_HID_MULTITOUCH_TOUCH;
+        msg.eid = f->identifier;
+        msg.fdata[0] = f->normalized.pos.x;
+        msg.fdata[1] = f->normalized.pos.y;
+        msg.fdata[2] = f->size;
+        
+        HidInManager::push_message( msg );
+    }
+//    
+//    printf("\n");
+//    
+    return 0;
+}
+
+
+void MultiTouchDevice_init()
+{
+    if(!MTDManager::checkedAvailability)
+        MTDManager::available = (MTDeviceCreateList != NULL &&
+                                 MTRegisterContactFrameCallback != NULL &&
+                                 MTUnregisterContactFrameCallback != NULL &&
+                                 MTDeviceStart != NULL &&
+                                 MTDeviceStop != NULL);
+    
+    if(!MTDManager::available)
+        return;
+    
+    if(MTDManager::inited == false)
+    {
+        MTDManager::deviceList = MTDeviceCreateList();
+        if(MTDManager::deviceList)
+        {
+            MTDManager::numDevices = CFArrayGetCount(MTDManager::deviceList);
+            
+            MTDManager::inited = true;
+        }
+    }
+}
+
+
+void MultiTouchDevice_quit()
+{
+    if(!MTDManager::available)
+        return;
+
+    if(MTDManager::inited)
+    {
+        if(MTDManager::deviceList)
+        {
+            CFRelease(MTDManager::deviceList);
+            MTDManager::deviceList = NULL;
+        }
+        MTDManager::numDevices = -1;
+        MTDManager::inited = false;
+    }
+}
+
+
+void MultiTouchDevice_probe()
+{
+}
+
+
+int MultiTouchDevice_count()
+{
+    if(!MTDManager::available)
+        return 0;
+
+    return MTDManager::numDevices;
+}
+
+
+int MultiTouchDevice_open( int ts )
+{
+    if(!MTDManager::available)
+        return -1;
+
+    if(!MTDManager::inited || ts < 0 || ts >= MTDManager::numDevices)
         return -1;
     
-    if( TiltSensor_data.dataType == kSMSPowerbookDataType )
-    {
-        msg->idata[0] = TiltSensor_data.data.powerbook.x;
-        msg->idata[1] = TiltSensor_data.data.powerbook.y;
-        msg->idata[2] = TiltSensor_data.data.powerbook.z;
-    }
+    MTDeviceRef device = (MTDeviceRef) CFArrayGetValueAtIndex(MTDManager::deviceList, ts);
+    MTRegisterContactFrameCallback(device, MultiTouchDevice_callback);
+    MTDeviceStart(device, 0);
     
-    else if( TiltSensor_data.dataType == kSMSMacBookProDataType )
+    MTDManager::openDevices[device] = true;
+    
+    return 0;
+}
+
+
+int MultiTouchDevice_close( int ts )
+{
+    if(!MTDManager::available)
+        return -1;
+
+    if(MTDManager::numDevices == -1 || ts < 0 || ts >= MTDManager::numDevices)
+        return -1;
+    
+    MTDeviceRef device = (MTDeviceRef) CFArrayGetValueAtIndex(MTDManager::deviceList, ts);
+    if(MTDManager::openDevices.count(device))
     {
-        msg->idata[0] = TiltSensor_data.data.macbookpro.x;
-        msg->idata[1] = TiltSensor_data.data.macbookpro.y;
-        msg->idata[2] = TiltSensor_data.data.macbookpro.z;
+        MTDeviceStop(device);
+        //MTUnregisterContactFrameCallback(device, MultiTouchDevice_callback);
+        MTDManager::openDevices[device] = false;
     }
     
     return 0;
 }
+
+
+const char * MultiTouchDevice_name( int ts )
+{
+    if(!MTDManager::available)
+        return NULL;
+
+    return "MultiTouch Device";
+}
+
+
+class TabletManager
+{
+public:
+    
+    
+    
+    CGEventRef TapCallBack(CGEventTapProxy proxy, CGEventType type,
+                           CGEventRef event)
+    {
+        HidMsg msg;
+        
+        //    msg.device_type = CK_HID_DEV_MULTITOUCH;
+        //    msg.device_num = device_num;
+        //    msg.type = CK_HID_MULTITOUCH_TOUCH;
+        //    msg.eid = f->identifier;
+        //    msg.fdata[0] = f->normalized.pos.x;
+        //    msg.fdata[1] = f->normalized.pos.y;
+        //    msg.fdata[2] = f->size;
+        
+        HidInManager::push_message( msg );
+        
+        return event;
+    }
+    
+private:
+    
+};
+
+static TabletManager * g_tabletManager = NULL;
+
+
+
+CGEventRef Tablet_TapCallBack(CGEventTapProxy proxy, CGEventType type,
+                              CGEventRef event, void *refcon)
+{
+    TabletManager * mgr = (TabletManager *) refcon;
+    
+    return mgr->TapCallBack(proxy, type, event);
+}
+
+
+
+void Tablet_init()
+{
+    g_tabletManager = new TabletManager;
+}
+
+void Tablet_quit()
+{
+    delete g_tabletManager;
+    g_tabletManager = NULL;
+}
+
+void Tablet_probe()
+{
+    
+}
+
+int Tablet_count()
+{
+    return 0;
+}
+
+int Tablet_open( int ts )
+{
+    return HID_NOERROR;
+}
+
+int Tablet_close( int ts )
+{
+    return HID_NOERROR;
+}
+
+const char * Tablet_name( int ts )
+{
+    return NULL;
+}
+
+
+
+
+
 
 #ifdef __CK_HID_WIIREMOTE__
 #pragma mark OS X Wii Remote support
@@ -2743,19 +3410,33 @@ public:
 
 class WiiRemote : public Bluetooth_Device
 {
+protected:
+    enum Extension
+    {
+        ExtensionNone,
+        ExtensionNunchuk,
+        ExtensionClassicController
+    };
+
 public:
+
     WiiRemote()
     {
         force_feedback_enabled = FALSE;
         motion_sensor_enabled = FALSE;
         ir_sensor_enabled = FALSE;
+        ir_sensor_initialized = FALSE;
+        extension_enabled = FALSE;
         led1 = led2 = led3 = led4 = FALSE;
         speaker_enabled = FALSE;
+        connected_extension = ExtensionNone;
         timer = NULL;
         audio_buffer = NULL;
         memset( &buttons, 0, sizeof( buttons ) );
         memset( &accels, 0, sizeof( accels ) );
         memset( &ir, 0xff, sizeof( ir ) );
+        memset( &extension, 0, sizeof( extension ) );
+        extension[5] |= 0x03;
     }
     
     virtual t_CKINT open();
@@ -2768,12 +3449,20 @@ public:
     virtual void control_receive( void * data, size_t size );
     virtual void interrupt_receive( void * data, size_t size );
     
-    virtual void control_send( const void * data, size_t size );
-    virtual void write_memory( const void * data, size_t size, unsigned long address );
+    virtual void control_send( const void * data, unsigned int size );
+    virtual void write_memory( const void * data, unsigned int size, unsigned int address );
+    virtual void read_memory( unsigned int address, unsigned int size );
     
+    virtual void check_extension();
+    
+    virtual void enable_peripherals( t_CKBOOL force_feedback, 
+                                     t_CKBOOL motion_sensor,
+                                     t_CKBOOL ir_sensor,
+                                     t_CKBOOL extension );
     virtual void enable_force_feedback( t_CKBOOL enable );
     virtual void enable_motion_sensor( t_CKBOOL enable );
     virtual void enable_ir_sensor( t_CKBOOL enable );
+    virtual void enable_extension( t_CKBOOL enable );
     virtual void enable_leds( t_CKBOOL l1, t_CKBOOL l2, 
                               t_CKBOOL l3, t_CKBOOL l4 );
     virtual void set_led( t_CKUINT led, t_CKBOOL state );
@@ -2783,17 +3472,26 @@ public:
     CBufferSimple * audio_buffer;
     virtual void send_audio_data();
     
+protected:
+    
+    virtual void initialize_ir_sensor();
+    
     t_CKBOOL force_feedback_enabled;
     t_CKBOOL motion_sensor_enabled;
     t_CKBOOL ir_sensor_enabled;
+    t_CKBOOL ir_sensor_initialized;
+    t_CKBOOL extension_enabled;
     t_CKBOOL led1, led2, led3, led4;
     t_CKBOOL speaker_enabled;
     
     t_CKBYTE buttons[2];
     t_CKBYTE accels[3];
     t_CKBYTE ir[12];
-
-    enum
+    t_CKBYTE extension[6];
+    
+    Extension connected_extension;
+    
+    enum Button
     {
         ButtonHome = 0,
         Button1,
@@ -2805,8 +3503,10 @@ public:
         ButtonUp,
         ButtonRight,
         ButtonDown,
-        ButtonLeft
-    };
+        ButtonLeft,
+        ButtonC,
+        ButtonZ
+    };    
 };
 
 bool operator< ( BluetoothDeviceAddress a, BluetoothDeviceAddress b )
@@ -2963,16 +3663,21 @@ t_CKINT WiiRemote::connect()
 
 t_CKINT WiiRemote::control_init()
 {
-    enable_motion_sensor( TRUE );
-    enable_ir_sensor( TRUE );
-    enable_force_feedback( FALSE );
+    check_extension();
+    
+    //enable_motion_sensor( TRUE );
+    //enable_ir_sensor( TRUE );
+    //enable_force_feedback( FALSE );
+    //enable_extension( TRUE );
+    
+    enable_peripherals( FALSE, TRUE, TRUE, TRUE );
     
     usleep( 1000 );
     enable_leds( ( num % 4 ) == 0, ( ( num - 1 ) % 4 ) == 0, 
                  ( ( num - 2 ) % 4 ) == 0, ( ( num - 3 ) % 4 ) == 0 );
     
     usleep( 1000 );
-    enable_speaker( TRUE );
+    enable_speaker( FALSE );
     
     HidMsg msg;
     
@@ -3037,6 +3742,11 @@ t_CKBOOL WiiRemote::is_connected()
     if( device == NULL )
         return FALSE;
     return TRUE;
+}
+
+static inline unsigned char wii_remote_extension_decrypt( unsigned char b )
+{
+    return ( ( b ^ 0x17 ) + 0x17 & 0xFF );
 }
 
 void WiiRemote::control_receive( void * data, size_t size )
@@ -3210,33 +3920,144 @@ void WiiRemote::control_receive( void * data, size_t size )
         {
             unsigned i;
             
-            for( i = 0; i < 4; i++ )
+            if( !( d[1] & 0x04 ) )
             {
-                if( ( d[7 + i * 3] ^ ir[i * 3] ||
-                      d[7 + i * 3 + 1] ^ ir[i * 3 + 1] ||
-                      d[7 + i * 3 + 2] ^ ir[i * 3 + 2] ) &&
-                    ( d[7 + i * 3] != 0xff ) && 
-                    ( d[7 + i * 3 + 1] != 0xff ) && 
-                    ( d[7 + i * 3 + 2] != 0xff ) )
+                for( i = 0; i < 4; i++ )
                 {
-                    msg.device_num = num;
-                    msg.device_type = CK_HID_DEV_WIIREMOTE;
-                    msg.type = CK_HID_WIIREMOTE_IR;
-                    msg.eid = i;
-                    // x
-                    msg.idata[0] = d[7 + 3 * i] + ( ( d[7 + 3 * i + 2] << 4 ) & 0x300 );
-                    // y
-                    msg.idata[1] = d[7 + 3 * i + 1] + ( ( d[7 + 3 * i + 2] << 2 ) & 0x300 );
-                    // size
-                    msg.idata[2] = d[7 + 3 * i + 2] & 0xffff;
-                    
-                    HidInManager::push_message( msg );
-                    
-                    msg.clear();
+                    // 12 byte extended IR data format
+                    // available when there are no extension bytes
+                    if( ( d[7 + i * 3] ^ ir[i * 3] ||
+                          d[7 + i * 3 + 1] ^ ir[i * 3 + 1] ||
+                          d[7 + i * 3 + 2] ^ ir[i * 3 + 2] ) &&
+                        ( d[7 + i * 3] != 0xff ) && 
+                        ( d[7 + i * 3 + 1] != 0xff ) && 
+                        ( d[7 + i * 3 + 2] != 0xff ) )
+                    {
+                        msg.device_num = num;
+                        msg.device_type = CK_HID_DEV_WIIREMOTE;
+                        msg.type = CK_HID_WIIREMOTE_IR;
+                        msg.eid = i;
+                        // x
+                        msg.idata[0] = d[7 + 3 * i] + ( ( d[7 + 3 * i + 2] << 4 ) & 0x300 );
+                        // y
+                        msg.idata[1] = d[7 + 3 * i + 1] + ( ( d[7 + 3 * i + 2] << 2 ) & 0x300 );
+                        // size
+                        msg.idata[2] = d[7 + 3 * i + 2] & 0xffff;
+                        
+                        HidInManager::push_message( msg );
+                        
+                        msg.clear();
+                    }
                 }
+            }
+                
+            else
+            {
+                // 9 byte basic IR data format
+                // available when there are no extension bytes
             }
             
             memcpy( ir, d + 7, sizeof( ir ) );
+        }
+        
+        /* extension */
+        if( d[1] & 0x04 )
+        {
+            for( int i = 0; i < 6; i++ )
+                d[17 + i] = wii_remote_extension_decrypt( d[17 + i] );
+            
+            switch( connected_extension )
+            {
+                case ExtensionNunchuk:
+                    if( d[17] ^ extension[0] || 
+                        d[18] ^ extension[1] )
+                        // joystick axis
+                    {
+                        msg.device_num = num;
+                        msg.device_type = CK_HID_DEV_WIIREMOTE;
+                        msg.type = CK_HID_JOYSTICK_AXIS;
+                        msg.eid = 0;
+                        
+                        // x axis
+                        msg.idata[0] = d[17];
+                        // y axis
+                        msg.idata[1] = d[18];
+                        
+                        HidInManager::push_message( msg );
+                        
+                        msg.clear();
+                    }
+                    
+                    if( d[19] ^ extension[2] || 
+                        d[20] ^ extension[3] || 
+                        d[21] ^ extension[4] )
+                    {
+                        msg.device_num = num;
+                        msg.device_type = CK_HID_DEV_WIIREMOTE;
+                        msg.type = CK_HID_ACCELEROMETER;
+                        msg.eid = 1;
+                        
+                        // x axis
+                        msg.idata[0] = d[19];
+                        // y axis
+                        msg.idata[1] = d[20];
+                        // z axis
+                        msg.idata[2] = d[21];
+                        
+                        HidInManager::push_message( msg );
+                        
+                        msg.clear();
+                    }
+                    
+                    if( ( d[22] & ( 1 << 0 ) ) ^ ( extension[5] & ( 1 << 0 ) ) )
+                    {                        
+                        msg.device_num = num;
+                        msg.device_type = CK_HID_DEV_WIIREMOTE;
+                        msg.type = ( d[22] & ( 1 << 0 ) ) ? CK_HID_BUTTON_UP : CK_HID_BUTTON_DOWN;
+                        msg.eid = ButtonZ;
+                        
+                        HidInManager::push_message( msg );
+                        
+                        msg.clear();
+                    }
+                    
+                    if( ( d[22] & ( 1 << 1 ) ) ^ ( extension[5] & ( 1 << 1 ) ) )
+                    {                        
+                        msg.device_num = num;
+                        msg.device_type = CK_HID_DEV_WIIREMOTE;
+                        msg.type = ( d[22] & ( 1 << 1 ) ) ? CK_HID_BUTTON_UP : CK_HID_BUTTON_DOWN;
+                        msg.eid = ButtonC;
+                        
+                        HidInManager::push_message( msg );
+                        
+                        msg.clear();
+                    }
+                    
+                    break;
+            }
+            
+            memcpy( extension, d + 17, 6 );
+        }
+    }
+    
+    else if( d[1] == 0x21 )
+    {
+        int i = 0;
+        i++;
+        // read memory packet
+        if( ( d[4] & 0xf0 ) == 0x10 && // size = 2
+            d[5] == 0x00 && // address = 0x04a400fe (but we only have the first 2 bytes of that here)
+            d[6] == 0xfe )
+        {
+            unsigned char ext0 = wii_remote_extension_decrypt( d[7] );
+            unsigned char ext1 = wii_remote_extension_decrypt( d[8] );
+            
+            if( ext0 == 0x00 && ext1 == 0x00 )
+                connected_extension = ExtensionNunchuk;
+            else if( ext0 == 0x01 && ext1 == 0x01 )
+                connected_extension = ExtensionClassicController;
+            else
+                connected_extension = ExtensionNone;
         }
     }
 }
@@ -3246,7 +4067,7 @@ void WiiRemote::interrupt_receive( void * data, size_t size )
     
 }
 
-void WiiRemote::control_send( const void * data, size_t size )
+void WiiRemote::control_send( const void * data, unsigned int size )
 {
     assert( size <= 22 );
     
@@ -3274,15 +4095,15 @@ void WiiRemote::control_send( const void * data, size_t size )
                 num, result );
 }
 
-void WiiRemote::write_memory( const void * data, size_t size, unsigned long address )
+void WiiRemote::write_memory( const void * data, unsigned int size,
+                              unsigned int address )
 {
     assert( size <= 16 );
     
     unsigned char cmd[22];
     
     memset( cmd, 0, 22 );
-    memcpy( cmd + 6, data, size );
-        
+    
     cmd[0] = 0x16;
     cmd[1] = ( address >> 24 ) & 0xff;
     cmd[2] = ( address >> 16 ) & 0xff;
@@ -3290,10 +4111,75 @@ void WiiRemote::write_memory( const void * data, size_t size, unsigned long addr
     cmd[4] = address & 0xff;
     cmd[5] = size;
     
+    memcpy( cmd + 6, data, size );
+
     if( force_feedback_enabled )
         cmd[1] |= 0x01;
     
     control_send( cmd, 22 );
+}
+
+void WiiRemote::read_memory( unsigned int address, unsigned int size )
+{
+    unsigned char cmd[7];
+    
+    cmd[0] = 0x17;
+    cmd[1] = ( address >> 24 ) & 0xff;
+    cmd[2] = ( address >> 16 ) & 0xff;
+    cmd[3] = ( address >> 8 ) & 0xff;
+    cmd[4] = address & 0xff;
+    cmd[5] = ( size >> 8 ) & 0xff;
+    cmd[6] = ( size >> 0 ) & 0xff;
+    
+    if( force_feedback_enabled )
+        cmd[1] |= 0x01;
+    
+    control_send( cmd, 7 );
+}
+
+void WiiRemote::check_extension()
+{
+    unsigned char key[] = { 0x00 };
+    
+    // write key
+    write_memory( key, 1, 0x04a40040 );
+    
+    // read extension id
+    read_memory( 0x04a400fe, 2 );
+}
+
+void WiiRemote::enable_peripherals( t_CKBOOL force_feedback,
+                                    t_CKBOOL motion_sensor,
+                                    t_CKBOOL ir_sensor,
+                                    t_CKBOOL extension )
+{
+    force_feedback_enabled = force_feedback;
+    motion_sensor_enabled = motion_sensor;
+    ir_sensor_enabled = ir_sensor;
+    extension_enabled = extension;
+    
+    unsigned char cmd[] = { 0x12, 0x00, 0x30 };
+    if( motion_sensor_enabled )
+        cmd[2] |= 0x01;
+    if( ir_sensor_enabled )
+        cmd[2] |= 0x02;
+    if( extension_enabled )
+        cmd[2] |= 0x04;
+    if( force_feedback_enabled )
+        cmd[1] |= 0x01;
+    
+    control_send( cmd, 3 );
+    
+    unsigned char cmd2[] = { 0x13, 0x00 };
+    if( force_feedback_enabled )
+        cmd2[1] |= 0x01;
+    if( ir_sensor_enabled )
+        cmd2[1] |= 0x04;    
+    
+    control_send( cmd2, 2 );
+    
+    if( ir_sensor_enabled && !ir_sensor_initialized )
+        initialize_ir_sensor();
 }
 
 void WiiRemote::enable_force_feedback( t_CKBOOL enable )
@@ -3310,7 +4196,7 @@ void WiiRemote::enable_force_feedback( t_CKBOOL enable )
 }
 
 void WiiRemote::enable_motion_sensor( t_CKBOOL enable )
-{
+{    
     motion_sensor_enabled = enable;
     
     unsigned char cmd[] = { 0x12, 0x00, 0x30 };
@@ -3318,6 +4204,8 @@ void WiiRemote::enable_motion_sensor( t_CKBOOL enable )
         cmd[2] |= 0x01;
     if( ir_sensor_enabled )
         cmd[2] |= 0x02;
+    if( extension_enabled )
+        cmd[2] |= 0x04;
     if( force_feedback_enabled )
         cmd[1] |= 0x01;
     
@@ -3339,33 +4227,44 @@ void WiiRemote::enable_ir_sensor( t_CKBOOL enable )
     
     control_send( cmd, 2 );
     
-    if( ir_sensor_enabled )
-    {
-        unsigned char en0[] = { 0x01 };
-        write_memory( en0, 1, 0x04b00030 );
-        //usleep(10000);
+    if( ir_sensor_enabled && !ir_sensor_initialized )
+        initialize_ir_sensor();
+}
 
-        unsigned char en[] = { 0x08 };
-        write_memory( en, 1, 0x04b00030 );
-        //usleep(10000);
+void WiiRemote::initialize_ir_sensor()
+{
+    ir_sensor_initialized = TRUE;
+    
+    unsigned char en0[] = { 0x01 };
+    write_memory( en0, 1, 0x04b00030 );
+    //usleep(10000);
+    
+    unsigned char en[] = { 0x08 };
+    write_memory( en, 1, 0x04b00030 );
+    //usleep(10000);
+    
+    unsigned char sensitivity_block1[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x90, 0x00, 0xc0 };
+    write_memory( sensitivity_block1, 9, 0x04b00000 );
+    //usleep(10000);
+    
+    unsigned char sensitivity_block2[] = { 0x40, 0x00 };
+    write_memory( sensitivity_block2, 2, 0x04b0001a );
+    //usleep(10000);
+    
+    unsigned char mode[] = { 0x03 };
+    write_memory( mode, 1, 0x04b00033 );
+    // usleep(10000);
+    
+    unsigned char what[] = { 0x08 };
+    write_memory( what, 1, 0x04b00030 );
+    //usleep(10000);
+}
 
-        unsigned char sensitivity_block1[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x90, 0x00, 0xc0 };
-        write_memory( sensitivity_block1, 9, 0x04b00000 );
-        //usleep(10000);
-
-        unsigned char sensitivity_block2[] = { 0x40, 0x00 };
-        write_memory( sensitivity_block2, 2, 0x04b0001a );
-        //usleep(10000);
-
-        unsigned char mode[] = { 0x03 };
-        write_memory( mode, 1, 0x04b00033 );
-       // usleep(10000);
-
-        unsigned char what[] = { 0x08 };
-        write_memory( what, 1, 0x04b00030 );
-        //usleep(10000);
-
-    }
+void WiiRemote::enable_extension( t_CKBOOL enable )
+{
+    extension_enabled = enable;
+    
+    enable_motion_sensor( motion_sensor_enabled );
 }
 
 void WiiRemote::set_led( t_CKUINT led, t_CKBOOL state )
@@ -3564,12 +4463,37 @@ void Bluetooth_inquiry_device_found( void * userRefCon,
     }
 }
 
+int WiiRemote_query();
+
 void Bluetooth_inquiry_complete( void * userRefCon,
                                  IOBluetoothDeviceInquiryRef inquiryRef, 
                                  IOReturn error, 
                                  Boolean aborted )
 {
     g_bt_query_active = FALSE;
+    
+    IOBluetoothDeviceInquiryDelete( inquiryRef );
+ 
+    t_CKBOOL do_query = FALSE;
+    WiiRemote * wiiremote;
+    
+    for( int i = 0; i < wiiremotes->size(); i++ )
+    {
+        wiiremote = ( *wiiremotes )[i];
+        if( wiiremote->refcount > 0 && !wiiremote->is_connected() )
+        {
+            do_query = TRUE;
+            break;
+        }
+    }
+    
+    if( do_query )
+    {
+        EM_log( CK_LOG_INFO, "hid: continuing bluetooth query" );
+        WiiRemote_query();
+    }
+    else
+        EM_log( CK_LOG_INFO, "hid: ending bluetooth query" );
 }
 
 int WiiRemote_query()
@@ -3946,6 +4870,33 @@ void Hid_quit()
         g_device_event = NULL;
     }*/
 }
+
+
+
+
+/*****************************************************************************
+ge: Windows tiltsensor non-support
+*****************************************************************************/
+// designate new poll rate
+t_CKINT TiltSensor_setPollRate( t_CKINT usec )
+{
+    // sanity
+    assert( usec >= 0 );
+    // not supported
+    fprintf( stderr, "TiltSensor - setPollRate is not (yet) supported on this platform...\n" );
+    return -1;
+}
+
+// query current poll rate
+t_CKINT TiltSensor_getPollRate( )
+{
+    // not supported
+    fprintf( stderr, "TiltSensor - getPollRate is not (yet) supported on this platform...\n" );
+    return -1;
+}
+
+
+
 
 /*****************************************************************************
 Windows joystick support
@@ -5319,7 +6270,9 @@ int Keyboard_close( int js )
     return -1;
 }
 
-#elif defined( __LINUX_ALSA__ ) || defined( __LINUX_OSS__ ) || defined( __LINUX_JACK__ )
+
+
+#elif defined(__PLATFORM_LINUX__)
 /*****************************************************************************
 Linux general HID support
 *****************************************************************************/
@@ -5682,7 +6635,7 @@ static void Keyboard_init_translation_table()
     kb_translation_table[KEY_A] |= 0x04 << 8;
     
     kb_translation_table[KEY_S] = 'S';
-    kb_translation_table[KEY_S] |= 0x22 << 8;
+    kb_translation_table[KEY_S] |= 0x16 << 8;
     
     kb_translation_table[KEY_D] = 'D';
     kb_translation_table[KEY_D] |= 0x07 << 8;
@@ -6166,7 +7119,9 @@ void Hid_quit()
         return;
     
     hid_channel_msg hcm = { HID_CHANNEL_QUIT, NULL };
-    write( hid_channel_w, &hcm, sizeof( hcm ) );
+    if (write( hid_channel_w, &hcm, sizeof( hcm ) ) == -1)
+      EM_log( CK_LOG_WARNING, "HID_CHANNEL_QUIT message failed: %s" , strerror( errno ) );
+
     close( hid_channel_w );
         
     delete[] pollfds;
@@ -6179,6 +7134,25 @@ int TiltSensor_read( t_CKINT * x, t_CKINT * y, t_CKINT * z )
 {
     return 0;
 }
+
+// designate new poll rate
+t_CKINT TiltSensor_setPollRate( t_CKINT usec )
+{
+    // sanity
+    assert( usec >= 0 );
+    // not supported
+    fprintf( stderr, "TiltSensor - setPollRate is not (yet) supported on this platform...\n" );
+    return -1;
+}
+
+// query current poll rate
+t_CKINT TiltSensor_getPollRate( )
+{
+    // not supported
+    fprintf( stderr, "TiltSensor - getPollRate is not (yet) supported on this platform...\n" );
+    return -1;
+}
+
 
 /*****************************************************************************
 Linux joystick support
@@ -6284,7 +7258,12 @@ int Joystick_open( int js )
         }
         
         hid_channel_msg hcm = { HID_CHANNEL_OPEN, joystick };
-        write( hid_channel_w, &hcm, sizeof( hcm ) );
+        if(write( hid_channel_w, &hcm, sizeof( hcm ) ) == -1) 
+        {
+            EM_log( CK_LOG_SEVERE, "joystick: unable to write channel message %s: %s", 
+                joystick->filename, strerror( errno ) );
+            return -1;
+        }
     }
     
     joystick->refcount++;
@@ -6304,7 +7283,9 @@ int Joystick_close( int js )
     if( joystick->refcount == 0 )
     {
         hid_channel_msg hcm = { HID_CHANNEL_CLOSE, joystick };
-        write( hid_channel_w, &hcm, sizeof( hcm ) );
+        if(write( hid_channel_w, &hcm, sizeof( hcm ) ) == -1) return -1;
+            EM_log( CK_LOG_SEVERE, "joystick: unable complete close message: %s", 
+                 strerror( errno ) );
     }
     
     
@@ -6482,7 +7463,11 @@ int Mouse_open( int m )
         
         mouse->needs_open = TRUE;
         hid_channel_msg hcm = { HID_CHANNEL_OPEN, mouse };
-        write( hid_channel_w, &hcm, sizeof( hcm ) );
+        if(write( hid_channel_w, &hcm, sizeof( hcm ) ) == -1) 
+        {
+            EM_log( CK_LOG_SEVERE, "mouse: unable to complete open message %: %s", strerror( errno ) );
+            return -1;
+        }
     }
     
     mouse->refcount++;
@@ -6503,7 +7488,8 @@ int Mouse_close( int m )
     {
         mouse->needs_close = TRUE;
         hid_channel_msg hcm = { HID_CHANNEL_CLOSE, mouse };
-        write( hid_channel_w, &hcm, sizeof( hcm ) );
+        if(write( hid_channel_w, &hcm, sizeof( hcm ) ) == -1)
+          EM_log( CK_LOG_WARNING, "mouse: HID_CHANNEL_CLOSE message failed: %s" , strerror( errno ) );
     }
     
     return 0;
@@ -6654,7 +7640,11 @@ int Keyboard_open( int k )
         }
         
         hid_channel_msg hcm = { HID_CHANNEL_OPEN, keyboard };
-        write( hid_channel_w, &hcm, sizeof( hcm ) );
+        if(write( hid_channel_w, &hcm, sizeof( hcm ) ) == -1) 
+        {
+            EM_log( CK_LOG_SEVERE, "keyboard: unable to write open message: %s", strerror( errno ) );
+            return -1;
+        }
     }
     
     keyboard->refcount++;
@@ -6674,7 +7664,8 @@ int Keyboard_close( int k )
     if( keyboard->refcount == 0 )
     {
         hid_channel_msg hcm = { HID_CHANNEL_CLOSE, keyboard };
-        write( hid_channel_w, &hcm, sizeof( hcm ) );
+        if(write( hid_channel_w, &hcm, sizeof( hcm ) ) == -1)
+          EM_log( CK_LOG_WARNING, "keyboard: HID_CHANNEL_CLOSE message failed: %s" , strerror( errno ) );
     }
     
     return 0;
@@ -6696,10 +7687,15 @@ const char * Keyboard_name( int k )
 #ifndef __PLATFORM_MACOSX__
 /*** empty functions for Mac-only stuff ***/
 
+int Joystick_count_elements( int js, int type ) { return -1; }
+
+int Mouse_count_elements( int js, int type ) { return -1; }
 int Mouse_start_cursor_track(){ return -1; }
 int Mouse_stop_cursor_track(){ return -1; }
 
+int Keyboard_count_elements( int js, int type ) { return -1; }
 int Keyboard_send( int k, const HidMsg * msg ){ return -1; }
+
 int WiiRemote_send( int k, const HidMsg * msg ){ return -1; }
 
 void WiiRemote_init(){}
@@ -6723,7 +7719,314 @@ int TiltSensor_read( int ts, int type, int num, HidMsg * msg ){ return -1; }
 const char * TiltSensor_name( int ts ){ return NULL; }
 
 
+void MultiTouchDevice_init() { }
+void MultiTouchDevice_quit() { }
+void MultiTouchDevice_probe() { }
+int MultiTouchDevice_count() { return 0; }
+int MultiTouchDevice_open( int ts ) { return -1; }
+int MultiTouchDevice_close( int ts ) { return -1; }
+const char * MultiTouchDevice_name( int ts ) { return NULL; }
+
+extern void Tablet_init() { }
+extern void Tablet_quit() { }
+extern void Tablet_probe() { }
+extern int Tablet_count() { return 0; }
+extern int Tablet_open( int ts ) { return -1; }
+extern int Tablet_close( int ts ) { return -1; }
+extern const char * Tablet_name( int ts ) { return NULL; }
+
 #endif
 
 
+#ifdef __CHIP_MODE__
+
+// #include "util_iphone.h"
+
+int get_tilt_sensor_x() { return 0; }
+int get_tilt_sensor_y() { return 0; }
+int get_tilt_sensor_z() { return 0; }
+
+void start_hid_multi_touch() { }
+void stop_hid_multi_touch() { }
+
+void Hid_init(){}
+void Hid_poll(){}
+void Hid_quit(){}
+
+void Mouse_init(){}
+void Mouse_poll(){}
+void Mouse_quit(){}
+void Mouse_probe(){}
+
+int Mouse_count()
+{
+    return 1;
+}
+
+int Mouse_count_elements( int js, int type )
+{
+    return -1;
+}
+
+int Mouse_open( int m )
+{
+    if(m >= 0 && m < 1)
+    {
+        start_hid_multi_touch();
+        return 0;
+    }
+    else
+        return -1;
+}
+
+int Mouse_open( const char * name )
+{
+    return -1;
+}
+
+int Mouse_close( int m )
+{
+    if(m >= 0 && m < 1)
+    {
+        stop_hid_multi_touch();
+        return 0;
+    }
+    else
+        return -1;
+}
+
+int Mouse_send( int m, const HidMsg * msg )
+{
+    return -1;
+}
+
+const char * Mouse_name( int m )
+{
+    if(m == 0)
+        return "iPhone Multitouch";
+    else
+        return NULL;
+}
+
+int Mouse_buttons( int m )
+{
+    if(m == 0)
+        return 2;
+    else
+        return -1;
+}
+
+int Mouse_start_cursor_track()
+{
+    return -1;
+}
+
+int Mouse_stop_cursor_track()
+{
+    return -1;
+}
+
+void TiltSensor_init(){}
+void TiltSensor_quit(){}
+void TiltSensor_probe(){}
+
+int TiltSensor_count()
+{
+    return 1;
+}
+
+int TiltSensor_open( int ts )
+{
+    if(ts == 0)
+        return 0;
+    return -1;
+}
+
+int TiltSensor_close( int ts )
+{
+    if(ts == 0)
+        return 0;
+    return -1;
+}
+
+int TiltSensor_read( int ts, int type, int num, HidMsg * msg )
+{
+    if( type != CK_HID_ACCELEROMETER )
+        return -1;
+    
+    msg->idata[0] = get_tilt_sensor_x();
+    msg->idata[1] = get_tilt_sensor_y();
+    msg->idata[2] = get_tilt_sensor_z();
+    
+    return 0;
+}
+
+const char * TiltSensor_name( int ts )
+{
+    if(ts == 0)
+        return "iPhone Accelerometer";
+    else
+        return NULL;
+}
+
+// ge: SMS multi-thread poll rate
+t_CKINT TiltSensor_setPollRate( t_CKINT usec )
+{
+    return -1;
+}
+
+t_CKINT TiltSensor_getPollRate( )
+{
+    return -1;
+}
+
+void Joystick_init(){}
+
+void Joystick_poll(){}
+
+void Joystick_quit(){}
+
+void Joystick_probe(){}
+
+int Joystick_count()
+{
+    return 0;
+}
+
+int Joystick_count_elements( int js, int type )
+{
+    return -1;
+}
+
+int Joystick_open( int js )
+{
+    return -1;
+}
+
+int Joystick_open_async( int js )
+{
+    return -1;
+}
+
+int Joystick_open( const char * name )
+{
+    return -1;
+}
+
+int Joystick_close( int js )
+{
+    return -1;
+}
+
+int Joystick_send( int js, const HidMsg * msg )
+{
+    return -1;
+}
+
+
+const char * Joystick_name( int js )
+{
+    return NULL;
+}
+
+int Joystick_axes( int js )
+{
+    return -1;
+}
+
+int Joystick_buttons( int js )
+{
+    return -1;
+}
+
+int Joystick_hats( int js )
+{
+    return -1;
+}
+
+void Keyboard_init(){}
+void Keyboard_poll(){}
+void Keyboard_quit(){}
+void Keyboard_probe(){}
+
+int Keyboard_count()
+{
+    return 0;
+}
+
+int Keyboard_count_elements( int js, int type )
+{
+    return -1;
+}
+
+int Keyboard_open( int kb )
+{
+    return -1;
+}
+
+int Keyboard_open( const char * name )
+{
+    return -1;
+}
+
+int Keyboard_close( int kb )
+{
+    return -1;
+}
+
+int Keyboard_send( int kb, const HidMsg * msg )
+{
+    return -1;
+}
+
+const char * Keyboard_name( int kb )
+{
+    return NULL;
+}
+
+void WiiRemote_init(){}
+void WiiRemote_poll(){}
+void WiiRemote_quit(){}
+void WiiRemote_probe(){}
+
+int WiiRemote_count()
+{
+    return 0;
+}
+
+int WiiRemote_open( int wr )
+{
+    return -1;
+}
+
+int WiiRemote_open( const char * name )
+{
+    return -1;
+}
+
+int WiiRemote_close( int wr )
+{
+    return -1;
+}
+
+int WiiRemote_send( int wr, const HidMsg * msg )
+{
+    return -1;
+}
+
+const char * WiiRemote_name( int wr )
+{
+    return NULL;
+}
+
+void MultiTouchDevice_init() { }
+void MultiTouchDevice_quit() { }
+void MultiTouchDevice_probe() { }
+int MultiTouchDevice_count() { return 0; }
+int MultiTouchDevice_open( int ts ) { return -1; }
+int MultiTouchDevice_close( int ts ) { return -1; }
+const char * MultiTouchDevice_name( int ts ) { return NULL; }
+
+
+#endif // __CHIP_MODE__
 

@@ -1,33 +1,32 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // file: chuck_emit.h
 // desc: chuck instruction emitter
 //
-// author: Ge Wang (gewang@cs.princeton.edu)
-//         Perry R. Cook (prc@cs.princeton.edu)
+// author: Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
 // date: Autumn 2002 - first version
 //       Autumn 2004 - redesign
 //-----------------------------------------------------------------------------
@@ -45,6 +44,7 @@ struct Chuck_Instr;
 struct Chuck_Instr_Goto;
 struct Chuck_VM_Code;
 struct Chuck_VM_Shred;
+
 
 
 
@@ -72,6 +72,9 @@ public:
     std::vector<Chuck_Instr_Goto *> stack_break;
     // return stack
     std::vector<Chuck_Instr_Goto *> stack_return;
+    
+    // filename this code came from (added 1.3.0.0)
+    std::string filename;
     
     // constructor
     Chuck_Code( )
@@ -135,9 +138,11 @@ struct Chuck_Emitter : public Chuck_VM_Object
     // push scope
     void push_scope( )
     { assert( code != NULL ); code->frame->push_scope(); }
-    // alloc local
-    Chuck_Local * alloc_local( t_CKUINT size, const std::string & name, t_CKBOOL is_ref )
-    { assert( code != NULL ); return code->frame->alloc_local( size, name, is_ref ); }
+    // alloc local (ge: added is_obj 2012 april | added 1.3.0.0)
+    Chuck_Local * alloc_local( t_CKUINT size, const std::string & name, t_CKBOOL is_ref, t_CKBOOL is_obj )
+    { assert( code != NULL ); return code->frame->alloc_local( size, name, is_ref, is_obj ); }
+    // add references to locals on current scope (added 1.3.0.0)
+    void addref_on_scope();
     // pop scope
     void pop_scope( );
 

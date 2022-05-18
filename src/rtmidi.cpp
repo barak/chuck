@@ -41,6 +41,7 @@
 #include "rtmidi.h"
 #include <sstream>
 #include <iostream>
+#include <stdio.h>
 
 
 //*********************************************************************//
@@ -204,9 +205,9 @@ struct CoreMidiData {
 */
 static void readable_name(MIDIEndpointRef end, char *buffer, int bufsize)
 {  
-    MIDIEntityRef ent = NULL;
-    MIDIDeviceRef dev = NULL;
-    int ii, count, length, ret;
+    MIDIEntityRef ent = 0; // NULL;
+    MIDIDeviceRef dev = 0; //NULL;
+    int ii, count, length;//, ret;
     SInt32 *idarray;
     CFDataRef data = NULL;
     CFStringRef s;
@@ -284,12 +285,12 @@ static void readable_name(MIDIEndpointRef end, char *buffer, int bufsize)
 static int get_device_name(SInt32 uniqueid, char *buffer, int bufsize)
 {
     int ret;
-    void *object;
+    MIDIObjectRef object = 0; // NULL; // 1.3.1.0
     MIDIObjectType type;
 
-    MIDIDeviceRef dev = NULL;
-    MIDIEntityRef ent = NULL;
-    MIDIEndpointRef end = NULL;
+    MIDIDeviceRef dev = 0; // NULL;
+    MIDIEntityRef ent = 0; // NULL;
+    MIDIEndpointRef end = 0; // NULL;
     CFStringRef name = NULL;
 
     ret = MIDIObjectFindByUniqueID(uniqueid, &object, &type);
@@ -319,7 +320,7 @@ static int get_device_name(SInt32 uniqueid, char *buffer, int bufsize)
     } else {
         // unknown type
         printf("Unknown type %d returned from findobject\n", (int) type);
-        CFRelease(object);
+        CFRelease( &object ); // 1.3.1.0
         return -1;
     }
 
@@ -518,7 +519,7 @@ void RtMidiIn :: openPort( unsigned int portNumber )
 
   // Get the desired input source identifier.
   MIDIEndpointRef endpoint = MIDIGetSource( portNumber );
-  if ( endpoint == NULL ) {
+  if ( endpoint == 0 ) { // 1.3.1.0: changed from NULL to 0
     MIDIPortDispose( port );
     MIDIClientDispose( data->client );
     errorString_ = "RtMidiIn::openPort: error getting MIDI input source reference.";
@@ -584,7 +585,7 @@ unsigned int RtMidiIn :: getPortCount()
 
 std::string RtMidiIn :: getPortName( unsigned int portNumber )
 {
-  CFStringRef nameRef;
+//  CFStringRef nameRef;
   MIDIEndpointRef portRef;
   std::ostringstream ost;
   char name[128];
@@ -618,7 +619,7 @@ unsigned int RtMidiOut :: getPortCount()
 
 std::string RtMidiOut :: getPortName( unsigned int portNumber )
 {
-  CFStringRef nameRef;
+//  CFStringRef nameRef;
   MIDIEndpointRef portRef;
   std::ostringstream ost;
   char name[128];
@@ -689,7 +690,7 @@ void RtMidiOut :: openPort( unsigned int portNumber )
 
   // Get the desired output port identifier.
   MIDIEndpointRef destination = MIDIGetDestination( portNumber );
-  if ( destination == NULL ) {
+  if ( destination == 0 ) { // 1.3.1.0: changed from NULL to 0
     MIDIPortDispose( port );
     MIDIClientDispose( data->client );
     errorString_ = "RtMidiOut::openPort: error getting MIDI output destination reference.";
@@ -789,7 +790,7 @@ void RtMidiOut :: sendMessage( std::vector<unsigned char> *message )
 //   - http://www.alsa-project.org/documentation.php#Library
 
 // chuck
-#if defined(__LINUX_ALSASEQ__) || defined(__LINUX_ALSA__) || defined(__LINUX_JACK__)
+#if defined(__LINUX_ALSASEQ__) || defined(__PLATFORM_LINUX__)
 
 // The ALSA Sequencer API is based on the use of a callback function for
 // MIDI input.

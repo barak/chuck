@@ -77,12 +77,15 @@ a_Program g_program = NULL;
     a_Arg_List arg_list;
     a_Id_List id_list;
     a_Array_Sub array_sub;
+    a_Complex complex_exp;
+    a_Polar polar_exp;
 };
 
-// expect 35 shift/reduce conflicts
-%expect 35
+// expect 38 shift/reduce conflicts
+// 1.3.3.0: changed to 38 for char literal - spencer
+%expect 38
 
-%token <sval> ID STRING_LIT
+%token <sval> ID STRING_LIT CHAR_LIT
 %token <ival> NUM
 %token <fval> FLOAT
 
@@ -94,7 +97,7 @@ a_Program g_program = NULL;
   IF THEN ELSE WHILE FOR DO LOOP
   BREAK CONTINUE NULL_TOK FUNCTION RETURN
   QUESTION EXCLAMATION S_OR S_AND S_XOR
-  PLUSPLUS MINUSMINUS DOLLAR
+  PLUSPLUS MINUSMINUS DOLLAR POUNDPAREN PERCENTPAREN
   SIMULT PATTERN CODE TRANSPORT HOST
   TIME WHENEVER NEXT UNTIL EVERY BEFORE
   AFTER AT AT_SYM ATAT_SYM NEW SIZEOF TYPEOF
@@ -104,9 +107,9 @@ a_Program g_program = NULL;
   SHIFT_LEFT_CHUCK PERCENT_CHUCK
   SHIFT_RIGHT SHIFT_LEFT TILDA CHUCK
   COLONCOLON S_CHUCK AT_CHUCK LEFT_S_CHUCK
-  UNCHUCK CLASS INTERFACE EXTENDS IMPLEMENTS
+  UNCHUCK UPCHUCK CLASS INTERFACE EXTENDS IMPLEMENTS
   PUBLIC PROTECTED PRIVATE STATIC ABSTRACT CONST 
-  SPORK L_HACK R_HACK
+  SPORK ARROW_RIGHT ARROW_LEFT L_HACK R_HACK
 
 
 %type <program> program
@@ -129,6 +132,7 @@ a_Program g_program = NULL;
 %type <stmt> expression_statement
 %type <exp> expression
 %type <exp> chuck_expression
+%type <exp> arrow_expression
 %type <exp> conditional_expression
 %type <exp> logical_or_expression
 %type <exp> logical_and_expression
@@ -149,6 +153,7 @@ a_Program g_program = NULL;
 %type <exp> decl_expression
 %type <ival> unary_operator
 %type <ival> chuck_operator
+%type <ival> arrow_operator
 %type <var_decl_list> var_decl_list
 %type <var_decl> var_decl
 %type <type_decl> type_decl_a
@@ -162,6 +167,8 @@ a_Program g_program = NULL;
 %type <id_list> id_dot
 %type <array_sub> array_exp
 %type <array_sub> array_empty
+%type <complex_exp> complex_exp
+%type <polar_exp> polar_exp
 
 %start program
 
@@ -349,8 +356,14 @@ expression
         ;
 
 chuck_expression
+        : arrow_expression                   { $$ = $1; }
+        | chuck_expression chuck_operator arrow_expression
+            { $$ = new_exp_from_binary( $1, $2, $3, EM_lineNum ); }
+        ;
+
+arrow_expression
         : decl_expression                   { $$ = $1; }
-        | chuck_expression chuck_operator decl_expression
+        | arrow_expression arrow_operator decl_expression
             { $$ = new_exp_from_binary( $1, $2, $3, EM_lineNum ); }
         ;
 
@@ -384,6 +397,16 @@ var_decl
         | ID array_empty                    { $$ = new_var_decl( $1, $2, EM_lineNum ); }
         ;
 
+complex_exp
+        : POUNDPAREN expression RPAREN
+            { $$ = new_complex( $2, EM_lineNum ); }
+        ;
+
+polar_exp
+        : PERCENTPAREN expression RPAREN
+            { $$ = new_polar( $2, EM_lineNum ); }
+        ;
+
 chuck_operator
         : CHUCK                             { $$ = ae_op_chuck; }
         | AT_CHUCK                          { $$ = ae_op_at_chuck; }
@@ -395,9 +418,15 @@ chuck_operator
         | SHIFT_LEFT_CHUCK                  { $$ = ae_op_shift_left_chuck; }
         | PERCENT_CHUCK                     { $$ = ae_op_percent_chuck; }
         | UNCHUCK                           { $$ = ae_op_unchuck; }
+        | UPCHUCK                           { $$ = ae_op_upchuck; }
         | S_AND_CHUCK                       { $$ = ae_op_s_and_chuck; }
         | S_OR_CHUCK                        { $$ = ae_op_s_or_chuck; }
         | S_XOR_CHUCK                       { $$ = ae_op_s_xor_chuck; }
+        ;
+
+arrow_operator
+        : ARROW_LEFT                        { $$ = ae_op_arrow_left; }
+        | ARROW_RIGHT                       { $$ = ae_op_arrow_right; }
         ;
 
 conditional_expression
@@ -510,8 +539,8 @@ unary_expression
             { $$ = new_exp_from_unary2( ae_op_new, $2, NULL, EM_lineNum ); }
         | NEW type_decl array_exp
             { $$ = new_exp_from_unary2( ae_op_new, $2, $3, EM_lineNum ); }
-		| SPORK TILDA code_segment
-		    { $$ = new_exp_from_unary3( ae_op_spork, $3, EM_lineNum ); }
+//		| SPORK TILDA code_segment
+//		    { $$ = new_exp_from_unary3( ae_op_spork, $3, EM_lineNum ); }
         ;
 
 unary_operator
@@ -546,12 +575,16 @@ postfix_expression
             { $$ = new_exp_from_postfix( $1, ae_op_minusminus, EM_lineNum ); }
         ;
 
+// 1.3.3.0: added CHAR_LIT - spencer
 primary_expression
         : ID                                { $$ = new_exp_from_id( $1, EM_lineNum ); }
         | NUM                               { $$ = new_exp_from_int( $1, EM_lineNum ); }
         | FLOAT                             { $$ = new_exp_from_float( $1, EM_lineNum ); }
         | STRING_LIT                        { $$ = new_exp_from_str( $1, EM_lineNum ); }
+        | CHAR_LIT                          { $$ = new_exp_from_char( $1, EM_lineNum ); }
         | array_exp                         { $$ = new_exp_from_array_lit( $1, EM_lineNum ); }
+        | complex_exp                       { $$ = new_exp_from_complex( $1, EM_lineNum ); }
+        | polar_exp                         { $$ = new_exp_from_polar( $1, EM_lineNum ); }
         | L_HACK expression R_HACK          { $$ = new_exp_from_hack( $2, EM_lineNum ); }
         | LPAREN expression RPAREN          { $$ = $2; }
 		| LPAREN RPAREN                     { $$ = new_exp_from_nil( EM_lineNum ); }

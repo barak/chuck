@@ -1,35 +1,38 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // file: ugen_xxx.h
-// desc: ...
+// desc: non-specific unit generators
 //
 // author: Ge Wang (gewang@cs.princeton.edu)
-//         Perry R. Cook (prc@cs.princeton.edu)
 //         Ananya Misra (amisra@cs.princeton.edu)
+//         Perry R. Cook (prc@cs.princeton.edu)
+//         Dan Trueman (dtrueman@princeton.edu)
+//         Matt Hoffman (for Dyno)
 // date: Spring 2004
+//       Summer 2005 - updated
 //-----------------------------------------------------------------------------
 #ifndef __UGEN_XXX_H__
 #define __UGEN_XXX_H__
@@ -136,9 +139,9 @@ CK_DLL_TICK( halfrect_tick );
 CK_DLL_TICK( fullrect_tick );
 
 // zerox
-CK_DLL_CTOR( zerox_ctor );
-CK_DLL_DTOR( zerox_dtor );
-CK_DLL_TICK( zerox_tick );
+// CK_DLL_CTOR( zerox_ctor );
+// CK_DLL_DTOR( zerox_dtor );
+// CK_DLL_TICK( zerox_tick );
 
 // delayp
 CK_DLL_CTOR( delayp_ctor );
@@ -156,6 +159,7 @@ CK_DLL_CGET( delayp_cget_max );
 CK_DLL_CTOR( sndbuf_ctor );
 CK_DLL_DTOR( sndbuf_dtor );
 CK_DLL_TICK( sndbuf_tick );
+CK_DLL_TICKF( sndbuf_tickf );
 CK_DLL_CTRL( sndbuf_ctrl_read );
 CK_DLL_CGET( sndbuf_cget_read );
 CK_DLL_CTRL( sndbuf_ctrl_write );
@@ -188,13 +192,17 @@ CK_DLL_CGET( sndbuf_cget_valueAt );
 CK_DLL_CTOR( LiSaMulti_ctor );
 CK_DLL_DTOR( LiSaMulti_dtor );
 CK_DLL_TICK( LiSaMulti_tick );
+CK_DLL_TICKF( LiSaMulti_tickf );
 CK_DLL_PMSG( LiSaMulti_pmsg );
 CK_DLL_CTRL( LiSaMulti_size );
+CK_DLL_CTRL( LiSaMulti_cget_size );
 CK_DLL_CTRL( LiSaMulti_start_record );
 CK_DLL_CTRL( LiSaMulti_start_play );
 CK_DLL_CTRL( LiSaMulti_start_play0 );
 CK_DLL_CTRL( LiSaMulti_ctrl_rate );
 CK_DLL_CTRL( LiSaMulti_ctrl_rate0 );
+CK_DLL_CGET( LiSaMulti_cget_rate );
+CK_DLL_CGET( LiSaMulti_cget_rate0 );
 CK_DLL_CTRL( LiSaMulti_ctrl_pindex );
 CK_DLL_CGET( LiSaMulti_cget_pindex );
 CK_DLL_CTRL( LiSaMulti_ctrl_pindex0 );
@@ -219,8 +227,16 @@ CK_DLL_CTRL( LiSaMulti_ctrl_bi0 );
 CK_DLL_CGET( LiSaMulti_cget_bi0 );
 CK_DLL_CTRL( LiSaMulti_ctrl_loop_end_rec );
 CK_DLL_CGET( LiSaMulti_cget_loop_end_rec );
-CK_DLL_CTRL( LiSaMulti_ctrl_looprec );
-CK_DLL_CGET( LiSaMulti_cget_looprec );
+CK_DLL_CTRL( LiSaMulti_ctrl_loop_rec );
+CK_DLL_CGET( LiSaMulti_cget_loop_rec );
+CK_DLL_CGET( LiSaMulti_ctrl_sample );
+CK_DLL_CGET( LiSaMulti_cget_sample );
+CK_DLL_CTRL( LiSaMulti_ctrl_voicegain );
+CK_DLL_CGET( LiSaMulti_cget_voicegain );
+CK_DLL_CTRL( LiSaMulti_ctrl_voicepan );
+CK_DLL_CGET( LiSaMulti_cget_voicepan );
+CK_DLL_CTRL( LiSaMulti_ctrl_voicepan0 );
+CK_DLL_CGET( LiSaMulti_cget_voicepan0 );
 CK_DLL_CTRL( LiSaMulti_ctrl_coeff );
 CK_DLL_CGET( LiSaMulti_cget_coeff );
 CK_DLL_CTRL( LiSaMulti_ctrl_clear );
@@ -231,6 +247,7 @@ CK_DLL_CGET( LiSaMulti_cget_value );
 CK_DLL_CGET( LiSaMulti_cget_value0 );
 CK_DLL_CTRL( LiSaMulti_ctrl_track );
 CK_DLL_CGET( LiSaMulti_cget_track );
+CK_DLL_CGET( LiSaMulti_cget_playing );
 // ramp stuff
 CK_DLL_CTRL( LiSaMulti_ctrl_rampup );
 CK_DLL_CTRL( LiSaMulti_ctrl_rampdown );
