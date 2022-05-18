@@ -1,0 +1,4 @@
+
+build/chuck.alsa    usr/bin/
+build/chuck.pulse   usr/bin/
+chuck               usr/bin/

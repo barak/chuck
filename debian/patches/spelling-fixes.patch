@@ -1,0 +1,126 @@
+Subject: Fix typos
+Author: Christoph Biedl <debian.axhn@manchmal.in-ulm.de>
+Date: 2017-11-15
+Forwarded: not-yet
+
+--- a/src/chuck_lang.cpp
++++ b/src/chuck_lang.cpp
+@@ -1120,53 +1120,53 @@
+     // add find()
+     func = make_new_mfun( "int", "find", string_find );
+     func->add_arg( "int", "theChar" );
+-    func->doc = "Return the index of the first occurence of theChar, or -1 if theChar is not found.";
++    func->doc = "Return the index of the first occurrence of theChar, or -1 if theChar is not found.";
+     if( !type_engine_import_mfun( env, func ) ) goto error;
+     
+     // add find()
+     func = make_new_mfun( "int", "find", string_findStart );
+     func->add_arg( "int", "theChar" );
+     func->add_arg( "int", "start" );
+-    func->doc = "Return the index of the first occurence of theChar at or after the start position, or -1 if theChar is not found.";
++    func->doc = "Return the index of the first occurrence of theChar at or after the start position, or -1 if theChar is not found.";
+     if( !type_engine_import_mfun( env, func ) ) goto error;
+     
+     // add find()
+     func = make_new_mfun( "int", "find", string_findStr );
+     func->add_arg( "string", "str" );
+-    func->doc = "Return the index of the first occurence of str, or -1 if str is not found.";
++    func->doc = "Return the index of the first occurrence of str, or -1 if str is not found.";
+     if( !type_engine_import_mfun( env, func ) ) goto error;
+     
+     // add find()
+     func = make_new_mfun( "int", "find", string_findStrStart );
+     func->add_arg( "string", "str" );
+     func->add_arg( "int", "start" );
+-    func->doc = "Return the index of the first occurence of str at or after the start position, or -1 if str is not found.";
++    func->doc = "Return the index of the first occurrence of str at or after the start position, or -1 if str is not found.";
+     if( !type_engine_import_mfun( env, func ) ) goto error;
+     
+     // add rfind()
+     func = make_new_mfun( "int", "rfind", string_rfind );
+     func->add_arg( "int", "theChar" );
+-    func->doc = "Return the index of the last occurence of theChar, or -1 if theChar is not found.";
++    func->doc = "Return the index of the last occurrence of theChar, or -1 if theChar is not found.";
+     if( !type_engine_import_mfun( env, func ) ) goto error;
+     
+     // add rfind()
+     func = make_new_mfun( "int", "rfind", string_rfindStart );
+     func->add_arg( "int", "theChar" );
+     func->add_arg( "int", "start" );
+-    func->doc = "Return the index of the last occurence of theChar at or before the start position, or -1 if theChar is not found.";
++    func->doc = "Return the index of the last occurrence of theChar at or before the start position, or -1 if theChar is not found.";
+     if( !type_engine_import_mfun( env, func ) ) goto error;
+     
+     // add rfind()
+     func = make_new_mfun( "int", "rfind", string_rfindStr );
+     func->add_arg( "string", "str" );
+-    func->doc = "Return the index of the last occurence of str, or -1 if str is not found.";
++    func->doc = "Return the index of the last occurrence of str, or -1 if str is not found.";
+     if( !type_engine_import_mfun( env, func ) ) goto error;
+     
+     // add rfind()
+     func = make_new_mfun( "int", "rfind", string_rfindStrStart );
+     func->add_arg( "string", "str" );
+     func->add_arg( "int", "start" );
+-    func->doc = "Return the index of the last occurence of str at or before the start position, or -1 if str is not found.";
++    func->doc = "Return the index of the last occurrence of str at or before the start position, or -1 if str is not found.";
+     if( !type_engine_import_mfun( env, func ) ) goto error;
+     
+     // add erase()
+--- a/src/chuck_type.cpp
++++ b/src/chuck_type.cpp
+@@ -3554,7 +3554,7 @@
+                     "cannot extend incomplete type '%s'",
+                     t_parent->c_name() );
+                 EM_error2( class_def->ext->linepos,
+-                    "...(note: the parent's declaration must preceed child's)" );
++                    "...(note: the parent's declaration must precede child's)" );
+                 return FALSE;
+             }
+         }
+@@ -6100,7 +6100,7 @@
+             // make sure next char
+             if( *str_lit == '\0' )
+             {
+-                EM_error2( linepos, "invalid: string ends with escape charactor '\\'" );
++                EM_error2( linepos, "invalid: string ends with escape character '\\'" );
+                 return FALSE;
+             }
+             
+--- a/src/chuck_otf.cpp
++++ b/src/chuck_otf.cpp
+@@ -713,9 +713,9 @@
+     "[chuck]: lack of destructors have led to the unrecoverable mass build-up of trash\n"
+     "         the chuck garbage collector will now run, deleting all files (bye.)",
+     "[chuck]: calling machine.crash()...",
+-    "[chuck]: an unknown fatal error has occured.  please restart your computer...",
+-    "[chuck]: an unknown fatal error has occured.  please reinstall your OS...",
+-    "[chuck]: an unknown fatal error has occured.  please update to chuck-3.0",
++    "[chuck]: an unknown fatal error has occurred.  please restart your computer...",
++    "[chuck]: an unknown fatal error has occurred.  please reinstall your OS...",
++    "[chuck]: an unknown fatal error has occurred.  please update to chuck-3.0",
+     "[chuck]: internal error: unknown error",
+     "[chuck]: page fault!!!",
+     "[chuck]: error printing error message.  cannot continue 2#%%HGAFf9a0x"
+--- a/src/chuck_vm.cpp
++++ b/src/chuck_vm.cpp
+@@ -1120,7 +1120,7 @@
+     {
+         t_CKUINT n = m_shreduler->highest();
+         m_shred_id = n;
+-        fprintf( stderr, "[chuck](VM): reseting shred id to %lu...\n", m_shred_id + 1 );
++        fprintf( stderr, "[chuck](VM): resetting shred id to %lu...\n", m_shred_id + 1 );
+     }
+ 
+ done:
+--- a/src/digiio_rtaudio.cpp
++++ b/src/digiio_rtaudio.cpp
+@@ -361,7 +361,7 @@
+     t_CKUINT priority = Chuck_VM::our_priority;
+ 
+     // log
+-    EM_log( CK_LOG_SEVERE, "starting real-time watch dog processs..." );
++    EM_log( CK_LOG_SEVERE, "starting real-time watch dog process..." );
+     // push log
+     EM_pushlog();
+     EM_log( CK_LOG_INFO, "watchdog timeout: %f::second", g_watchdog_timeout );

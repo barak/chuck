@@ -132,7 +132,7 @@ program is running, without stopping or restarting.</para>
 
     <para>Use <command>&dhpackage;</command> for jack audio interfaces,
     <command>&dhpackage;.alsa</command> to access alsa devices,
-    and <command>&dhpackage;.oss</command> to access oss devices.</para>
+    and <command>&dhpackage;.pulse</command> to access pulse devices.</para>
 
   </refsect1>
   <refsect1>

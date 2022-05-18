@@ -1,15 +1,24 @@
 Source: chuck
-Section: sound
-Priority: optional
 Maintainer: Paul Brossier <piem@debian.org>
-Build-Depends: debhelper (>= 10), bison, flex, libjack-dev, libasound2-dev, libsndfile1-dev, docbook-to-man
-Standards-Version: 3.9.8
 Homepage: http://chuck.cs.princeton.edu
+Standards-Version: 4.1.1
+Build-Depends: debhelper (>= 10~),
+    bison,
+    docbook-to-man,
+    flex,
+    libasound2-dev,
+    libjack-dev,
+    libpulse-dev,
+    libsndfile1-dev,
+Priority: optional
+Section: sound
 
 Package: chuck
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}
-Suggests: jackd
+Depends: ${misc:Depends}, ${shlibs:Depends},
+    chuck-data,
+Suggests:
+    jackd,
 Description: Concurrent, On-the-fly Audio Programming Language
  ChucK is a new audio programming language for real-time synthesis,
  composition, and performance, which runs on commodity operating systems.
@@ -17,4 +26,12 @@ Description: Concurrent, On-the-fly Audio Programming Language
  ChucK presents a new time-based concurrent programming model, which supports
  multiple, simultaneous, dynamic control rates, and the ability to add, remove,
  and modify code, on-the-fly, while the program is running, without stopping or
- restarting. 
+ restarting.
+
+Package: chuck-data
+Architecture: all
+Depends: ${misc:Depends},
+Description: examples and data files for chuck
+ This package provides the examples, documentation and other
+ architecture-independent files for chuk, the concurrent, on-the-fly
+ audio programming language.

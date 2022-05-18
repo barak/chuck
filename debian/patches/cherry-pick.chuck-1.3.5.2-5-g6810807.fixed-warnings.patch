@@ -1,0 +1,27 @@
+Subject: Fixed warnings
+Origin: chuck-1.3.5.2-5-g6810807
+Upstream-Author: Ge Wang <ge@smule.com>
+Date: Fri Nov 13 13:02:23 2015 -0800
+
+--- a/src/lo/message.c
++++ b/src/lo/message.c
+@@ -385,7 +385,7 @@
+     if (lo_message_add_typechar(m, LO_MIDI))
+         return -1;
+ 
+-    memcpy(nptr, a, sizeof(a));
++    memcpy(nptr, a, sizeof(uint8_t)*4); // ge: changed uint8_t*4 to avoid ambiguity
+     return 0;
+ }
+ 
+@@ -894,8 +894,8 @@
+     }
+     putchar('\n');
+     if (d != end) {
+-	fprintf(stderr, "liblo warning: type and data do not match (off by %d) in message %p\n",
+-            abs((char*)d - (char*)end), m);
++	fprintf(stderr, "liblo warning: type and data do not match (off by %ld) in message %p\n",
++            labs((char*)d - (char*)end), m); // ge: change to %ld and labs, 2015
+     }
+ }
+ 
