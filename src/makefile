@@ -1,11 +1,18 @@
 DESTDIR?=/usr/local/bin
+COREDIR=core
+HOSTDIR=host
+CK_PLATFORM=
 
+
+########################## DEFAULT MAKE TARGET #################################
 # default target: print usage message and quit
 current: 
 	@echo "[chuck build]: please use one of the following configurations:"
 	@echo "   make linux-alsa, make linux-jack, make linux-pulse,"
-	@echo "   make osx, make osx-ub, make cygwin, or make win32"
+	@echo "   make mac, make mac-ub, make cygwin, make win32, or make emscripten"
 
+
+############################## MAKE INSTALL ####################################
 install:
 	mkdir -p $(DESTDIR)
 	cp $(wildcard chuck chuck.exe) $(DESTDIR)/
@@ -18,21 +25,66 @@ MAKECMDGOALS:=$(.DEFAULT_GOAL)
 endif
 endif
 
-.PHONY: osx linux-pulse linux-jack linux-alsa cygwin osx-rl
-osx linux-pulse linux-jack linux-alsa cygwin osx-rl: chuck
+
+############################## MAKE EMSCRIPTEN #################################
+EMSCRIPTENSRCS=host_web/chuck_emscripten.cpp \
+    core/chuck.cpp core/chuck_absyn.cpp \
+    core/chuck_carrier.cpp core/chuck_compile.cpp core/chuck_dl.cpp \
+    core/chuck_emit.cpp core/chuck_errmsg.cpp core/chuck_frame.cpp \
+    core/chuck_globals.cpp core/chuck_instr.cpp core/chuck_io.cpp \
+    core/chuck_lang.cpp core/chuck_oo.cpp \
+    core/chuck_parse.cpp core/chuck_scan.cpp core/chuck_stats.cpp \
+    core/chuck_symbol.cpp core/chuck_table.cpp core/chuck_type.cpp \
+    core/chuck_ugen.cpp core/chuck_utils.cpp core/chuck_vm.cpp \
+    core/uana_extract.cpp core/uana_xform.cpp core/ugen_filter.cpp \
+    core/ugen_osc.cpp core/ugen_stk.cpp core/ugen_xxx.cpp \
+    core/ulib_math.cpp core/ulib_regex.cpp core/ulib_std.cpp \
+    core/util_buffers.cpp core/util_math.c core/util_raw.c \
+    core/util_string.cpp core/util_xforms.c core/chuck_win32.c \
+    core/util_sndfile.c
+
+
+.PHONY: emscripten
+emscripten: host_web/webchuck/js/webchuck.js
+
+host_web/webchuck/js/webchuck.js: $(EMSCRIPTENSRCS)
+	emcc -O3 -s DISABLE_EXCEPTION_CATCHING=0 \
+        -Icore -D__DISABLE_MIDI__ -D__DISABLE_WATCHDOG__ \
+        -D__DISABLE_KBHIT__ -D__DISABLE_PROMPTER__ -D__DISABLE_RTAUDIO__ \
+        -D__DISABLE_OTF_SERVER__ -D__ALTER_HID__ -D__DISABLE_HID__ \
+        -D__DISABLE_SERIAL__ -D__DISABLE_FILEIO__ -D__DISABLE_THREADS__ \
+        -D__DISABLE_NETWORK__ -D__DISABLE_SHELL__ \
+        -D__CHUCK_USE_PLANAR_BUFFERS__ \
+	-Wformat=0 \
+        $(EMSCRIPTENSRCS) -o host_web/webchuck/js/webchuck.js \
+        -s EXTRA_EXPORTED_RUNTIME_METHODS='["ccall", "cwrap", "getValue", "setValue", "addFunction", "removeFunction", "UTF8ToString", "stringToUTF8"]' \
+        -s LINKABLE=1 -s MODULARIZE=1 -s 'EXPORT_NAME="ChucK"' \
+        -s ALLOW_MEMORY_GROWTH=1 \
+        -s --extern-post-js host_web/chucknode-postjs.js \
+        -s RESERVED_FUNCTION_POINTERS=50 -s FORCE_FILESYSTEM=1
+
+
+
+############################## MAKE INSTALL ####################################
+.PHONY: mac mac-ub osx linux-pulse linux-jack linux-alsa cygwin osx-rl test
+mac mac-ub osx linux-pulse linux-jack linux-alsa cygwin osx-rl: chuck
 
 win32:
-	make -f makefile.win32
+	make -f $(COREDIR)/makefile.x/makefile.win32
 
-CK_VERSION=1.3.5.2
+CK_VERSION=1.4.1.1
 
+
+########################### COMPILATION TOOLS ##################################
 LEX=flex
 YACC=bison
 CC=gcc
 CXX=g++
 LD=g++
 
-CFLAGS+=-I. -Ilo
+
+############################# COMPILER FLAGS ###################################
+CFLAGS+=-I. -I$(COREDIR) -I$(COREDIR)/lo
 
 ifneq ($(CHUCK_STAT),)
 CFLAGS+= -D__CHUCK_STAT_TRACK__
@@ -57,52 +109,68 @@ ifneq ($(findstring arm,$(shell uname -m)),)
 CFLAGS+= -ffast-math
 endif
 
-ifneq (,$(strip $(filter osx bin-dist-osx,$(MAKECMDGOALS))))
-include makefile.osx
+
+######################### PLATFORM-SPECIFIC THINGS #############################
+ifneq (,$(strip $(filter mac mac-ub osx bin-dist-mac,$(MAKECMDGOALS))))
+include $(COREDIR)/makefile.x/makefile.mac
 endif
 
 ifneq (,$(strip $(filter linux-pulse,$(MAKECMDGOALS))))
-include makefile.pulse
+include $(COREDIR)/makefile.x/makefile.pulse
 endif
 
 ifneq (,$(strip $(filter linux-jack,$(MAKECMDGOALS))))
-include makefile.jack
+include $(COREDIR)/makefile.x/makefile.jack
 endif
 
 ifneq (,$(strip $(filter linux-alsa,$(MAKECMDGOALS))))
-include makefile.alsa
+include $(COREDIR)/makefile.x/makefile.alsa
 endif
 
 ifneq (,$(strip $(filter cygwin,$(MAKECMDGOALS))))
-include makefile.cygwin
+include $(COREDIR)/makefile.x/makefile.cygwin
 endif
 
 ifneq (,$(strip $(filter osx-rl,$(MAKECMDGOALS))))
-include makefile.rl
+include $(COREDIR)/makefile.x/makefile.rl
 endif
 
-CSRCS+= chuck.tab.c chuck.yy.c util_math.c util_network.c util_raw.c \
-	util_xforms.c
-CXXSRCS+= chuck_absyn.cpp chuck_parse.cpp chuck_errmsg.cpp \
-	chuck_frame.cpp chuck_symbol.cpp chuck_table.cpp chuck_utils.cpp \
-	chuck_vm.cpp chuck_instr.cpp chuck_scan.cpp chuck_type.cpp chuck_emit.cpp \
-	chuck_compile.cpp chuck_dl.cpp chuck_oo.cpp chuck_lang.cpp chuck_ugen.cpp \
-	chuck_main.cpp chuck_otf.cpp chuck_stats.cpp chuck_bbq.cpp chuck_shell.cpp \
-	chuck_console.cpp chuck_globals.cpp chuck_io.cpp \
-    digiio_rtaudio.cpp hidio_sdl.cpp \
-	midiio_rtmidi.cpp RtAudio/RtAudio.cpp rtmidi.cpp ugen_osc.cpp ugen_filter.cpp \
-	ugen_stk.cpp ugen_xxx.cpp ulib_machine.cpp ulib_math.cpp ulib_std.cpp \
-	ulib_opsc.cpp ulib_regex.cpp util_buffers.cpp util_console.cpp \
-	util_string.cpp util_thread.cpp util_opsc.cpp util_serial.cpp \
-	util_hid.cpp uana_xform.cpp uana_extract.cpp
-LO_CSRCS+= lo/address.c lo/blob.c lo/bundle.c lo/message.c lo/method.c \
-    lo/pattern_match.c lo/send.c lo/server.c lo/server_thread.c lo/timetag.c
 
-COBJS=$(CSRCS:.c=.o)
-CXXOBJS=$(CXXSRCS:.cpp=.o)
-LO_COBJS=$(LO_CSRCS:.c=.o)
-OBJS=$(COBJS) $(CXXOBJS) $(LO_COBJS)
+########################## CHUCK CORE LIB TARGETS ##############################
+COBJS_CORE+= chuck.tab.o chuck.yy.o util_math.o util_network.o util_raw.o \
+	util_xforms.o
+CXXOBJS_CORE+= chuck.o chuck_absyn.o chuck_parse.o chuck_errmsg.o \
+	chuck_frame.o chuck_symbol.o chuck_table.o chuck_utils.o \
+	chuck_vm.o chuck_instr.o chuck_scan.o chuck_type.o chuck_emit.o \
+	chuck_compile.o chuck_dl.o chuck_oo.o chuck_lang.o chuck_ugen.o \
+	chuck_otf.o chuck_stats.o chuck_shell.o chuck_io.o \
+	chuck_carrier.o chuck_globals.o \
+	hidio_sdl.o midiio_rtmidi.o rtmidi.o ugen_osc.o ugen_filter.o \
+	ugen_stk.o ugen_xxx.o ulib_machine.o ulib_math.o ulib_std.o \
+	ulib_opsc.o ulib_regex.o util_buffers.o util_console.o \
+	util_string.o util_thread.o util_opsc.o util_serial.o \
+	util_hid.o uana_xform.o uana_extract.o
+LO_COBJS_CORE+= lo/address.o lo/blob.o lo/bundle.o lo/message.o lo/method.o \
+	lo/pattern_match.o lo/send.o lo/server.o lo/server_thread.o lo/timetag.o
 
+
+############################ CHUCK HOST TARGETS ################################
+CXXSRCS_HOST+= RtAudio/RtAudio.cpp chuck_audio.cpp chuck_console.cpp \
+	chuck_main.cpp 
+
+
+############################ OBJECT FILE TARGETS ###############################
+CXXOBJS_HOST=$(addprefix $(HOSTDIR)/,$(CXXSRCS_HOST:.cpp=.o))
+
+COBJS=$(COBJS_HOST) $(addprefix $(COREDIR)/,$(COBJS_CORE))
+CXXOBJS=$(CXXOBJS_HOST) $(addprefix $(COREDIR)/,$(CXXOBJS_CORE))
+LO_COBJS=$(addprefix $(COREDIR)/,$(LO_COBJS_CORE))
+SF_COBJS=$(addprefix $(COREDIR)/,$(SF_CSRCS:.c=.o))
+OBJS=$(COBJS) $(CXXOBJS) $(LO_COBJS) $(SF_COBJS)
+
+
+############################ ADDITIONAL FLAGS ##################################
+# for liblo headers
 LO_CFLAGS=-DHAVE_CONFIG_H -I.
 
 # remove -arch options
@@ -114,6 +182,13 @@ else
 ARCHOPTS=
 endif
 
+ifneq (,$(strip $(filter mac-ub,$(MAKECMDGOALS))))
+ARCHOPTS=-arch arm64 -arch x86_64
+ARCH_ARGS=MAC_UB=true
+CFLAGS+=-D__MACOSX_UB__
+endif
+
+############################ DISTRIBUTION INFO #################################
 NOTES=AUTHORS DEVELOPER PROGRAMMER README TODO COPYING INSTALL QUICKSTART \
  THANKS VERSIONS
 BIN_NOTES=README.txt
@@ -125,105 +200,54 @@ CK_SVN=https://chuck-dev.stanford.edu/svn/chuck/
 # pull in dependency info for *existing* .o files
 -include $(OBJS:.o=.d)
 
-chuck: $(OBJS)
+
+############################# MAIN COMPILATION #################################
+chuck-core:
+	@echo -------------
+	@echo [chuck-core]: compiling...
+	make $(MAKECMDGOALS) -C $(COREDIR) $(ARCH_ARGS)
+	@echo -------------
+
+chuck: chuck-core $(COBJS_HOST) $(CXXOBJS_HOST)
 	$(LD) -o chuck $(OBJS) $(LDFLAGS) $(ARCHOPTS)
 
-chuck.tab.c chuck.tab.h: chuck.y
-	$(YACC) -dv -b chuck chuck.y
-
-chuck.yy.c: chuck.lex
-	$(LEX) -ochuck.yy.c chuck.lex
-
-chuck_win32.c: chuck.yy.c
-	$(LEX) --nounistd -ochuck.yy.c chuck.lex
-	cat chuck.tab.c chuck.yy.c > $@
-
-chuck_win32.h: chuck.tab.h
-	cat chuck.tab.h > $@
-
-$(COBJS): %.o: %.c
+$(COBJS_HOST): %.o: %.c
 	$(CC) $(CFLAGS) $(ARCHOPTS) -c $< -o $@
 	@$(CC) -MM -MQ "$@" $(CFLAGSDEPEND) $< > $*.d
 
-$(LO_COBJS): %.o: %.c
-	$(CC) $(CFLAGS) $(LO_CFLAGS) $(ARCHOPTS) -c $< -o $@
-	@$(CC) -MM -MQ "$@" $(CFLAGSDEPEND) $(LO_CFLAGS) $< > $*.d
-
-$(CXXOBJS): %.o: %.cpp
+$(CXXOBJS_HOST): %.o: %.cpp
 	$(CXX) $(CFLAGS) $(ARCHOPTS) -c $< -o $@
 	@$(CXX) -MM -MQ "$@" $(CFLAGSDEPEND) $< > $*.d
 
 clean: 
-	@rm -rf $(wildcard chuck chuck.exe) *.o *.d $(OBJS) \
-         $(patsubst %.o,%.d,$(OBJS)) *~ chuck.output chuck.tab.h chuck.tab.c \
-         chuck.yy.c $(DIST_DIR){,.tgz,.zip} Release Debug
+	@rm -rf $(wildcard chuck chuck.exe) *.o *.d */*.{o,d} */*/*.{o,d} $(OBJS) \
+        $(patsubst %.o,%.d,$(OBJS))*~ $(COREDIR)/chuck.output \
+	$(COREDIR)/chuck.tab.h $(COREDIR)/chuck.tab.c \
+        $(COREDIR)/chuck.yy.c $(DIST_DIR){,.tgz,.zip} Release Debug
 	
 
+############################### RUN TEST #######################################
+test:
+	pushd test; ./test.py ../chuck .; popd
+
+
+############################### DISTRIBUTION ###################################
 # ------------------------------------------------------------------------------
 # Distribution meta-targets
 # ------------------------------------------------------------------------------
-
-.PHONY: bin-dist-osx
-bin-dist-osx: osx
-# clean out old dists
-	-rm -rf $(DIST_DIR_EXE){,.tgz,.zip}
-# create directories
-	mkdir $(DIST_DIR_EXE) $(DIST_DIR_EXE)/bin $(DIST_DIR_EXE)/doc
-# copy binary + notes
-	cp chuck $(addprefix ../notes/bin/,$(BIN_NOTES)) $(DIST_DIR_EXE)/bin
-# copy manual + notes
-	cp ../doc/manual/ChucK_manual.pdf $(addprefix ../notes/doc/,$(DOC_NOTES)) $(DIST_DIR_EXE)/doc
-# copy examples
-	svn export $(CK_SVN)/trunk/src/examples $(DIST_DIR_EXE)/examples &> /dev/null
-#cp -r examples $(DIST_DIR_EXE)/examples
-# remove .svn directories
-#-find $(DIST_DIR_EXE)/examples/ -name '.svn' -exec rm -rf '{}' \; &> /dev/null
-# copy notes
-	cp $(addprefix ../notes/,$(NOTES)) $(DIST_DIR_EXE)
-# tar/gzip
-	tar czf $(DIST_DIR_EXE).tgz $(DIST_DIR_EXE)
-
-.PHONY: bin-dist-win32
-bin-dist-win32:
-#	make win32
-# clean out old dists
-	-rm -rf $(DIST_DIR_EXE){,.tgz,.zip}
-# create directories
-	mkdir $(DIST_DIR_EXE) $(DIST_DIR_EXE)/bin $(DIST_DIR_EXE)/doc
-# copy binary + notes
-	cp Release/chuck.exe $(addprefix ../notes/bin/,$(BIN_NOTES)) $(DIST_DIR_EXE)/bin
-# copy manual + notes
-	cp ../doc/manual/ChucK_manual.pdf $(addprefix ../notes/doc/,$(DOC_NOTES)) $(DIST_DIR_EXE)/doc
-# copy examples
-	svn export $(CK_SVN)/trunk/src/examples $(DIST_DIR_EXE)/examples &> /dev/null
-#cp -r examples $(DIST_DIR_EXE)/examples
-# remove .svn directories
-#-find $(DIST_DIR_EXE)/examples/ -name '.svn' -exec rm -rf '{}' \; &> /dev/null
-# copy notes
-	cp $(addprefix ../notes/,$(NOTES)) $(DIST_DIR_EXE)
-# tar/gzip
-	zip -q -9 -r -m $(DIST_DIR_EXE).zip $(DIST_DIR_EXE)
 
 .PHONY: src-dist
 src-dist:
 # clean out old dists
 	rm -rf $(DIST_DIR) $(DIST_DIR){.tgz,.zip}
 # create directories
-	mkdir $(DIST_DIR) $(DIST_DIR)/doc $(DIST_DIR)/src $(DIST_DIR)/examples
+	mkdir $(DIST_DIR) $(DIST_DIR)/src $(DIST_DIR)/examples
 # copy src
-	git archive HEAD . | tar -x -C $(DIST_DIR)/src
-	rm -r $(DIST_DIR)/src/examples $(DIST_DIR)/src/test 
-# copy manual + notes
-	cp $(addprefix ../notes/doc/,$(DOC_NOTES)) $(DIST_DIR)/doc
+	git archive HEAD src | tar -x -C $(DIST_DIR)
+	rm -r $(DIST_DIR)/src/test 
 # copy examples
-	git archive HEAD examples | tar -x -C $(DIST_DIR)/
-	# svn export $(CK_SVN)/trunk/src/examples $(DIST_DIR)/examples 2>&1 > /dev/null
-#cp -r examples $(DIST_DIR)/examples
-# remove .svn directories
-#-find $(DIST_DIR)/examples/ -name '.svn' -exec rm -rf '{}' \; &> /dev/null
+	git archive HEAD examples | tar -x -C $(DIST_DIR)
 # copy notes
-	cp $(addprefix ../notes/,$(NOTES)) $(DIST_DIR)
+	cp $(addprefix notes/,$(NOTES)) $(DIST_DIR)
 # tar/gzip
 	tar czf $(DIST_DIR).tgz $(DIST_DIR)
-
-

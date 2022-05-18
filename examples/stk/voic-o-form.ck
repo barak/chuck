@@ -36,6 +36,7 @@ fun void vecho_Shred( )
         while( n-- )
         {
             old + inc => old;
+            if( old < 0 ) 0 => old;
             old => a.mix => b.mix => c.mix;
             1::ms => now;
         }
@@ -84,6 +85,6 @@ while( true )
     }
 
     // pentatonic
-    scale[Math.random2(0,scale.cap()-1)] => int freq;
+    scale[Math.random2(0,scale.size()-1)] => int freq;
     Std.mtof( ( 45 + Math.random2(0,2) * 12 + freq ) ) => voc.freq;
 }
