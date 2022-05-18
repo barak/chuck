@@ -9,22 +9,21 @@ include /usr/share/dpkg/buildflags.mk
 
 override_dh_auto_build:
 	mkdir build
-	cd src && $(MAKE) linux-alsa
+	$(MAKE) -C src linux-alsa
 	mv src/chuck build/chuck.alsa
-	cd src && $(MAKE) clean
-	cd src && $(MAKE) linux-pulse
+	$(MAKE) -C src clean
+	$(MAKE) -C src linux-pulse
 	mv src/chuck build/chuck.pulse
-	cd src && $(MAKE) clean
-	cd src && $(MAKE) linux-jack CHUCK_DEBUG=y
+	$(MAKE) -C src clean
+	$(MAKE) -C src linux-jack CHUCK_DEBUG=y
 	docbook-to-man debian/chuck.sgml > build/chuck.1
 
-override_dh_auto_clean:
-	dh_auto_clean
-	cd src && $(MAKE) clean
+execute_after_dh_auto_clean:
+	$(MAKE) -C src clean
 	rm -rf build/
 
 override_dh_auto_install:
-	cd src && $(MAKE) install DESTDIR=$(CURDIR)/debian/tmp
+	$(MAKE) -C src install DESTDIR=$(CURDIR)/debian/tmp
 
 override_dh_installchangelogs:
 	dh_installchangelogs VERSIONS
@@ -32,9 +31,5 @@ override_dh_installchangelogs:
 override_dh_compress:
 	dh_compress -X.wav -X.ck
 
-override_dh_fixperms:
-	dh_fixperms
-	find debian/chuck-data/usr/share/doc/chuck-data/examples/ -type f | xargs chmod 644
-
-override_dh_missing:
-	dh_missing --fail-missing
+execute_after_dh_fixperms:
+	find debian/chuck-data/usr/share/doc/chuck-data/examples/ -type f -exec chmod --changes 644 '{}' '+'

@@ -1,17 +1,26 @@
-chuck (1.3.5.2-0.1) UNRELEASED; urgency=medium
+chuck (1.3.5.2-1) unstable; urgency=medium
 
   [ Christoph Biedl ]
-  * Non-maintainer upload
-  * New upstream version 1.3.5.2. Closes: #775341
+  * New upstream version 1.3.5.2. (Closes: #775341, #904829, #562809)
     - Support for oss was dropped upstream
     - Support for pulseaudio added
-  * Modernize packaging
+  * Modernize packaging (closes: #999295)
   * Ship examples and data in a separate package
 
   [ Barak A. Pearlmutter ]
-  * patch for pointer<0 comparison build failure
+  * patch for pointer<0 comparison build failure (closes: #984012)
+  * Use secure URI in debian/watch.
+  * Use secure URI in Homepage field.
+  * Bump debhelper from old 10 to 13.
+    + debian/rules: Drop --fail-missing argument to dh_missing, which is now the
+      default.
+  * Set debhelper-compat version in Build-Depends.
+  * Bump policy
+  * Add self as uploader (seems safe since last ¬NMU was in 2007.)
+  * Allow rootless build
+  * Add pointer to packaging repo
 
- -- Barak A. Pearlmutter <bap@debian.org>  Wed, 18 May 2022 13:42:26 +0100
+ -- Barak A. Pearlmutter <bap@debian.org>  Wed, 18 May 2022 16:37:18 +0100
 
 chuck (1.2.0.8.dfsg-1.5) unstable; urgency=medium
 
