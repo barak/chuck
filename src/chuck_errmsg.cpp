@@ -1,36 +1,35 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // file: errmsg.cpp
-// desc: functions used in all phases of the compiler to give error messages 
-//       about the Tiger program.  (now ChucK)
+// desc: functions used in all phases of the compiler to give error messages
+//       based on Andrew Appel's Tiger code
 //
-// author: Andrew Appel (appel@cs.princeton.edu)
-// modified: Ge Wang (gewang@cs.princeton.edu)
-//           Perry R. Cook (prc@cs.princeton.edu)
-// date: Autumn 2002
+// author: Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
+// based on code by: Andrew Appel (appel@cs.princeton.edu)
+// date: Summer 2002
 //-----------------------------------------------------------------------------
 #include <stdlib.h>
 #include <stdarg.h>
@@ -43,13 +42,16 @@
 // global
 int EM_tokPos = 0;
 int EM_lineNum = 1;
+int EM_extLineNum = 1;
 t_CKBOOL anyErrors= FALSE;
 
 // local global
 static const char * fileName = "";
 static int lineNum = 1;
 static char g_buffer[1024] = "";
-static char g_lasterror[1024] = "[chuck]: (no error)";
+static const size_t LASTERROR_SIZE = 1024;
+static char g_lasterror[LASTERROR_SIZE] = "[chuck]: (no error)";
+static size_t g_lasterrorIndex = strlen(g_lasterror);
 // log globals
 int g_loglevel = CK_LOG_CORE;
 int g_logstack = 0;
@@ -76,6 +78,21 @@ typedef struct intList {int i; struct intList *rest;} *IntList;
 static IntList linePos=NULL;
 
 
+static int lastErrorCat(const char * str)
+{
+    assert(g_lasterrorIndex <= LASTERROR_SIZE-1);
+    
+    size_t len = strlen(str);
+    
+    strncat(g_lasterror, str, LASTERROR_SIZE-g_lasterrorIndex-1);
+    
+    size_t appendCount = ck_min(LASTERROR_SIZE-g_lasterrorIndex-1, len);
+    g_lasterrorIndex += appendCount;
+    
+    return appendCount > 0;
+}
+
+
 // constructor
 static IntList intList( int i, IntList rest )
 {
@@ -90,6 +107,7 @@ void EM_newline(void)
 {
     lineNum++;
     EM_lineNum++;
+    EM_extLineNum++;
     linePos = intList(EM_tokPos, linePos);
 }
 
@@ -113,6 +131,11 @@ const char * mini_type( const char * str )
     return p;
 }
 
+void EM_reset_msg()
+{
+    g_lasterror[0] = '\0';
+    g_lasterrorIndex = 0;
+}
 
 // [%s]:line(%d).char(%d): 
 void EM_error( int pos, const char * message, ... )
@@ -127,49 +150,67 @@ void EM_error( int pos, const char * message, ... )
         lines = lines->rest;
         num--;
     }
-
+    
+    // separate errmsgs with newlines
+    if( g_lasterror[0] != '\0' ) lastErrorCat( "\n" );
+    
     fprintf( stderr, "[%s]:", *fileName ? mini(fileName) : "chuck" );
-    sprintf( g_lasterror, "[%s]:", *fileName ? mini(fileName) : "chuck" );
+    sprintf( g_buffer, "[%s]:", *fileName ? mini(fileName) : "chuck" );
+    lastErrorCat( g_buffer );
     if(lines)
     {
         fprintf(stderr, "line(%d).char(%d):", num, pos-lines->i );
         sprintf( g_buffer, "line(%d).char(%d):", num, pos-lines->i );
-        strcat( g_lasterror, g_buffer );
+        lastErrorCat( g_buffer );
     }
     fprintf(stderr, " " );
-    strcat( g_lasterror, " " );
+    lastErrorCat( " " );
+    
     va_start(ap, message);
     vfprintf(stderr, message, ap);
+    va_end(ap);
+
+    va_start(ap, message);
     vsprintf( g_buffer, message, ap );
     va_end(ap);
+    
     fprintf(stderr, "\n");
     fflush( stderr );
-    strcat( g_lasterror, g_buffer );
+    lastErrorCat( g_buffer );
 }
 
 
-// [%s]:line(%d): 
+// [%s]:line(%d):
 void EM_error2( int line, const char * message, ... )
 {
     va_list ap;
 
+    EM_extLineNum = line;
+
+    // separate errmsgs with newlines
+    if( g_lasterror[0] != '\0' ) lastErrorCat( "\n" );
+    
     fprintf( stderr, "[%s]:", *fileName ? mini(fileName) : "chuck" );
-    sprintf( g_lasterror, "[%s]:", *fileName ? mini(fileName) : "chuck" );
+    sprintf( g_buffer, "[%s]:", *fileName ? mini(fileName) : "chuck" );
+    lastErrorCat( g_buffer );
     if(line)
     {
         fprintf( stderr, "line(%d):", line );
         sprintf( g_buffer, "line(%d):", line );
-        strcat( g_lasterror, g_buffer );
+        lastErrorCat( g_buffer );
     }
     fprintf( stderr, " " );
-    strcat( g_lasterror, " " );
+    lastErrorCat( " " );
 
     va_start( ap, message );
     vfprintf( stderr, message, ap );
+    va_end( ap );
+
+    va_start( ap, message );
     vsprintf( g_buffer, message, ap );
     va_end( ap );
 
-    strcat( g_lasterror, g_buffer );
+    lastErrorCat( g_buffer );
     fprintf( stderr, "\n" );
     fflush( stderr );
 }
@@ -179,26 +220,35 @@ void EM_error2( int line, const char * message, ... )
 void EM_error2b( int line, const char * message, ... )
 {
     va_list ap;
+    
+    EM_extLineNum = line;
 
+    // separate errmsgs with newlines
+    if( g_lasterror[0] != '\0' ) lastErrorCat( "\n" );
+    
     fprintf( stderr, "[%s]:", *fileName ? mini(fileName) : "chuck" );
-    sprintf( g_lasterror, "[%s]:", *fileName ? mini(fileName) : "chuck" );
+    sprintf( g_buffer, "[%s]:", *fileName ? mini(fileName) : "chuck" );
+    lastErrorCat( g_buffer );
     if(line)
     {
         fprintf( stderr, "line(%d):", line );
         sprintf( g_buffer, "line(%d):", line );
-        strcat( g_lasterror, g_buffer );
+        lastErrorCat( g_buffer );
     }
     fprintf( stderr, " " );
-    strcat( g_lasterror, " " );
+    lastErrorCat( " " );
 
     va_start( ap, message );
     vfprintf( stderr, message, ap );
+    va_end( ap );
+
+    va_start( ap, message );
     vsprintf( g_buffer, message, ap );
     va_end( ap );
 
-    strcat( g_lasterror, g_buffer );
+    lastErrorCat( g_buffer );
     fprintf( stdout, "\n" );
-    fflush( stderr );
+    fflush( stdout );
 }
 
 
@@ -207,15 +257,21 @@ void EM_error3( const char * message, ... )
 {
     va_list ap;
     
-    g_lasterror[0] = '\0';
+    // separate errmsgs with newlines
+    if( g_lasterror[0] != '\0' ) lastErrorCat( "\n" );
+    
+//    g_lasterror[0] = '\0';
     g_buffer[0] = '\0';
 
     va_start( ap, message );
     vfprintf( stderr, message, ap );
+    va_end( ap );
+
+    va_start( ap, message );
     vsprintf( g_buffer, message, ap );
     va_end( ap );
 
-    strcat( g_lasterror, g_buffer );
+    lastErrorCat( g_buffer );
     fprintf( stderr, "\n" );
     fflush( stderr );
 }
@@ -281,6 +337,7 @@ t_CKBOOL EM_reset( const char * fname, FILE * fd )
     fileName = fname ? fname : (c_str)"";
     lineNum = 1;
     EM_lineNum = 1;
+    EM_extLineNum = 1;
 
     // free the intList
     IntList curr = NULL;
@@ -307,6 +364,7 @@ void EM_change_file( const char * fname )
     // more set
     lineNum = 0;
     EM_lineNum = 0;
+    EM_extLineNum = 0;
 }
 
 

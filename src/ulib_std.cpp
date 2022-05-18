@@ -1,33 +1,32 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // file: ulib_std.cpp
-// desc: ...
+// desc: standard class library
 //
-// author: Ge Wang (gewang@cs.princeton.edu)
-//         Perry R. Cook (prc@cs.princeton.edu)
+// author: Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
 // date: Spring 2004
 //-----------------------------------------------------------------------------
 #include "ulib_std.h"
@@ -41,6 +40,7 @@
 #include "util_thread.h"
 #include "chuck_type.h"
 #include "chuck_instr.h"
+#include "chuck_globals.h"
 
 #if defined(__PLATFORM_WIN32__)
 
@@ -64,6 +64,7 @@ int setenv( const char *n, const char *v, int i )
 using namespace std;
 
 
+#ifndef __DISABLE_KBHIT__
 // KBHit
 CK_DLL_CTOR( KBHit_ctor );
 CK_DLL_DTOR( KBHit_dtor );
@@ -76,7 +77,9 @@ CK_DLL_MFUN( KBHit_getchar );
 CK_DLL_MFUN( KBHit_can_wait );
 
 static t_CKUINT KBHit_offset_data = 0;
+#endif // __DISABLE_KBHIT__
 
+#ifndef __DISABLE_PROMPTER__
 // Skot functions
 CK_DLL_CTOR( Skot_ctor );
 CK_DLL_DTOR( Skot_dtor );
@@ -87,6 +90,7 @@ CK_DLL_MFUN( Skot_getLine );
 CK_DLL_MFUN( Skot_can_wait );
 
 static t_CKUINT Skot_offset_data = 0;
+#endif // __DISABLE_PROMPTER__
 
 // StrTok functions
 CK_DLL_CTOR( StrTok_ctor );
@@ -209,7 +213,11 @@ DLL_QUERY libstd_query( Chuck_DL_Query * QUERY )
     QUERY->add_sfun( QUERY, ftoa_impl, "string", "ftoa" ); //! float to string
     QUERY->add_arg( QUERY, "float", "f" );
     QUERY->add_arg( QUERY, "int", "precision" );
-
+    
+    // add ftoi
+    QUERY->add_sfun( QUERY, ftoi_impl, "int", "ftoi" ); //! float to int
+    QUERY->add_arg( QUERY, "float", "f" );
+    
     // add getenv
     QUERY->add_sfun( QUERY, getenv_impl, "string", "getenv" ); //! fetch environment variable
     QUERY->add_arg( QUERY, "string", "value" );
@@ -239,10 +247,38 @@ DLL_QUERY libstd_query( Chuck_DL_Query * QUERY )
     // add dbtopow
     QUERY->add_sfun( QUERY, dbtopow_impl, "float", "dbtopow" ); //! decibel to linear
     QUERY->add_arg( QUERY, "float", "value" );
-
+    
     // add dbtorms
     QUERY->add_sfun( QUERY, dbtorms_impl, "float", "dbtorms" ); //! decibel to rms
     QUERY->add_arg( QUERY, "float", "value" );
+    
+    // add dbtolin
+    QUERY->add_sfun( QUERY, dbtolin_impl, "float", "dbtolin" ); //! decibel to linear
+    QUERY->add_arg( QUERY, "float", "value" );
+    
+    // add lintodb
+    QUERY->add_sfun( QUERY, lintodb_impl, "float", "lintodb" ); //! linear to decibel
+    QUERY->add_arg( QUERY, "float", "value" );
+    
+    // add clamp
+    QUERY->add_sfun( QUERY, clamp_impl, "int", "clamp" ); //! clamp to range (int)
+    QUERY->add_arg( QUERY, "int", "value" );
+    QUERY->add_arg( QUERY, "int", "min" );
+    QUERY->add_arg( QUERY, "int", "max" );
+    
+    // add clampf
+    QUERY->add_sfun( QUERY, clampf_impl, "float", "clampf" ); //! clamp to range (float)
+    QUERY->add_arg( QUERY, "float", "value" );
+    QUERY->add_arg( QUERY, "float", "min" );
+    QUERY->add_arg( QUERY, "float", "max" );
+    
+    // add scalef
+    QUERY->add_sfun( QUERY, scalef_impl, "float", "scalef" ); //! scale from source range to dest range (float)
+    QUERY->add_arg( QUERY, "float", "value" );
+    QUERY->add_arg( QUERY, "float", "srcmin" );
+    QUERY->add_arg( QUERY, "float", "srcmax" );
+    QUERY->add_arg( QUERY, "float", "dstmin" );
+    QUERY->add_arg( QUERY, "float", "dstmax" );
 
     // finish class
     QUERY->end_class( QUERY );
@@ -252,6 +288,7 @@ DLL_QUERY libstd_query( Chuck_DL_Query * QUERY )
 
     Chuck_DL_Func * func = NULL;
     
+#ifndef __DISABLE_KBHIT__
     // KBHit
     // begin class (KBHit)
     if( !type_engine_import_class_begin( env, "KBHit", "Event",
@@ -296,11 +333,13 @@ DLL_QUERY libstd_query( Chuck_DL_Query * QUERY )
 
     // start it
     KBHitManager::init();
+#endif // __DISABLE_KBHIT__
 
 
     // register deprecate
     type_engine_register_deprecate( env, "Skot", "ConsoleInput" );
 
+#ifndef __DISABLE_PROMPTER__
     // begin class (Skot)
     if( !type_engine_import_class_begin( env, "ConsoleInput", "Event",
                                          env->global(), Skot_ctor,
@@ -334,6 +373,7 @@ DLL_QUERY libstd_query( Chuck_DL_Query * QUERY )
 
     // end class
     type_engine_import_class_end( env );
+#endif // __DISABLE_PROMPTER__
 
 
     // register deprecate
@@ -549,8 +589,9 @@ CK_DLL_SFUN( rand2f_impl )
 // randi
 CK_DLL_SFUN( rand2_impl ) // inclusive.
 {
-    int min = *(int *)ARGS, max = *((int *)ARGS + 1);
-    int range = max - min; 
+    // 1.3.1.0: converted int to t_CKINT for 64-bit compatibility
+    t_CKINT min = *(t_CKINT *)ARGS, max = *((t_CKINT *)ARGS + 1);
+    t_CKINT range = max - min; 
     if ( range == 0 )
     {
         RETURN->v_int = min;
@@ -562,11 +603,11 @@ CK_DLL_SFUN( rand2_impl ) // inclusive.
     {
         if( range > 0 )
         { 
-            RETURN->v_int = min + (int) ( (1.0 + range) * ( ::rand()/(RAND_MAX+1.0) ) );
+            RETURN->v_int = min + (t_CKINT)( (1.0 + range) * ( ::rand()/(RAND_MAX+1.0) ) );
         }
         else
         { 
-            RETURN->v_int = min - (int) ( (-range + 1.0) * ( ::rand()/(RAND_MAX+1.0) ) );
+            RETURN->v_int = min - (t_CKINT)( (-range + 1.0) * ( ::rand()/(RAND_MAX+1.0) ) );
         }
     }
 }
@@ -589,7 +630,24 @@ CK_DLL_SFUN( sgn_impl )
 CK_DLL_SFUN( system_impl )
 {
     const char * cmd = GET_CK_STRING(ARGS)->str.c_str();
-    RETURN->v_int = system( cmd );
+
+    // check globals for permission
+    if( !g_enable_system_cmd )
+    {
+        fprintf( stderr, "[chuck]:error: VM not authorized to call Std.system( string )...\n" );
+        fprintf( stderr, "[chuck]:  (command string was: \"%s\")\n", cmd );
+        fprintf( stderr, "[chuck]:  (note: enable via --caution-to-the-wind flag or other means)\n" );
+        RETURN->v_int = 0;
+    }
+    else
+    {
+        // log
+        EM_log( CK_LOG_SEVERE, "invoking system( CMD )..." );
+        EM_pushlog();
+        EM_log( CK_LOG_SEVERE, "CMD: \"%s\"", cmd );
+        EM_poplog();
+        RETURN->v_int = system( cmd );
+    }
 }
 
 // aoti
@@ -640,6 +698,13 @@ CK_DLL_SFUN( ftoa_impl )
     Chuck_String * a = (Chuck_String *)instantiate_and_initialize_object( &t_string, NULL );
     a->str = ftoa( f, (t_CKUINT)p );
     RETURN->v_string = a;
+}
+
+// ftoi
+CK_DLL_SFUN( ftoi_impl )
+{
+    t_CKFLOAT f = GET_NEXT_FLOAT(ARGS);
+    RETURN->v_int = (t_CKINT) f;
 }
 
 // getenv
@@ -704,9 +769,55 @@ CK_DLL_SFUN( dbtorms_impl )
     RETURN->v_float = dbtorms(v);
 }
 
+CK_DLL_SFUN( dbtolin_impl )
+{
+    t_CKFLOAT v = GET_CK_FLOAT(ARGS);
+    RETURN->v_float = pow(10.0, v/20.0);
+}
+
+CK_DLL_SFUN( lintodb_impl )
+{
+    t_CKFLOAT v = GET_CK_FLOAT(ARGS);
+    RETURN->v_float = 20.0*log10(v);
+}
+
+CK_DLL_SFUN( clamp_impl )
+{
+    t_CKINT v = GET_NEXT_INT(ARGS);
+    t_CKINT min = GET_NEXT_INT(ARGS);
+    t_CKINT max = GET_NEXT_INT(ARGS);
+    
+    if(v < min) RETURN->v_int = min;
+    else if( v > max) RETURN->v_int = max;
+    else RETURN->v_int = v;
+}
+
+CK_DLL_SFUN( clampf_impl )
+{
+    t_CKFLOAT v = GET_NEXT_FLOAT(ARGS);
+    t_CKFLOAT min = GET_NEXT_FLOAT(ARGS);
+    t_CKFLOAT max = GET_NEXT_FLOAT(ARGS);
+    
+    if(v < min) RETURN->v_float = min;
+    else if( v > max) RETURN->v_float = max;
+    else RETURN->v_float = v;
+}
+
+CK_DLL_SFUN( scalef_impl )
+{
+    t_CKFLOAT v = GET_NEXT_FLOAT(ARGS);
+    t_CKFLOAT srcmin = GET_NEXT_FLOAT(ARGS);
+    t_CKFLOAT srcmax = GET_NEXT_FLOAT(ARGS);
+    t_CKFLOAT dstmin = GET_NEXT_FLOAT(ARGS);
+    t_CKFLOAT dstmax = GET_NEXT_FLOAT(ARGS);
+    
+    RETURN->v_float = dstmin + (dstmax-dstmin) * ((v-srcmin)/(srcmax-srcmin));
+}
 
 
 
+
+#ifndef __DISABLE_KBHIT__
 // static
 CBufferAdvance * KBHitManager::the_buf = NULL;
 t_CKINT KBHitManager::the_onoff = 0;
@@ -767,6 +878,7 @@ t_CKBOOL KBHitManager::init()
     the_init = TRUE;
     the_thread = new XThread;
     the_thread->start( kb_loop, NULL );
+
 
     return TRUE;
 }
@@ -955,7 +1067,7 @@ CK_DLL_MFUN( KBHit_state )
 // hit
 CK_DLL_MFUN( KBHit_hit )
 {
-    KBHit * kb = (KBHit *)(OBJ_MEMBER_INT(SELF, KBHit_offset_data));
+    //KBHit * kb = (KBHit *)(OBJ_MEMBER_INT(SELF, KBHit_offset_data));
     RETURN->v_object = SELF;
 }
 
@@ -982,10 +1094,12 @@ CK_DLL_MFUN( KBHit_can_wait )
     KBHit * kb = (KBHit *)(OBJ_MEMBER_INT(SELF, KBHit_offset_data));
     RETURN->v_int = kb->empty();
 }
+#endif // __DISABLE_KBHIT__
 
 
 
 
+#ifndef __DISABLE_PROMPTER__
 class LineEvent : public Chuck_Event
 {
 public:
@@ -1180,6 +1294,7 @@ CK_DLL_MFUN( Skot_can_wait )
     LineEvent * le = (LineEvent *)OBJ_MEMBER_INT(SELF, Skot_offset_data);
     RETURN->v_int = le->can_wait();
 }
+#endif // __DISABLE_PROMPTER__
 
 
 // StrTok

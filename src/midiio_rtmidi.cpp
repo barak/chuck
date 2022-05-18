@@ -1,38 +1,42 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // file: midiio_rtmidi.cpp
-// desc: midi io
+// desc: midi io header
 //
-// author: Ge Wang (gewang@cs.princeton.edu)
-//         Perry R. Cook (prc@cs.princeton.edu)
+// author: Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
 //         Ananya Misra (amisra@cs.princeton.edu)
-// date: summer 2005
+// date: Summer 2005
 //-----------------------------------------------------------------------------
 #include "midiio_rtmidi.h"
+
+#ifndef __DISABLE_MIDI__
+
 #include "chuck_errmsg.h"
+#include "chuck_globals.h"
+#include "chuck_vm.h"
 #include <vector>
 #include <map>
 #include <fstream>
@@ -48,6 +52,7 @@
 std::vector<RtMidiIn *> MidiInManager::the_mins;
 std::vector<CBufferAdvance *> MidiInManager::the_bufs;
 std::vector<RtMidiOut *> MidiOutManager::the_mouts;
+CBufferSimple * MidiInManager::m_event_buffer = NULL;
 
 
 
@@ -158,8 +163,24 @@ t_CKBOOL MidiOut::open( t_CKUINT device_num )
     // close if already opened
     if( m_valid )
         this->close();
-
+    
     return m_valid = MidiOutManager::open( this, (t_CKINT)device_num );
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: open
+// desc: open midi output
+//-----------------------------------------------------------------------------
+t_CKBOOL MidiOut::open( const std::string & name )
+{
+    // close if already opened
+    if( m_valid )
+        this->close();
+    
+    return m_valid = MidiOutManager::open( this, name );
 }
 
 
@@ -314,9 +335,26 @@ t_CKBOOL MidiIn::open( t_CKUINT device_num )
     // close if already opened
     if( m_valid )
         this->close();
-
+    
     // open
     return m_valid = MidiInManager::open( this, (t_CKINT)device_num );
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: open()
+// desc: open
+//-----------------------------------------------------------------------------
+t_CKBOOL MidiIn::open( const std::string & name )
+{
+    // close if already opened
+    if( m_valid )
+        this->close();
+    
+    // open
+    return m_valid = MidiInManager::open( this, name );
 }
 
 
@@ -332,6 +370,7 @@ MidiInManager::MidiInManager()
 MidiInManager::~MidiInManager()
 {
     // yeah right
+    //vm->destroy_event_buffer( m_event_buffer );
 }
 
 
@@ -340,9 +379,14 @@ t_CKBOOL MidiInManager::open( MidiIn * min, t_CKINT device_num )
     // see if port not already open
     if( device_num >= (t_CKINT)the_mins.capacity() || !the_mins[device_num] )
     {
+        if( m_event_buffer == NULL )
+        {
+            m_event_buffer = g_vm->create_event_buffer();
+        }
+        
         // allocate the buffer
         CBufferAdvance * cbuf = new CBufferAdvance;
-        if( !cbuf->initialize( BUFFER_SIZE, sizeof(MidiMsg) ) )
+        if( !cbuf->initialize( BUFFER_SIZE, sizeof(MidiMsg), m_event_buffer ) )
         {
             if( !min->m_suppress_output )
                 EM_error2( 0, "MidiIn: couldn't allocate CBuffer for port %i...", device_num );
@@ -396,6 +440,64 @@ t_CKBOOL MidiInManager::open( MidiIn * min, t_CKINT device_num )
 }
 
 
+
+
+t_CKBOOL MidiInManager::open( MidiIn * min, const std::string & name )
+{
+    t_CKINT device_num = -1;
+    
+    try 
+    {
+        RtMidiIn * rtmin = new RtMidiIn;
+        
+        t_CKINT count = rtmin->getPortCount();
+        for(t_CKINT i = 0; i < count; i++)
+        {
+            std::string port_name = rtmin->getPortName( i );
+            if( port_name == name)
+            {
+                device_num = i;
+                break;
+            }
+        }
+        
+        if( device_num == -1 )
+        {
+            // search by substring
+            for(t_CKINT i = 0; i < count; i++)
+            {
+                std::string port_name = rtmin->getPortName( i );
+                if( port_name.find( name ) != std::string::npos )
+                {
+                    device_num = i;
+                    break;
+                }
+            }
+        }
+    }
+    catch( RtError & err )
+    {
+        if( !min->m_suppress_output )
+        {
+            // print it
+            EM_error2( 0, "MidiOut: error locating MIDI port named %s", name.c_str() );
+            err.getMessage();
+            // const char * e = err.getMessage().c_str();
+            // EM_error2( 0, "...(%s)", err.getMessage().c_str() );
+        }
+        return FALSE;
+    }
+    
+    if(device_num == -1)
+    {
+        EM_error2( 0, "MidiOut: error locating MIDI port named %s", name.c_str() );
+        return FALSE;
+    }
+    
+    t_CKBOOL result = open( min, device_num );
+    
+    return result;
+}
 
 
 //-----------------------------------------------------------------------------
@@ -479,13 +581,15 @@ void probeMidiIn()
     try {
         min = new RtMidiIn;;
     } catch( RtError & err ) {
-        EM_error2b( 0, "%s", err.getMessageString() );
+        EM_error2b( 0, "%s", err.getMessage().c_str() );
         return;
     }
 
     // get num
     t_CKUINT num = min->getPortCount();
     EM_error2b( 0, "------( chuck -- %i MIDI inputs )------", num );
+    EM_reset_msg();
+    
     std::string s;
     for( t_CKUINT i = 0; i < num; i++ )
     {
@@ -493,6 +597,8 @@ void probeMidiIn()
         catch( RtError & err )
         { err.printMessage(); return; }
         EM_error2b( 0, "    [%i] : \"%s\"", i, s.c_str() );
+        
+        EM_reset_msg();
     }
 }
 
@@ -510,7 +616,7 @@ void probeMidiOut()
     try {
         mout = new RtMidiOut;
     } catch( RtError & err ) {
-        EM_error2b( 0, "%s", err.getMessageString() );
+        EM_error2b( 0, "%s", err.getMessage().c_str() );
         return;
     }
 
@@ -579,6 +685,64 @@ t_CKBOOL MidiOutManager::open( MidiOut * mout, t_CKINT device_num )
 
     // done
     return TRUE;
+}
+
+
+t_CKBOOL MidiOutManager::open( MidiOut * mout, const std::string & name )
+{
+    t_CKINT device_num = -1;
+    
+    try 
+    {
+        RtMidiOut * rtmout = new RtMidiOut;
+        
+        t_CKINT count = rtmout->getPortCount();
+        for(t_CKINT i = 0; i < count; i++)
+        {
+            std::string port_name = rtmout->getPortName( i );
+            if( port_name == name )
+            {
+                device_num = i;
+                break;
+            }
+        }
+        
+        if( device_num == -1 )
+        {
+            // search by substring
+            for(t_CKINT i = 0; i < count; i++)
+            {
+                std::string port_name = rtmout->getPortName( i );
+                if( port_name.find( name ) != std::string::npos )
+                {
+                    device_num = i;
+                    break;
+                }
+            }
+        }
+    }
+    catch( RtError & err )
+    {
+        if( !mout->m_suppress_output )
+        {
+            // print it
+            EM_error2( 0, "MidiOut: error locating MIDI port named %s", name.c_str() );
+            err.getMessage();
+            // const char * e = err.getMessage().c_str();
+            // EM_error2( 0, "...(%s)", err.getMessage().c_str() );
+        }
+        return FALSE;
+    }
+    
+    if(device_num == -1)
+    {
+        EM_error2( 0, "MidiOut: error locating MIDI port named %s", name.c_str() );
+        return FALSE;
+    }
+    
+    t_CKBOOL result = open( mout, device_num );
+    
+    return result;
 }
 
 
@@ -792,3 +956,36 @@ t_CKBOOL MidiMsgIn::read( MidiMsg * msg, t_CKTIME * time )
     
     return m && t;
 }
+
+#else // __DISABLE_MIDI__
+
+MidiOut::MidiOut()
+{
+    
+}
+
+MidiOut::~MidiOut()
+{
+}
+
+t_CKBOOL MidiOut::open( t_CKUINT device_num )
+{
+    return TRUE;
+}
+
+MidiIn::MidiIn()
+{
+    
+}
+
+MidiIn::~MidiIn()
+{
+    
+}
+
+t_CKBOOL MidiIn::open( t_CKUINT device_num )
+{
+    return FALSE;
+}
+
+#endif // __DISABLE_MIDI__

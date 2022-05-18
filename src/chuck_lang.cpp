@@ -1,33 +1,35 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // name: chuck_lang.cpp
 // desc: chuck class library base
 //
-// authors: Ge Wang (gewang@cs.princeton.edu)
-//          Perry R. Cook (prc@cs.princeton.edu)
+// authors: Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
+//          Spencer Salazar (spencer@ccrma.stanford.edu)
+//          Ananya Misra (amisra@cs.princeton.edu)
+//          Andrew Schran (aschran@princeton.edu)
 //    date: spring 2005
 //-----------------------------------------------------------------------------
 #include "chuck_lang.h"
@@ -35,21 +37,33 @@
 #include "chuck_instr.h"
 #include "chuck_vm.h"
 #include "chuck_errmsg.h"
-#include "midiio_rtmidi.h"
+#include "chuck_ugen.h"
+#include "chuck_globals.h"
 #include "hidio_sdl.h"
 #include "util_string.h"
+#include "util_serial.h"
 
+#ifndef __DISABLE_MIDI__
+#include "midiio_rtmidi.h"
+#endif
 
-// offset for member variable
-static t_CKUINT object_offset_m_testID = CK_INVALID_OFFSET;
-
-// storage for static variable
-static t_CKINT object_our_testID = 0;
+#include <iostream>
+#include <iomanip>
+#include <sstream>
+using namespace std;
 
 // dac tick
-// UGEN_TICK __ugen_tick( Chuck_Object * SELF, SAMPLE in, SAMPLE * out, Chuck_VM_Shred * SHRED )
-CK_DLL_TICK(__ugen_tick)
-{ *out = in; return TRUE; }
+CK_DLL_TICK(__ugen_tick) { *out = in; return TRUE; }
+// object string offset
+static t_CKUINT Object_offset_string = 0;
+
+// global
+static Chuck_String * g_newline = new Chuck_String();
+
+
+
+
+
 
 
 //-----------------------------------------------------------------------------
@@ -62,32 +76,21 @@ t_CKBOOL init_class_object( Chuck_Env * env, Chuck_Type * type )
 
     // log
     EM_log( CK_LOG_SEVERE, "class 'object'" );
-
+    
+    const char * doc = "Base class for all class types in ChucK.";
+    
     // init as base class
-    if( !type_engine_import_class_begin( env, type, env->global(), object_ctor, object_dtor ) )
+    if( !type_engine_import_class_begin( env, type, env->global(), object_ctor, object_dtor, doc ) )
         return FALSE;
 
-    // add setTestID()
-    func = make_new_mfun( "int", "testID", object_setTestID );
-    func->add_arg( "int", "id" );
+    // add member to hold string
+    Object_offset_string = type_engine_import_mvar( env, "string", "@string", FALSE );
+    if( Object_offset_string == CK_INVALID_OFFSET ) goto error;
+
+    // add toString()
+    func = make_new_mfun( "string", "toString", object_toString );
+    func->doc = "Return a textual description of this object.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
-
-    // add getTestID()
-    func = make_new_mfun( "int", "testID", object_getTestID );
-    if( !type_engine_import_mfun( env, func ) ) goto error;
-    
-    // add getTest()
-    func = make_new_sfun( "int", "testStatic", object_testStatic );
-    func->add_arg( "float", "i" );
-    if( !type_engine_import_sfun( env, func ) ) goto error;
-
-    // add member variable
-    object_offset_m_testID = type_engine_import_mvar( env, "int", "m_testID", FALSE );
-    if( object_offset_m_testID == CK_INVALID_OFFSET ) goto error;
-
-    // add static variable
-    if( !type_engine_import_svar( env, "int", "our_testID", FALSE, (t_CKUINT)&object_our_testID ) )
-        goto error;
 
     // end the class import
     type_engine_import_class_end( env );
@@ -115,35 +118,27 @@ t_CKBOOL init_class_ugen( Chuck_Env * env, Chuck_Type * type )
 
     EM_log( CK_LOG_SEVERE, "class 'ugen'" );
 
-    //the type argument IS t_ugen here - there's no other use of this function
-    //why are we using t_ugen here instead of type ( or vice versa ) ? PLD
     // add ugen info
+    type->ugen_info = new Chuck_UGen_Info;
+    type->ugen_info->add_ref();
+    type->ugen_info->tick = __ugen_tick;
+    type->ugen_info->num_ins = 1;
+    type->ugen_info->num_outs = 1;
 
-    t_ugen.ugen_info = new Chuck_UGen_Info;
-    t_ugen.ugen_info->add_ref();
-    t_ugen.ugen_info->tick = __ugen_tick;
-    t_ugen.ugen_info->num_ins = 1;
-    t_ugen.ugen_info->num_outs = 1;
+    const char * doc = "Base class for all UGen types in ChucK.";
 
     // init as base class
     // TODO: ctor/dtor, ugen's sometimes created internally?
-    if( !type_engine_import_class_begin( env, type, env->global(), NULL, NULL ) )
+    if( !type_engine_import_class_begin( env, type, env->global(), NULL, NULL, doc ) )
         return FALSE;
-
-    // add setTestID()
-    //func = make_new_mfun( "int", "testID", ugen_setTestID );
-    //func->add_arg( "int", "id" );
-    //if( !type_engine_import_mfun( env, func ) ) goto error;
-
-    // add getTestID()
-    // func = make_new_mfun( "int", "testID", ugen_getTestID );
-    // if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // gain
     func = make_new_mfun( "float", "gain", ugen_gain );
     func->add_arg( "float", "val" );
+    func->doc = "Set the gain of the ugen.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "float", "gain", ugen_cget_gain );
+    func->doc = "Return the gain of the ugen.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
 /*    // next
@@ -155,30 +150,37 @@ t_CKBOOL init_class_ugen( Chuck_Env * env, Chuck_Type * type )
 */
     // last
     func = make_new_mfun( "float", "last", ugen_last );
+    func->doc = "Return the last sample value of the unit generator.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // op
     func = make_new_mfun( "int", "op", ugen_op );
     func->add_arg( "int", "val" );
+    func->doc = "Set the ugen's operation mode. Accepted values are: 1 (sum inputs), 2 (take difference between first input and subsequent inputs), 3 (multiply inputs), 4 (divide first input by subsequent inputs), 0 (do not synthesize audio, output 0) or -1 (passthrough inputs to output).";
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "int", "op", ugen_cget_op );
+    func->doc = "Return the ugen's operation mode.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add numChannels
     func = make_new_mfun( "int", "channels", ugen_numChannels );
     func->add_arg( "int", "num" );
+    func->doc = "Set number of channels. (Not currently supported.)";
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "int", "channels", ugen_cget_numChannels );
+    func->doc = "Return number of channels.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add chan
     func = make_new_mfun( "UGen", "chan", ugen_chan );
     func->add_arg( "int", "num" );
+    func->doc = "Return channel at specified index.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add isConnectedTo
     func = make_new_mfun( "int", "isConnectedTo", ugen_connected );
     func->add_arg( "UGen", "right" );
+    func->doc = "Return true if this ugen's output is connected to the input of the argument. Return false otherwise. ";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // end
@@ -197,6 +199,154 @@ error:
 
 
 
+// virtual table offset
+static t_CKINT uana_offset_blob = 0;
+//-----------------------------------------------------------------------------
+// name: init_class_uana()
+// desc: ...
+//-----------------------------------------------------------------------------
+t_CKBOOL init_class_uana( Chuck_Env * env, Chuck_Type * type )
+{
+    Chuck_DL_Func * func = NULL;
+
+    EM_log( CK_LOG_SEVERE, "class 'uana'" );
+
+    // add uana info
+    type->ugen_info = new Chuck_UGen_Info;
+    type->ugen_info->add_ref();
+    type->ugen_info->tick = __ugen_tick;
+    type->ugen_info->num_ins = 1;
+    type->ugen_info->num_outs = 1;
+
+    // init as base class, type should already know the parent type
+    // TODO: ctor/dtor, ugen's sometimes created internally?
+    if( !type_engine_import_class_begin( env, type, env->global(), uana_ctor, uana_dtor ) )
+        return FALSE;
+
+    // add variables
+    uana_offset_blob = type_engine_import_mvar( env, "UAnaBlob", "m_blob", FALSE );
+    if( uana_offset_blob == CK_INVALID_OFFSET ) goto error;
+
+    // add upchuck
+    func = make_new_mfun( "UAnaBlob", "upchuck", uana_upchuck );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add fvals
+    func = make_new_mfun( "float[]", "fvals", uana_fvals );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add cvals
+    func = make_new_mfun( "complex[]", "cvals", uana_cvals );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add fval
+    func = make_new_mfun( "float", "fval", uana_fval );
+    func->add_arg( "int", "index" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add cval
+    func = make_new_mfun( "complex", "cval", uana_cval );
+    func->add_arg( "int", "index" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add isUpConnectedTo
+    func = make_new_mfun( "int", "isUpConnectedTo", uana_connected );
+    func->add_arg( "UAna", "right" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // TODO: add nonchuck
+    // func = make_new_mfun( "void", "nonchuck", uana_nonchuck );
+    // if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // TODO: add event
+    // func = make_new_mfun( "Event", "event", uana_event );
+    // if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // end
+    type_engine_import_class_end( env );
+
+    return TRUE;
+
+error:
+
+    // end the class import
+    type_engine_import_class_end( env );
+
+    return FALSE;
+}
+
+
+
+
+// virtual table offset
+static t_CKINT uanablob_offset_when = 0;
+static t_CKINT uanablob_offset_fvals = 0;
+static t_CKINT uanablob_offset_cvals = 0;
+//-----------------------------------------------------------------------------
+// name: init_class_blob()
+// desc: ...
+//-----------------------------------------------------------------------------
+t_CKBOOL init_class_blob( Chuck_Env * env, Chuck_Type * type )
+{
+    Chuck_DL_Func * func = NULL;
+    // Chuck_Value * value = NULL;
+    
+    // log
+    EM_log( CK_LOG_SEVERE, "class 'uanablob'" );
+    
+    // init class
+    // TODO: ctor/dtor
+    if( !type_engine_import_class_begin( env, type, env->global(), uanablob_ctor, uanablob_dtor ) )
+        return FALSE;
+
+    // add variables
+    uanablob_offset_when = type_engine_import_mvar( env, "time", "m_when", FALSE );
+    if( uanablob_offset_when == CK_INVALID_OFFSET ) goto error;
+    uanablob_offset_fvals = type_engine_import_mvar( env, "float[]", "m_fvals", FALSE );
+    if( uanablob_offset_fvals == CK_INVALID_OFFSET ) goto error;
+    uanablob_offset_cvals = type_engine_import_mvar( env, "complex[]", "m_cvals", FALSE );
+    if( uanablob_offset_cvals == CK_INVALID_OFFSET ) goto error;
+
+    // add when
+    func = make_new_mfun( "time", "when", uanablob_when );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add fvals
+    func = make_new_mfun( "float[]", "fvals", uanablob_fvals );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add cvals
+    func = make_new_mfun( "complex[]", "cvals", uanablob_cvals );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add fval
+    func = make_new_mfun( "float", "fval", uanablob_fval );
+    func->add_arg( "int", "index" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add cval
+    func = make_new_mfun( "complex", "cval", uanablob_cval );
+    func->add_arg( "int", "index" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // end class import
+    type_engine_import_class_end( env );
+    
+    // done
+    return TRUE;
+
+error:
+
+    // end class import
+    type_engine_import_class_end( env );
+    
+    // error
+    return FALSE;
+}
+
+
+
+
 // static t_CKUINT event_offset_data = 0;
 //-----------------------------------------------------------------------------
 // name: init_class_event()
@@ -209,27 +359,33 @@ t_CKBOOL init_class_event( Chuck_Env * env, Chuck_Type * type )
 
     // log
     EM_log( CK_LOG_SEVERE, "class 'event'" );
+    
+    const char *doc = "The Event class allows exact synchronization across an arbitrary number of shreds.";
 
     // init as base class
     // TODO: ctor/dtor?
-    if( !type_engine_import_class_begin( env, type, env->global(), NULL, NULL ) )
+    if( !type_engine_import_class_begin( env, type, env->global(), NULL, NULL, doc ) )
         return FALSE;
 
     // add signal()
     func = make_new_mfun( "void", "signal", event_signal );
+    func->doc = "Signal one shred that is waiting on this event. ";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add broadcast()
     func = make_new_mfun( "void", "broadcast", event_broadcast );
+    func->doc = "Signal all shreds that are waiting on this event.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add wait()
     func = make_new_mfun( "void", "wait", event_wait );
     func->add_arg( "Shred", "me" );
+    func->doc = "(Currently unsupported.)";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add can_wait()
     func = make_new_mfun( "int", "can_wait", event_can_wait );
+    func->doc = "Whether or not the event can be waited on. Currently always returns true.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // end the class import
@@ -255,7 +411,7 @@ error:
 
 
 
-static t_CKUINT shred_offset_args = 0;
+// static t_CKUINT shred_offset_args = 0;
 //-----------------------------------------------------------------------------
 // name: init_class_shred()
 // desc: ...
@@ -268,28 +424,49 @@ t_CKBOOL init_class_shred( Chuck_Env * env, Chuck_Type * type )
     // log
     EM_log( CK_LOG_SEVERE, "class 'shred'" );
 
+    const char *doc = "Shred facilitates various operations and interactions with shreds running in the ChucK virtual machine.";
+    
     // init as base class
     // TODO: ctor/dtor?
-    if( !type_engine_import_class_begin( env, type, env->global(), NULL, NULL ) )
+    if( !type_engine_import_class_begin( env, type, env->global(), NULL, NULL, doc ) )
         return FALSE;
     
     // add dtor
     // not
 
+    // add fromId()
+    func = make_new_sfun( "Shred", "fromId", shred_fromId );
+    func->add_arg( "int", "id" );
+    func->doc = "Return a Shred object corresponding to the provided shred ID.";
+    if( !type_engine_import_sfun( env, func ) ) goto error;
+    
     // add clone()
     func = make_new_mfun( "void", "clone", shred_clone );
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add exit()
     func = make_new_mfun( "void", "exit", shred_exit );
+    func->doc = "Immediately halt the shred's operation and remove it from the virtual machine.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add id()
     func = make_new_mfun( "int", "id", shred_id );
+    func->doc = "Return the unique numeric id of the shred.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add yield()
     func = make_new_mfun( "void", "yield", shred_yield );
+    func->doc = "Cause the shred to temporarily stop processing, allowing other scheduled shreds to run as needed.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add running()
+    func = make_new_mfun( "int", "running", shred_running );
+    func->doc = "Return true if the shred is currently running; false otherwise.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add done()
+    func = make_new_mfun( "int", "done", shred_done );
+    func->doc = "Return true if the shred is done processing; false otherwise.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add nargs()
@@ -298,6 +475,7 @@ t_CKBOOL init_class_shred( Chuck_Env * env, Chuck_Type * type )
 
     // add nargs()
     func = make_new_mfun( "int", "args", shred_numArgs );
+    func->doc = "Return the number of arguments provided to the shred.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add arg()
@@ -308,8 +486,35 @@ t_CKBOOL init_class_shred( Chuck_Env * env, Chuck_Type * type )
     // add arg()
     func = make_new_mfun( "string", "arg", shred_getArg );
     func->add_arg( "int", "index" );
+    func->doc = "Return the argument at the specified index.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add sourcePath() (added 1.3.0.0)
+    func = make_new_mfun( "string", "sourcePath", shred_sourcePath );
+    func->doc = "Return the path of the source code file from which this shred's code is derived.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add path() (added 1.3.2.0)
+    func = make_new_mfun( "string", "path", shred_sourcePath );
+    func->doc = "Return the file path of the source code file from which this shred's code is derived (same as .sourcePath()).";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add sourceDir() (added 1.3.0.0)
+    func = make_new_mfun( "string", "sourceDir", shred_sourceDir );
+    func->doc = "Return the enclosing directory of the source code file from which this shred's code is derived.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add dir() (added 1.3.2.0)
+    func = make_new_mfun( "string", "dir", shred_sourceDir );
+    func->doc = "Return the enclosing directory of the source code file from which this shred's code is derived (same as .sourceDir()).";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
+    // add dir() (added 1.3.2.0, ge)
+    func = make_new_mfun( "string", "dir", shred_sourceDir2 );
+    func->add_arg( "int", "levelsUp" );
+    func->doc = "Return the enclosing directory, the specified number of parent directories up.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
     // end the class import
     type_engine_import_class_end( env );
     
@@ -327,6 +532,491 @@ error:
 
 
 //-----------------------------------------------------------------------------
+// name: init_class_io()
+// desc: ...
+//-----------------------------------------------------------------------------
+t_CKBOOL init_class_io( Chuck_Env * env, Chuck_Type * type )
+{
+    // init as base class
+    Chuck_DL_Func * func = NULL;
+    
+    // log
+    EM_log( CK_LOG_SEVERE, "class 'io'" );
+    
+    // init as base class
+    // TODO: ctor/dtor?
+    // TODO: replace dummy with pure function
+    if( !type_engine_import_class_begin( env, type, env->global(), NULL, NULL ) )
+        return FALSE;
+    
+    // add good()
+    func = make_new_mfun( "int", "good", io_dummy );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add close()
+    func = make_new_mfun( "void", "close", io_dummy );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add flush()
+    func = make_new_mfun( "void", "flush", io_dummy );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add mode(int)
+    func = make_new_mfun( "int", "mode", io_dummy );
+    func->add_arg( "int", "flag" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add mode()
+    func = make_new_mfun( "int", "mode", io_dummy );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+	// TODO: add this later?
+    // add read()
+    // func = make_new_mfun( "string", "read", io_dummy );
+    // func->add_arg( "int", "length" );
+    // if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add readLine()
+    func = make_new_mfun( "string", "readLine", io_dummy );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add readInt()
+    func = make_new_mfun( "int", "readInt", io_dummy );
+    func->add_arg( "int", "flags" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add readFloat()
+    // func = make_new_mfun( "float", "readFloat", io_dummy );
+    // if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add eof()
+    func = make_new_mfun( "int", "eof", io_dummy );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add more()
+    func = make_new_mfun( "int", "more", io_dummy );
+    if( !type_engine_import_mfun( env, func ) ) goto error;    
+    
+    // add write(string)
+    func = make_new_mfun( "void", "write", io_dummy );
+    func->add_arg( "string", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add write(int)
+    func = make_new_mfun( "void", "write", io_dummy );
+    func->add_arg( "int", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add write(float)
+    func = make_new_mfun( "void", "write", io_dummy );
+    func->add_arg( "float", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add newline
+    func = make_new_sfun( "string", "newline", io_newline );
+    if( !type_engine_import_sfun( env, func ) ) goto error;
+    func = make_new_sfun( "string", "nl", io_newline );
+    if( !type_engine_import_sfun( env, func ) ) goto error;
+    func = make_new_sfun( "string", "newlineEx2VistaHWNDVisualFoxProA", io_newline );
+    if( !type_engine_import_sfun( env, func ) ) goto error;
+    initialize_object( g_newline, &t_string );
+    g_newline->str = "\n";
+    
+    // add READ_INT32
+    if( !type_engine_import_svar( env, "int", "READ_INT32",
+                                 TRUE, (t_CKUINT)&Chuck_IO::INT32 ) ) goto error;
+    
+    // add READ_INT16
+    if( !type_engine_import_svar( env, "int", "READ_INT16",
+                                 TRUE, (t_CKUINT)&Chuck_IO::INT16 ) ) goto error;
+    
+    // add READ_INT8
+    if( !type_engine_import_svar( env, "int", "READ_INT8",
+                                 TRUE, (t_CKUINT)&Chuck_IO::INT8 ) ) goto error;
+    
+    // add INT32
+    if( !type_engine_import_svar( env, "int", "INT32",
+                                 TRUE, (t_CKUINT)&Chuck_IO::INT32 ) ) goto error;
+    
+    // add INT16
+    if( !type_engine_import_svar( env, "int", "INT16",
+                                 TRUE, (t_CKUINT)&Chuck_IO::INT16 ) ) goto error;
+    
+    // add INT8
+    if( !type_engine_import_svar( env, "int", "INT8",
+                                 TRUE, (t_CKUINT)&Chuck_IO::INT8 ) ) goto error;
+    
+    // add MODE_SYNC
+    if( !type_engine_import_svar( env, "int", "MODE_SYNC",
+                                 TRUE, (t_CKUINT)&Chuck_IO::MODE_SYNC ) ) goto error;
+    
+    // add MODE_ASYNC
+    if( !type_engine_import_svar( env, "int", "MODE_ASYNC",
+                                 TRUE, (t_CKUINT)&Chuck_IO::MODE_ASYNC ) ) goto error;
+    
+    // end the class import
+    type_engine_import_class_end( env );
+    
+    return TRUE;
+    
+error:
+    
+    // end the class import
+    type_engine_import_class_end( env );
+    
+    return FALSE;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: init_class_fileio()
+// desc: ...
+//-----------------------------------------------------------------------------
+t_CKBOOL init_class_fileio( Chuck_Env * env, Chuck_Type * type )
+{
+    // init as base class
+    Chuck_DL_Func * func = NULL;
+    
+    // log
+    EM_log( CK_LOG_SEVERE, "class 'fileio'" );
+    
+    // init as base class
+    // TODO: ctor/dtor?
+    // TODO: replace dummy with pure function
+    if( !type_engine_import_class_begin( env, type, env->global(), fileio_ctor, fileio_dtor ) )
+        return FALSE;
+    
+    // add open(string)
+    func = make_new_mfun( "int", "open", fileio_open );
+    func->add_arg( "string", "path" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add open(string, flags)
+    func = make_new_mfun( "int", "open", fileio_openflags );
+    func->add_arg( "string", "path" );
+    func->add_arg( "int", "flags" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add good()
+    func = make_new_mfun( "int", "good", fileio_good );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add close()
+    func = make_new_mfun( "void", "close", fileio_close );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add flush()
+    func = make_new_mfun( "void", "flush", fileio_flush );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add mode()
+    func = make_new_mfun( "int", "mode", fileio_getmode );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add mode(int)
+    func = make_new_mfun( "int", "mode", fileio_setmode );
+    func->add_arg( "int", "flag" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add size()
+    func = make_new_mfun( "int", "size", fileio_size );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add seek(int)
+    func = make_new_mfun( "void", "seek", fileio_seek );
+    func->add_arg( "int", "pos" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add tell()
+    func = make_new_mfun( "int", "tell", fileio_tell );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add isDir()
+    func = make_new_mfun( "int", "isDir", fileio_isdir );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add dirList()
+    func = make_new_mfun( "string[]", "dirList", fileio_dirlist );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add read()
+    // func = make_new_mfun( "string", "read", fileio_read );
+    // func->add_arg( "int", "length" );
+    // if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add readLine()
+    func = make_new_mfun( "string", "readLine", fileio_readline );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add readInt()
+    // func = make_new_mfun( "int", "readInt", fileio_readint );
+    // if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add readInt(int)
+    func = make_new_mfun( "int", "readInt", fileio_readintflags );
+    func->add_arg( "int", "flags" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add readFloat()
+    // func = make_new_mfun( "float", "readFloat", fileio_readfloat );
+    // if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add eof()
+    func = make_new_mfun( "int", "eof", fileio_eof );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add more()
+    func = make_new_mfun( "int", "more", fileio_more );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add write(string)
+    func = make_new_mfun( "void", "write", fileio_writestring );
+    func->add_arg( "string", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add write(int)
+    func = make_new_mfun( "void", "write", fileio_writeint );
+    func->add_arg( "int", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add write(int,flags)
+    func = make_new_mfun( "void", "write", fileio_writeintflags );
+    func->add_arg( "int", "val" );
+    func->add_arg( "int", "flags" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add write(float)
+    func = make_new_mfun( "void", "write", fileio_writefloat );
+    func->add_arg( "float", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add FLAG_READ_WRITE
+    if( !type_engine_import_svar( env, "int", "READ_WRITE",
+                                  TRUE, (t_CKUINT)&Chuck_IO_File::FLAG_READ_WRITE ) ) goto error;
+    
+    // add FLAG_READONLY
+    if( !type_engine_import_svar( env, "int", "READ",
+                                  TRUE, (t_CKUINT)&Chuck_IO_File::FLAG_READONLY ) ) goto error;
+    
+    // add FLAG_WRITEONLY
+    if( !type_engine_import_svar( env, "int", "WRITE",
+                                  TRUE, (t_CKUINT)&Chuck_IO_File::FLAG_WRITEONLY ) ) goto error;
+    
+    // add FLAG_APPEND
+    if( !type_engine_import_svar( env, "int", "APPEND",
+                                  TRUE, (t_CKUINT)&Chuck_IO_File::FLAG_APPEND ) ) goto error;
+    
+    // add TYPE_ASCII
+    if( !type_engine_import_svar( env, "int", "ASCII",
+                                  TRUE, (t_CKUINT)&Chuck_IO_File::TYPE_ASCII ) ) goto error;
+    
+    // add TYPE_BINARY
+    if( !type_engine_import_svar( env, "int", "BINARY",
+                                  TRUE, (t_CKUINT)&Chuck_IO_File::TYPE_BINARY ) ) goto error;
+    
+    // end the class import
+    type_engine_import_class_end( env );
+    
+    return TRUE;
+    
+error:
+    
+    // end the class import
+    type_engine_import_class_end( env );
+    
+    return FALSE;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: init_class_chout()
+// desc: added 1.3.0.0 as full class
+//-----------------------------------------------------------------------------
+t_CKBOOL init_class_chout( Chuck_Env * env, Chuck_Type * type )
+{
+    // init as base class
+    Chuck_DL_Func * func = NULL;
+    
+    // log
+    EM_log( CK_LOG_SEVERE, "class 'chout'" );
+    
+    // TODO: ctor/dtor?
+    if( !type_engine_import_class_begin( env, type, env->global(), NULL, NULL ) )
+        return FALSE;
+    
+    // add good()
+    func = make_new_mfun( "int", "good", chout_good );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add close()
+    func = make_new_mfun( "void", "close", chout_close );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add flush()
+    func = make_new_mfun( "void", "flush", chout_flush );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add mode()
+    func = make_new_mfun( "int", "mode", chout_getmode );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add mode(int)
+    func = make_new_mfun( "int", "mode", chout_setmode );
+    func->add_arg( "int", "flag" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add readLine()
+    func = make_new_mfun( "string", "readLine", chout_readline );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add readInt()
+    // func = make_new_mfun( "int", "readInt", chout_readint );
+    // if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add readInt(int)
+    func = make_new_mfun( "int", "readInt", chout_readintflags );
+    func->add_arg( "int", "flags" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add readFloat()
+    // func = make_new_mfun( "float", "readFloat", chout_readfloat );
+    // if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add eof()
+    func = make_new_mfun( "int", "eof", chout_eof );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add more()
+    func = make_new_mfun( "int", "more", chout_more );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add write(string)
+    func = make_new_mfun( "void", "write", chout_writestring );
+    func->add_arg( "string", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add write(int)
+    func = make_new_mfun( "void", "write", chout_writeint );
+    func->add_arg( "int", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add write(float)
+    func = make_new_mfun( "void", "write", chout_writefloat );
+    func->add_arg( "float", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // end the class import
+    type_engine_import_class_end( env );
+    
+    return TRUE;
+    
+error:
+    
+    // end the class import
+    type_engine_import_class_end( env );
+    
+    return FALSE;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: init_class_cherr()
+// desc: added 1.3.0.0 -- as full class
+//-----------------------------------------------------------------------------
+t_CKBOOL init_class_cherr( Chuck_Env * env, Chuck_Type * type )
+{
+    // init as base class
+    Chuck_DL_Func * func = NULL;
+    
+    // log
+    EM_log( CK_LOG_SEVERE, "class 'cherr'" );
+    
+    // TODO: ctor/dtor?
+    if( !type_engine_import_class_begin( env, type, env->global(), NULL, NULL ) )
+        return FALSE;
+    
+    // add good()
+    func = make_new_mfun( "int", "good", cherr_good );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add close()
+    func = make_new_mfun( "void", "close", cherr_close );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add flush()
+    func = make_new_mfun( "void", "flush", cherr_flush );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add mode()
+    func = make_new_mfun( "int", "mode", cherr_getmode );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add mode(int)
+    func = make_new_mfun( "int", "mode", cherr_setmode );
+    func->add_arg( "int", "flag" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add readLine()
+    func = make_new_mfun( "string", "readLine", cherr_readline );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add readInt()
+    // func = make_new_mfun( "int", "readInt", cherr_readint );
+    // if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add readInt(int)
+    func = make_new_mfun( "int", "readInt", cherr_readintflags );
+    func->add_arg( "int", "flags" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add readFloat()
+    // func = make_new_mfun( "float", "readFloat", cherr_readfloat );
+    // if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add eof()
+    func = make_new_mfun( "int", "eof", cherr_eof );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add more()
+    func = make_new_mfun( "int", "more", cherr_more );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add write(string)
+    func = make_new_mfun( "void", "write", cherr_writestring );
+    func->add_arg( "string", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add write(int)
+    func = make_new_mfun( "void", "write", cherr_writeint );
+    func->add_arg( "int", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add write(float)
+    func = make_new_mfun( "void", "write", cherr_writefloat );
+    func->add_arg( "float", "val" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // end the class import
+    type_engine_import_class_end( env );
+    
+    return TRUE;
+    
+error:
+    
+    // end the class import
+    type_engine_import_class_end( env );
+    
+    return FALSE;
+}
+
+
+//-----------------------------------------------------------------------------
 // name: init_class_string()
 // desc: ...
 //-----------------------------------------------------------------------------
@@ -338,35 +1028,177 @@ t_CKBOOL init_class_string( Chuck_Env * env, Chuck_Type * type )
     // log
     EM_log( CK_LOG_SEVERE, "class 'string'" );
 
+    const char * doc = "The string class holds textual data as a sequence of characters, and provides a number of functions for manipulating text.";
+
     // init as base class
     // TODO: ctor/dtor
-    if( !type_engine_import_class_begin( env, type, env->global(), NULL, NULL ) )
+    if( !type_engine_import_class_begin( env, type, env->global(), NULL, NULL, doc ) )
         return FALSE;
 
     // add length()
     func = make_new_mfun( "int", "length", string_length );
+    func->doc = "Return the number of characters of the string.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add upper()
     func = make_new_mfun( "string", "upper", string_upper );
+    func->doc = "Return a new string in which the lowercase characters of the original string have been converted to uppercase.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add lower()
     func = make_new_mfun( "string", "lower", string_lower );
+    func->doc = "Return a new string in which the uppercase characters of the original string have been converted to lowercase.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add ltrim()
     func = make_new_mfun( "string", "ltrim", string_ltrim );
+    func->doc = "Return a new string in which leading whitespace has been removed.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add rtrim()
     func = make_new_mfun( "string", "rtrim", string_rtrim );
+    func->doc = "Return a new string in which trailing whitespace has been removed.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add trim()
     func = make_new_mfun( "string", "trim", string_trim );
+    func->doc = "Return a new string in which leading and trailing whitespace has been removed.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add toString()
+    func = make_new_mfun( "string", "toString", string_toString );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add charAt()
+    func = make_new_mfun( "int", "charAt", string_charAt );
+    func->add_arg("int", "index");
+    func->doc = "Return a character at the specified index.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add setCharAt()
+    func = make_new_mfun( "int", "setCharAt", string_setCharAt );
+    func->add_arg("int", "index");
+    func->add_arg("int", "theChar");
+    func->doc = "Set the character at the specified index.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add substring()
+    func = make_new_mfun( "string", "substring", string_substring );
+    func->add_arg("int", "start");
+    func->doc = "Return a new string containing the substring from the start index to the end of the string.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add substring()
+    func = make_new_mfun( "string", "substring", string_substringN );
+    func->add_arg("int", "start");
+    func->add_arg("int", "length");
+    func->doc = "Return a new string containing the substring from the start index of the specified length.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add insert()
+    func = make_new_mfun( "void", "insert", string_insert );
+    func->add_arg("int", "position");
+    func->add_arg("string", "str");
+    func->doc = "Insert str at the specified position.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add replace()
+    func = make_new_mfun( "void", "replace", string_replace );
+    func->add_arg( "int", "position" );
+    func->add_arg( "string", "str" );
+    func->doc = "Replace characters from the start position to the end of the string with str.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add replace()
+    func = make_new_mfun( "void", "replace", string_replaceN );
+    func->add_arg( "int", "position" );
+    func->add_arg( "int", "length" );
+    func->add_arg( "string", "str" );
+    func->doc = "Replace length characters from the start position with str.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add find()
+    func = make_new_mfun( "int", "find", string_find );
+    func->add_arg( "int", "theChar" );
+    func->doc = "Return the index of the first occurence of theChar, or -1 if theChar is not found.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add find()
+    func = make_new_mfun( "int", "find", string_findStart );
+    func->add_arg( "int", "theChar" );
+    func->add_arg( "int", "start" );
+    func->doc = "Return the index of the first occurence of theChar at or after the start position, or -1 if theChar is not found.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add find()
+    func = make_new_mfun( "int", "find", string_findStr );
+    func->add_arg( "string", "str" );
+    func->doc = "Return the index of the first occurence of str, or -1 if str is not found.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add find()
+    func = make_new_mfun( "int", "find", string_findStrStart );
+    func->add_arg( "string", "str" );
+    func->add_arg( "int", "start" );
+    func->doc = "Return the index of the first occurence of str at or after the start position, or -1 if str is not found.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add rfind()
+    func = make_new_mfun( "int", "rfind", string_rfind );
+    func->add_arg( "int", "theChar" );
+    func->doc = "Return the index of the last occurence of theChar, or -1 if theChar is not found.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add rfind()
+    func = make_new_mfun( "int", "rfind", string_rfindStart );
+    func->add_arg( "int", "theChar" );
+    func->add_arg( "int", "start" );
+    func->doc = "Return the index of the last occurence of theChar at or before the start position, or -1 if theChar is not found.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add rfind()
+    func = make_new_mfun( "int", "rfind", string_rfindStr );
+    func->add_arg( "string", "str" );
+    func->doc = "Return the index of the last occurence of str, or -1 if str is not found.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add rfind()
+    func = make_new_mfun( "int", "rfind", string_rfindStrStart );
+    func->add_arg( "string", "str" );
+    func->add_arg( "int", "start" );
+    func->doc = "Return the index of the last occurence of str at or before the start position, or -1 if str is not found.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add erase()
+    func = make_new_mfun( "void", "erase", string_erase );
+    func->add_arg( "int", "start" );
+    func->add_arg( "int", "length" );
+    func->doc = "Erase length characters of the string from start position.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
+    // add toInt()
+    func = make_new_mfun( "int", "toInt", string_toInt );
+    func->doc = "Attempt to convert the contents of the string to an integer and return the result, or 0 if conversion failed.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add toFloat()
+    func = make_new_mfun( "float", "toFloat", string_toFloat );
+    func->doc = "Attempt to convert the contents of the string to an float and return the result, or 0 if conversion failed.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add parent()
+    // disable for now
+//    func = make_new_mfun( "string", "parent", string_parent );
+//    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+//    // add toTime()
+//    func = make_new_mfun( "float", "toTime", string_toFloat );
+//    if( !type_engine_import_mfun( env, func ) ) goto error;
+//
+//    // add toDur()
+//    func = make_new_mfun( "float", "toDur", string_toFloat );
+//    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
 /*    // add at()
     func = make_new_mfun( "int", "ch", string_set_at );
     func->add_arg( "int", "index" );
@@ -406,34 +1238,69 @@ t_CKBOOL init_class_array( Chuck_Env * env, Chuck_Type * type )
 
     // init as base class
     // TODO: ctor/dtor?
-    if( !type_engine_import_class_begin( env, type, env->global(), NULL, NULL ) )
+    const char *doc = "The array class is used to store linear sequences of data, also providing capabilities for stack and map data structures.";
+    if( !type_engine_import_class_begin( env, type, env->global(), NULL, NULL, doc ) )
         return FALSE;
 
     // add clear()
     func = make_new_mfun( "void", "clear", array_clear );
+    func->doc = "Clear the contents of the array.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add reset()
+    func = make_new_mfun( "void", "reset", array_reset );
+    func->doc = "Reset array to original state; clears the array and sets capacity to 8.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add popBack()
+    func = make_new_mfun( "void", "popBack", array_pop_back );
+    func->doc = "Remove the last item of the array";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add size()
-    func = make_new_mfun( "int", "size", array_size );
+    func = make_new_mfun( "int", "size", array_get_size );
+    func->doc = "Return the number of elements in the array.";
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    // add size()
+    func = make_new_mfun( "int", "size", array_set_size );
+    func->add_arg( "int", "newSize" );
+    func->doc = "Set the size of the array. If the new size is less than the current size, elements will be deleted from the end; if the new size is larger than the current size, 0 or null elements will be added to the end.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add cap()
-    func = make_new_mfun( "int", "cap", array_set_capacity );
-    func->add_arg( "int", "val" );
+    func = make_new_mfun( "int", "cap", array_get_capacity_hack );
+    func->doc = "Return current capacity of the array (number of elements that can be held without reallocating internal buffer). ";
     if( !type_engine_import_mfun( env, func ) ) goto error;
-    func = make_new_mfun( "int", "cap", array_get_capacity );
-    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add capacity()
+    // func = make_new_mfun( "int", "capacity", array_get_capacity );
+    // if( !type_engine_import_mfun( env, func ) ) goto error;
+    // func = make_new_mfun( "int", "capacity", array_set_capacity );
+    // func->add_arg( "int", "val" );
+    // if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add find()
     func = make_new_mfun( "int", "find", array_find );
     func->add_arg( "string", "key" );
+    func->doc = "Return number of elements with the specified key. ";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add erase()
     func = make_new_mfun( "int", "erase", array_erase );
     func->add_arg( "string", "key" );
+    func->doc = "Erase all elements with the specified key. ";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
+    // add examples
+    if( !type_engine_import_add_ex( env, "array/array_argument.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "array/array_assign.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "array/array_dynamic.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "array/array_mdim.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "array/array_mmixed.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "array/array_resize.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "array/array_storage.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "array/array_sub_assign.ck" ) ) goto error;
+    
     type_engine_import_class_end( env );
 
     return TRUE;
@@ -448,13 +1315,12 @@ error:
 
 
 
-
 // static
 static t_CKUINT MidiIn_offset_data = 0;
-static t_CKUINT MidiMsg_offset_data1 = 0;
-static t_CKUINT MidiMsg_offset_data2 = 0;
-static t_CKUINT MidiMsg_offset_data3 = 0;
-static t_CKUINT MidiMsg_offset_when = 0;
+t_CKUINT MidiMsg_offset_data1 = 0;
+t_CKUINT MidiMsg_offset_data2 = 0;
+t_CKUINT MidiMsg_offset_data3 = 0;
+t_CKUINT MidiMsg_offset_when = 0;
 static t_CKUINT MidiOut_offset_data = 0;
 
 //-----------------------------------------------------------------------------
@@ -484,13 +1350,13 @@ t_CKBOOL init_class_Midi( Chuck_Env * env )
     if( MidiMsg_offset_data3 == CK_INVALID_OFFSET ) goto error;
 
     // add member variable
-    MidiMsg_offset_when = type_engine_import_mvar( env, "time", "when", FALSE );
+    MidiMsg_offset_when = type_engine_import_mvar( env, "dur", "when", FALSE );
     if( MidiMsg_offset_when == CK_INVALID_OFFSET ) goto error;
 
     // end the class import
     type_engine_import_class_end( env );
 
-
+#ifndef __DISABLE_MIDI__
     // init base class
     if( !type_engine_import_class_begin( env, "MidiIn", "Event",
                                          env->global(), MidiIn_ctor, MidiIn_dtor ) )
@@ -500,7 +1366,12 @@ t_CKBOOL init_class_Midi( Chuck_Env * env )
     func = make_new_mfun( "int", "open", MidiIn_open );
     func->add_arg( "int", "port" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
-
+    
+    // add open() (added 1.3.0.0)
+    func = make_new_mfun( "int", "open", MidiIn_open_named );
+    func->add_arg( "string", "name" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
     // add good()
     func = make_new_mfun( "int", "good", MidiIn_good );
     if( !type_engine_import_mfun( env, func ) ) goto error;
@@ -543,7 +1414,12 @@ t_CKBOOL init_class_Midi( Chuck_Env * env )
     func = make_new_mfun( "int", "open", MidiOut_open );
     func->add_arg( "int", "port" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
-
+    
+    // add open() (added 1.3.0.0)
+    func = make_new_mfun( "int", "open", MidiOut_open_named );
+    func->add_arg( "string", "name" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
     // add good()
     func = make_new_mfun( "int", "good", MidiOut_good );
     if( !type_engine_import_mfun( env, func ) ) goto error;
@@ -572,6 +1448,8 @@ t_CKBOOL init_class_Midi( Chuck_Env * env )
 
     // end the class import
     type_engine_import_class_end( env );
+    
+#endif // __DISABLE_MIDI__
     
     return TRUE;
 
@@ -609,6 +1487,9 @@ static t_CKUINT HidMsg_offset_scaledcursory = 0;
 static t_CKUINT HidMsg_offset_x = 0;
 static t_CKUINT HidMsg_offset_y = 0;
 static t_CKUINT HidMsg_offset_z = 0;
+static t_CKUINT HidMsg_offset_touchx = 0; // added 1.3.0.0
+static t_CKUINT HidMsg_offset_touchy = 0; // added 1.3.0.0
+static t_CKUINT HidMsg_offset_touchsize = 0; // added 1.3.0.0
 static t_CKUINT HidMsg_offset_ascii = 0;
 static t_CKUINT HidMsg_offset_key = 0;
 
@@ -691,6 +1572,18 @@ t_CKBOOL init_class_HID( Chuck_Env * env )
     HidMsg_offset_z = type_engine_import_mvar( env, "int", "z", FALSE );
     if( HidMsg_offset_z == CK_INVALID_OFFSET ) goto error;
     
+    // add member variable (added 1.3.0.0)
+    HidMsg_offset_touchx = type_engine_import_mvar( env, "float", "touchX", FALSE );
+    if( HidMsg_offset_touchx == CK_INVALID_OFFSET ) goto error;
+    
+    // add member variable (added 1.3.0.0)
+    HidMsg_offset_touchy = type_engine_import_mvar( env, "float", "touchY", FALSE );
+    if( HidMsg_offset_touchy == CK_INVALID_OFFSET ) goto error;
+    
+    // add member variable (added 1.3.0.0)
+    HidMsg_offset_touchsize = type_engine_import_mvar( env, "float", "touchSize", FALSE );
+    if( HidMsg_offset_touchsize == CK_INVALID_OFFSET ) goto error;
+    
     // add member variable
     HidMsg_offset_axis_position = type_engine_import_mvar( env, "int", "axis_position", FALSE );
     if( HidMsg_offset_axis_position == CK_INVALID_OFFSET ) goto error;
@@ -758,7 +1651,7 @@ t_CKBOOL init_class_HID( Chuck_Env * env )
     // add isWheelMotion()
     func = make_new_mfun( "int", "isWheelMotion", HidMsg_is_wheel_motion );
     if( !type_engine_import_mfun( env, func ) ) goto error;
-    
+
     // end the class import
     type_engine_import_class_end( env );
 
@@ -775,6 +1668,11 @@ t_CKBOOL init_class_HID( Chuck_Env * env )
     func = make_new_mfun( "int", "open", HidIn_open );
     func->add_arg( "int", "type" );
     func->add_arg( "int", "num" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // add open()
+    func = make_new_mfun( "int", "open", HidIn_open_named );
+    func->add_arg( "string", "name" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
     
     // add openJoystick()
@@ -838,6 +1736,15 @@ t_CKBOOL init_class_HID( Chuck_Env * env )
     func = make_new_sfun( "int[]", "readTiltSensor", HidIn_read_tilt_sensor );
     if( !type_engine_import_sfun( env, func ) ) goto error;
     
+    // add globalTiltPollRate()
+    func = make_new_sfun( "dur", "globalTiltPollRate", HidIn_ctrl_tiltPollRate );
+    func->add_arg( "dur", "d" );
+    if( !type_engine_import_sfun( env, func ) ) goto error;
+    
+    // add globalTiltPollRate()
+    func = make_new_sfun( "dur", "globalTiltPollRate", HidIn_cget_tiltPollRate );
+    if( !type_engine_import_sfun( env, func ) ) goto error;
+
     // add startCursorTrack()
     func = make_new_sfun( "int", "startCursorTrack", HidIn_start_cursor_track );
     if( !type_engine_import_sfun( env, func ) ) goto error;
@@ -996,6 +1903,7 @@ error:
 
 
 
+
 // static
 static t_CKUINT MidiRW_offset_data = 0;
 static t_CKUINT MidiMsgOut_offset_data = 0;
@@ -1007,6 +1915,8 @@ static t_CKUINT MidiMsgIn_offset_data = 0;
 t_CKBOOL init_class_MidiRW( Chuck_Env * env )
 {
     Chuck_DL_Func * func = NULL;
+
+#ifndef __DISABLE_MIDI__
 
     // init base class
     if( !type_engine_import_class_begin( env, "MidiRW", "Object",
@@ -1095,6 +2005,8 @@ t_CKBOOL init_class_MidiRW( Chuck_Env * env )
     // end the class import
     type_engine_import_class_end( env );
 
+#endif // __DISABLE_MIDI__
+    
     // initialize
     // HidInManager::init();
 
@@ -1110,169 +2022,70 @@ error:
 
 
 
-/*// static
-static t_CKUINT SkiniIn_offset_data = 0;
-static t_CKUINT SkiniOut_offset_data = 0;
-static t_CKUINT SkiniMsg_offset_type = 0;
-static t_CKUINT SkiniMsg_offset_time = 0;
-static t_CKUINT SkiniMsg_offset_channel = 0;
-static t_CKUINT SkiniMsg_offset_data1 = 0;
-static t_CKUINT SkiniMsg_offset_data2 = 0;
 
-//-----------------------------------------------------------------------------
-// name: init_class_Skini()
-// desc: ...
-//-----------------------------------------------------------------------------
-t_CKBOOL init_class_Skini( Chuck_Env * env )
-{
-    Chuck_DL_Func * func = NULL;
-
-    // init base class
-    if( !type_engine_import_class_begin( env, "SkiniMsg", "Object",
-                                         env->global(), NULL ) )
-        return FALSE;
-
-    // add member variable
-    SkiniMsg_offset_type = type_engine_import_mvar( env, "int", "type", FALSE );
-    if( SkiniMsg_offset_type == CK_INVALID_OFFSET ) goto error;
-
-    // add member variable
-    SkiniMsg_offset_time = type_engine_import_mvar( env, "float", "time", FALSE );
-    if( SkiniMsg_offset_time == CK_INVALID_OFFSET ) goto error;
-
-    // add member variable
-    SkiniMsg_offset_channel = type_engine_import_mvar( env, "int", "channel", FALSE );
-    if( SkiniMsg_offset_channel == CK_INVALID_OFFSET ) goto error;
-
-    // add member variable
-    SkiniMsg_offset_data1 = type_engine_import_mvar( env, "float", "data1", FALSE );
-    if( SkiniMsg_offset_data1 == CK_INVALID_OFFSET ) goto error;
-
-    // add member variable
-    SkiniMsg_offset_data2 = type_engine_import_mvar( env, "float", "data2", FALSE );
-    if( SkiniMsg_offset_data2 == CK_INVALID_OFFSET ) goto error;
-
-
-    // end the class import
-    type_engine_import_class_end( env );
-
-    
-    // init base class
-    if( !type_engine_import_class_begin( env, "SkiniIn", "event",
-                                         env->global(), SkiniIn_ctor ) )
-        return FALSE;
-
-    // add open()
-    func = make_new_mfun( "int", "open", SkiniIn_open );
-    func->add_arg( "const char *", "filename" );
-    if( !type_engine_import_mfun( env, func ) ) goto error;
-
-    // add recv()
-    func = make_new_mfun( "int", "recv", SkiniIn_recv );
-    func->add_arg( "SkiniMsg", "msg" );
-    if( !type_engine_import_mfun( env, func ) ) goto error;
-
-    // add member variable
-    SkiniIn_offset_data = type_engine_import_mvar( env, "int", "@SkiniIn_data", FALSE );
-    if( SkiniIn_offset_data == CK_INVALID_OFFSET ) goto error;
-
-    // end the class import
-    type_engine_import_class_end( env );
-    
-    // init base class
-    if( !type_engine_import_class_begin( env, "SkiniOut", "Object",
-                                         env->global(), SkiniOut_ctor ) )
-        return FALSE;
-
-    // add open()
-    func = make_new_mfun( "int", "open", MidiOut_open );
-    func->add_arg( "const char *", "filename" );
-    if( !type_engine_import_mfun( env, func ) ) goto error;
-
-    // add send()
-    func = make_new_mfun( "int", "send", SkiniOut_send );
-    func->add_arg( "SkiniMsg", "msg" );
-    if( !type_engine_import_mfun( env, func ) ) goto error;
-
-    // add member variable
-    SkiniOut_offset_data = type_engine_import_mvar( env, "int", "@SkiniOut_data", FALSE );
-    if( SkiniOut_offset_data == CK_INVALID_OFFSET ) goto error;
-
-    // end the class import
-    type_engine_import_class_end( env );
-    
-    return TRUE;
-
-error:
-
-    // end the class import
-    type_engine_import_class_end( env );
-    
-    return FALSE;
-}
-*/
 
 
 // Object ctor
 CK_DLL_CTOR( object_ctor )
 {
-//    fprintf( stderr, "object ctor\n" );
+    // log
+    // EM_log( CK_LOG_FINEST, "Object constructor..." );
+
+    // initialize
+    OBJ_MEMBER_UINT(SELF, Object_offset_string) = 0;
 }
 
 
 // Object dtor
 CK_DLL_DTOR( object_dtor )
 {
-//    fprintf( stderr, "object dtor\n" );
+    // log
+    // EM_log( CK_LOG_FINEST, "Object destructor..." );
+
+    // get the string
+    Chuck_String * str = (Chuck_String *)OBJ_MEMBER_UINT(SELF, Object_offset_string);
+    // release
+    SAFE_RELEASE( str );
 }
 
 
-// setTestID
-CK_DLL_MFUN( object_setTestID )
+// toString
+CK_DLL_MFUN( object_toString )
 {
-    fprintf( stderr, "object set test id\n" );
-    t_CKINT v = GET_NEXT_INT(ARGS);
-    OBJ_MEMBER_INT(SELF, object_offset_m_testID) = v;
-    RETURN->v_int = v;
+    // get the string
+    Chuck_String * str = (Chuck_String *)OBJ_MEMBER_UINT(SELF, Object_offset_string);
+    // allocate
+    if( !str )
+    {
+        // new it
+        str = (Chuck_String *)instantiate_and_initialize_object( &t_string, SHRED );
+        // check it
+        if( !str )
+        {
+            // TODO: make this exception
+            fprintf( stderr, "[chuck]: Object.toString() out of memory!\n" );
+            RETURN->v_object = NULL;
+            return;
+        }
+        // set it
+        ostringstream strout( ostringstream::out );
+        // get the type
+        Chuck_Type * type = SELF->type_ref;
+        // write
+        strout.setf( ios::hex, ios::basefield );
+        strout << ((type != NULL) ? type->c_name() : "[VOID]") << ":" << (t_CKUINT)SELF;
+        strout.flush();
+
+        // done
+        str->str = strout.str();
+    }
+
+    // set return
+    RETURN->v_object = str;
 }
 
 
-// getTestID
-CK_DLL_MFUN( object_getTestID )
-{
-    fprintf( stderr, "object get test id\n" );
-    RETURN->v_int = OBJ_MEMBER_INT(SELF, object_offset_m_testID);
-}
-
-
-// setTestID
-CK_DLL_MFUN( ugen_setTestID )
-{
-    fprintf( stderr, "ugen set test id\n" );
-    t_CKINT v = GET_NEXT_INT(ARGS);
-    OBJ_MEMBER_INT(SELF, object_offset_m_testID) = v;
-    RETURN->v_int = v;
-}
-
-
-// getTestID
-CK_DLL_MFUN( ugen_getTestID )
-{
-    fprintf( stderr, "ugen get test id\n" );
-    RETURN->v_int = OBJ_MEMBER_INT(SELF, object_offset_m_testID);
-}
-
-
-// getTest
-CK_DLL_SFUN( object_testStatic )
-{
-    t_CKFLOAT v = GET_NEXT_FLOAT(ARGS);
-    fprintf( stderr, "testStatic %f\n", v );
-}
-
-
-
-
+// ctor
 CK_DLL_CTOR( ugen_ctor )
 {
 }
@@ -1296,8 +2109,14 @@ CK_DLL_MFUN( ugen_op )
 
     // for multiple channels
     Chuck_DL_Return ret;
+    // added 1.3.0.0 -- Chuck_DL_Api::Api::instance()
     for( t_CKUINT i = 0; i < ugen->m_multi_chan_size; i++ )
-        ugen_op( ugen->m_multi_chan[i], ARGS, &ret, SHRED );
+        ugen_op( ugen->m_multi_chan[i], ARGS, &ret, SHRED, Chuck_DL_Api::Api::instance() );
+    // added 1.3.0.2 -- apply op to subgraph outlet
+    if( ugen->inlet() )
+        ugen->inlet()->m_op = op;
+    if( ugen->outlet() )
+        ugen->outlet()->m_op = op;
 }
 
 CK_DLL_MFUN( ugen_cget_op )
@@ -1313,7 +2132,11 @@ CK_DLL_MFUN( ugen_last )
     // get as ugen
     Chuck_UGen * ugen = (Chuck_UGen *)SELF;
     // set return
-    RETURN->v_float = (t_CKFLOAT)ugen->m_last;
+    // added 1.3.0.2 -- ugen outlet() last if subgraph
+    if( ugen->outlet() )
+        RETURN->v_float = (t_CKFLOAT) ugen->outlet()->m_last;
+    else
+        RETURN->v_float = (t_CKFLOAT)ugen->m_last;
 }
 
 CK_DLL_MFUN( ugen_next )
@@ -1330,8 +2153,15 @@ CK_DLL_MFUN( ugen_next )
 
     // for multiple channels
     Chuck_DL_Return ret;
+    // added 1.3.0.0 -- Chuck_DL_Api::Api::instance()
     for( t_CKUINT i = 0; i < ugen->m_multi_chan_size; i++ )
-        ugen_next( ugen->m_multi_chan[i], ARGS, &ret, SHRED );
+        ugen_next( ugen->m_multi_chan[i], ARGS, &ret, SHRED, Chuck_DL_Api::Api::instance() );
+    // added 1.3.0.2 -- apply op to subgraph outlet
+    if( ugen->outlet() )
+    {
+        ugen->outlet()->m_next = (SAMPLE) next;
+        ugen->outlet()->m_use_next = TRUE;
+    }
 }
 
 CK_DLL_MFUN( ugen_cget_next )
@@ -1355,8 +2185,12 @@ CK_DLL_MFUN( ugen_gain )
 
     // for multiple channels
     Chuck_DL_Return ret;
+    // added 1.3.0.0 -- Chuck_DL_Api::Api::instance()
     for( t_CKUINT i = 0; i < ugen->m_multi_chan_size; i++ )
-        ugen_gain( ugen->m_multi_chan[i], ARGS, &ret, SHRED );
+        ugen_gain( ugen->m_multi_chan[i], ARGS, &ret, SHRED, Chuck_DL_Api::Api::instance() );
+    // added 1.3.0.2 -- apply gain to subgraph outlet
+    if( ugen->outlet() )
+        ugen->outlet()->m_gain = (SAMPLE) gain;
 }
 
 CK_DLL_MFUN( ugen_cget_gain )
@@ -1370,7 +2204,7 @@ CK_DLL_MFUN( ugen_cget_gain )
 CK_DLL_CTRL( ugen_numChannels )
 {
     // get ugen
-    Chuck_UGen * ugen = (Chuck_UGen *)SELF;
+    //Chuck_UGen * ugen = (Chuck_UGen *)SELF;
     // error
     EM_error3( "setting .numChannels is not yet supported (use the command line)..." );
 }
@@ -1417,6 +2251,279 @@ CK_DLL_CTRL( ugen_connected )
     RETURN->v_int = ret;
 }
 
+
+// ctor
+CK_DLL_CTOR( uana_ctor )
+{
+    // make an actual blob
+    Chuck_Object * blob = instantiate_and_initialize_object( &t_uanablob, SHRED );
+    // TODO: check out of memory
+    assert( blob != NULL );
+    // make a blob proxy
+    Chuck_UAnaBlobProxy * proxy = new Chuck_UAnaBlobProxy( blob );
+    // remember it
+    OBJ_MEMBER_INT(SELF, uana_offset_blob) = (t_CKINT)proxy;
+    // HACK: DANGER: manually call blob's ctor (added 1.3.0.0 -- Chuck_DL_Api::Api::instance())
+    uanablob_ctor( blob, NULL, NULL, Chuck_DL_Api::Api::instance() );
+}
+
+CK_DLL_DTOR( uana_dtor )
+{
+    // TODO: GC should release the blob!
+}
+
+CK_DLL_MFUN( uana_upchuck )
+{
+    // get as uana
+    Chuck_UAna * uana = (Chuck_UAna *)SELF;
+    // get shred
+    Chuck_VM_Shred * derhs = SHRED;
+    // make sure it's not NULL
+    if( !derhs )
+    {
+        EM_error3( "UAna.upchuck() encountered NULL shred; operation aborting!" );
+        return;
+    }
+    
+    // get VM
+    Chuck_VM * vm = derhs->vm_ref;
+    // ensure
+    if( !vm )
+    {
+        EM_error3( "UAna.upchuck() encountered NULL VM ref; operation aborting!" );
+        return;
+    }
+
+    // check if time
+    if( uana->m_uana_time < vm->shreduler()->now_system )
+    {
+        // for multiple channels
+        Chuck_DL_Return ret;
+        // added 1.3.0.0 -- Chuck_DL_Api::Api::instance()
+        for( t_CKUINT i = 0; i < uana->m_multi_chan_size; i++ )
+            uana_upchuck( uana->m_multi_chan[i], ARGS, &ret, SHRED, Chuck_DL_Api::Api::instance() );
+
+        // tock it (TODO: order relative to multiple channels?)
+        uana->system_tock( vm->shreduler()->now_system );
+    }
+
+    // return
+    RETURN->v_object = uana->blobProxy()->realblob();
+}
+
+/* CK_DLL_MFUN( uana_blob )
+{
+    // get as uana
+    Chuck_UAna * uana = (Chuck_UAna *)SELF;
+    
+    // TODO: return
+    RETURN->v_object = NULL;
+} */
+
+CK_DLL_MFUN( uana_fvals )
+{
+    // get the fvals array
+    Chuck_UAnaBlobProxy * blob = (Chuck_UAnaBlobProxy *)OBJ_MEMBER_INT(SELF, uana_offset_blob);
+    RETURN->v_object = &blob->fvals();
+}
+
+CK_DLL_MFUN( uana_cvals )
+{
+    // get the fvals array
+    Chuck_UAnaBlobProxy * blob = (Chuck_UAnaBlobProxy *)OBJ_MEMBER_INT(SELF, uana_offset_blob);
+    RETURN->v_object = &blob->cvals();
+}
+
+CK_DLL_MFUN( uana_fval )
+{
+    // get index
+    t_CKINT i = GET_NEXT_INT(ARGS);
+    // get the fvals array
+    Chuck_UAnaBlobProxy * blob = (Chuck_UAnaBlobProxy *)OBJ_MEMBER_INT(SELF, uana_offset_blob);
+    Chuck_Array8 & fvals = blob->fvals();
+    // check caps
+    if( i < 0 || fvals.size() <= i ) RETURN->v_float = 0;
+    else
+    {
+        // get
+        t_CKFLOAT val;
+        fvals.get( i, &val );
+        RETURN->v_float = val;
+    }
+}
+
+CK_DLL_MFUN( uana_cval )
+{
+    // get index
+    t_CKINT i = GET_NEXT_INT(ARGS);
+    // get the fvals array
+    Chuck_UAnaBlobProxy * blob = (Chuck_UAnaBlobProxy *)OBJ_MEMBER_INT(SELF, uana_offset_blob);
+    Chuck_Array16 & cvals = blob->cvals();
+    // check caps
+    if( i < 0 || cvals.size() <= i ) RETURN->v_complex.re = RETURN->v_complex.im = 0;
+    else
+    {
+        // get
+        t_CKCOMPLEX val;
+        cvals.get( i, &val );
+        RETURN->v_complex = val;
+    }
+}
+
+CK_DLL_MFUN( uana_connected )
+{
+    // get ugen
+    Chuck_UAna * uana = (Chuck_UAna *)SELF;
+    Chuck_UAna * right = (Chuck_UAna *)GET_NEXT_OBJECT(ARGS);
+
+    // sanity
+    t_CKINT ret = FALSE;
+    if( !right )
+    {
+        ret = FALSE;
+    }
+    else
+    {
+        ret = right->is_up_connected_from( uana );
+    }
+
+    RETURN->v_int = ret;
+}
+
+
+// blob proxy implementation
+Chuck_UAnaBlobProxy::Chuck_UAnaBlobProxy( Chuck_Object * blob )
+{
+    m_blob = blob;
+    assert( m_blob != NULL );
+    // add reference
+    m_blob->add_ref();
+}
+
+Chuck_UAnaBlobProxy::~Chuck_UAnaBlobProxy()
+{
+    // release
+    SAFE_RELEASE( m_blob );
+}
+
+t_CKTIME & Chuck_UAnaBlobProxy::when()
+{
+    // TODO: DANGER: is this actually returning correct reference?!
+    return OBJ_MEMBER_TIME(m_blob, uanablob_offset_when);
+}
+
+Chuck_Array8 & Chuck_UAnaBlobProxy::fvals()
+{
+    // TODO: DANGER: is this actually returning correct reference?!
+    Chuck_Array8 * arr8 = (Chuck_Array8 *)OBJ_MEMBER_INT(m_blob, uanablob_offset_fvals);
+    assert( arr8 != NULL );
+    return *arr8;
+}
+
+Chuck_Array16 & Chuck_UAnaBlobProxy::cvals()
+{
+    // TODO: DANGER: is this actually returning correct reference?!
+    Chuck_Array16 * arr16 = (Chuck_Array16 *)OBJ_MEMBER_INT(m_blob, uanablob_offset_cvals);
+    assert( arr16 != NULL );
+    return *arr16;
+}
+
+// get proxy
+Chuck_UAnaBlobProxy * getBlobProxy( const Chuck_UAna * uana )
+{
+    return (Chuck_UAnaBlobProxy *)OBJ_MEMBER_INT(uana, uana_offset_blob);
+}
+
+// ctor
+CK_DLL_CTOR( uanablob_ctor )
+{
+    // when
+    OBJ_MEMBER_TIME(SELF, uanablob_offset_when) = 0;
+    // fvals
+    Chuck_Array8 * arr8 = new Chuck_Array8( 8 );
+    initialize_object( arr8, &t_array );
+    // TODO: check out of memory
+    arr8->add_ref();
+    OBJ_MEMBER_INT(SELF, uanablob_offset_fvals) = (t_CKINT)arr8;
+    // cvals
+    Chuck_Array16 * arr16 = new Chuck_Array16( 8 );
+    initialize_object( arr16, &t_array );
+    // TODO: check out of memory
+    arr16->add_ref();
+    OBJ_MEMBER_INT(SELF, uanablob_offset_cvals) = (t_CKINT)arr16;
+}
+
+// dtor
+CK_DLL_DTOR( uanablob_dtor )
+{
+    // get array
+    Chuck_Array8 * arr8 = (Chuck_Array8 *)OBJ_MEMBER_INT(SELF, uanablob_offset_fvals);
+    // release it
+    arr8->release();
+    OBJ_MEMBER_INT(SELF, uanablob_offset_fvals) = 0;
+    
+    // get array
+    Chuck_Array16 * arr16 = (Chuck_Array16 *)OBJ_MEMBER_INT(SELF, uanablob_offset_cvals);
+    // release it
+    arr16->release();
+    OBJ_MEMBER_INT(SELF, uanablob_offset_cvals) = 0;
+    
+    OBJ_MEMBER_TIME(SELF, uanablob_offset_when) = 0;
+}
+
+CK_DLL_MFUN( uanablob_when )
+{
+    // set return
+    RETURN->v_time = OBJ_MEMBER_TIME(SELF, uanablob_offset_when);
+}
+
+CK_DLL_MFUN( uanablob_fvals )
+{
+    // set return
+    RETURN->v_object = (Chuck_Array8 *)OBJ_MEMBER_INT(SELF, uanablob_offset_fvals);
+}
+
+CK_DLL_MFUN( uanablob_fval )
+{
+    // get index
+    t_CKINT i = GET_NEXT_INT(ARGS);
+    // get the fvals array
+    Chuck_Array8 * fvals = (Chuck_Array8 *)OBJ_MEMBER_INT(SELF, uanablob_offset_fvals);
+    // check caps
+    if( i < 0 || fvals->size() <= i ) RETURN->v_float = 0;
+    else
+    {
+        // get
+        t_CKFLOAT val;
+        fvals->get( i, &val );
+        RETURN->v_float = val;
+    }
+}
+
+CK_DLL_MFUN( uanablob_cval )
+{
+    // get index
+    t_CKINT i = GET_NEXT_INT(ARGS);
+    // get the fvals array
+    Chuck_Array16 * cvals = (Chuck_Array16 *)OBJ_MEMBER_INT(SELF, uanablob_offset_cvals);
+    // check caps
+    if( i < 0 || cvals->size() <= i ) RETURN->v_complex.re = RETURN->v_complex.im = 0;
+    else
+    {
+        // get
+        t_CKCOMPLEX val;
+        cvals->get( i, &val );
+        RETURN->v_complex = val;
+    }
+}
+
+CK_DLL_MFUN( uanablob_cvals )
+{
+    // set return
+    RETURN->v_object = (Chuck_Array16 *)OBJ_MEMBER_INT(SELF, uanablob_offset_cvals);
+}
+
+// ctor
 CK_DLL_CTOR( event_ctor )
 {
 //  OBJ_MEMBER_INT(SELF, event_offset_data) = (t_CKUINT)new Data_Event;
@@ -1454,6 +2561,570 @@ CK_DLL_MFUN( event_can_wait )
 
 
 //-----------------------------------------------------------------------------
+// IO API
+//-----------------------------------------------------------------------------
+CK_DLL_MFUN( io_dummy )
+{
+    EM_error3( "(IO): internal error! inside an abstract function! help!" );
+    EM_error3( "    note: please hunt down someone (e.g., Ge) to fix this..." );
+    assert( FALSE );
+    RETURN->v_int = 0;
+}
+
+CK_DLL_SFUN( io_newline )
+{
+    RETURN->v_string = g_newline;
+}
+
+
+//-----------------------------------------------------------------------------
+// FileIO API
+//-----------------------------------------------------------------------------
+CK_DLL_CTOR( fileio_ctor )
+{ } 
+
+CK_DLL_DTOR( fileio_dtor )
+{ }
+
+CK_DLL_MFUN( fileio_open )
+{
+    std::string filename = GET_NEXT_STRING(ARGS)->str;    
+    Chuck_IO_File * f = (Chuck_IO_File *)SELF;
+    t_CKINT default_flags =
+        Chuck_IO_File::FLAG_READ_WRITE | Chuck_IO_File::TYPE_ASCII;
+
+    RETURN->v_int = f->open(filename, default_flags);
+}
+
+CK_DLL_MFUN( fileio_openflags )
+{
+    Chuck_IO_File * f = (Chuck_IO_File *)SELF;
+    std::string filename = GET_NEXT_STRING(ARGS)->str;
+    t_CKINT flags = GET_NEXT_INT(ARGS);
+
+    RETURN->v_int = f->open(filename, flags);
+}
+
+CK_DLL_MFUN( fileio_close )
+{
+    Chuck_IO_File * f = (Chuck_IO_File *)SELF;
+    f->close();
+}
+
+CK_DLL_MFUN( fileio_good )
+{
+    Chuck_IO_File * f = (Chuck_IO_File *)SELF;
+    RETURN->v_int = f->good();
+}
+
+CK_DLL_MFUN( fileio_flush )
+{
+    Chuck_IO_File * f = (Chuck_IO_File *)SELF;
+    f->flush();
+}
+
+CK_DLL_MFUN( fileio_getmode )
+{
+    Chuck_IO_File * f = (Chuck_IO_File *)SELF;
+    RETURN->v_int = f->mode();
+}
+
+CK_DLL_MFUN( fileio_setmode )
+{
+    t_CKINT flag = GET_NEXT_INT(ARGS);
+    
+    Chuck_IO_File * f = (Chuck_IO_File *)SELF;
+    f->mode( flag );
+    RETURN->v_int = 0;
+}
+
+CK_DLL_MFUN( fileio_size )
+{
+    Chuck_IO_File * f = (Chuck_IO_File *)SELF;
+    RETURN->v_int = f->size();
+}
+
+CK_DLL_MFUN( fileio_seek )
+{
+    t_CKINT pos = GET_NEXT_INT(ARGS);
+    
+    Chuck_IO_File * f = (Chuck_IO_File *)SELF;
+    f->seek(pos);
+}
+
+CK_DLL_MFUN( fileio_tell )
+{
+    Chuck_IO_File * f = (Chuck_IO_File *)SELF;
+    RETURN->v_int = f->tell();
+}
+
+CK_DLL_MFUN( fileio_isdir )
+{
+    Chuck_IO_File * f = (Chuck_IO_File *)SELF;
+    RETURN->v_int = f->isDir();
+}
+
+CK_DLL_MFUN( fileio_dirlist )
+{
+    Chuck_IO_File * f = (Chuck_IO_File *)SELF;
+    Chuck_Array4 * a = f->dirList();
+    RETURN->v_object = a;
+}
+
+/*
+CK_DLL_MFUN( fileio_read )
+{
+    t_CKINT len = GET_NEXT_INT(ARGS);
+    Chuck_IO_File * f = (Chuck_IO_File *)SELF;
+    
+    Chuck_String * s = f->read( len );
+    RETURN->v_object = s;
+}
+*/
+
+CK_DLL_MFUN( fileio_readline )
+{
+    Chuck_IO_File * f = (Chuck_IO_File *)SELF;
+    Chuck_String * ret = f->readLine();
+    RETURN->v_object = ret;
+}
+
+CK_DLL_MFUN( fileio_readint )
+{
+    Chuck_IO_File * f = (Chuck_IO_File *)SELF;
+    t_CKINT defaultflags = Chuck_IO::INT32;
+    
+    /* (ATODO: doesn't look like asynchronous reading will work)
+     if (f->mode() == Chuck_IO::MODE_ASYNC)
+     {
+     // set up arguments
+     Chuck_IO::async_args *args = new Chuck_IO::async_args;
+     args->RETURN = (void *)RETURN;
+     args->fileio_obj = f;
+     args->intArg = defaultflags;
+     // set shred to wait for I/O completion
+     f->m_asyncEvent->wait( SHRED, g_vm );
+     // start thread
+     bool ret = f->m_thread->start( f->readInt_thread, (void *)args );
+     if (!ret) {
+     cerr << "m_thread->start failed; recreating m_thread" << endl;
+     delete f->m_thread;
+     f->m_thread = new XThread;
+     ret = f->m_thread->start( f->readInt_thread, (void *)args );
+     if (!ret) {
+     EM_error3( "(FileIO): failed to start thread for asynchronous mode I/O" );
+     }
+     }
+     } else {*/
+    t_CKINT ret = f->readInt( defaultflags );
+    RETURN->v_int = ret;
+    //}
+    // ATODO: Debug
+    //sleep(1);
+    //cerr << "fileio_readint exiting" << endl;
+}
+
+CK_DLL_MFUN( fileio_readintflags )
+{    
+    t_CKINT flags = GET_NEXT_INT(ARGS);
+    
+    Chuck_IO_File * f = (Chuck_IO_File *)SELF;
+    t_CKINT ret = f->readInt( flags );
+    
+    RETURN->v_int = ret;
+}
+
+CK_DLL_MFUN( fileio_readfloat )
+{
+    Chuck_IO_File * f = (Chuck_IO_File *)SELF;
+    t_CKFLOAT ret = f->readFloat();
+    RETURN->v_float = ret;
+}
+
+CK_DLL_MFUN( fileio_eof )
+{
+    Chuck_IO_File * f = (Chuck_IO_File *)SELF;
+    t_CKBOOL ret = f->eof();
+    RETURN->v_int = ret;
+}
+
+CK_DLL_MFUN( fileio_more )
+{
+    Chuck_IO_File * f = (Chuck_IO_File *)SELF;
+    t_CKBOOL ret = !f->eof();
+    RETURN->v_int = ret;
+}
+
+CK_DLL_MFUN( fileio_writestring )
+{
+    std::string val = GET_NEXT_STRING(ARGS)->str;
+    
+    Chuck_IO_File * f = (Chuck_IO_File *)SELF;
+    if (f->mode() == Chuck_IO::MODE_ASYNC)
+    {
+        // set up arguments
+        Chuck_IO::async_args *args = new Chuck_IO::async_args;
+        args->RETURN = (void *)RETURN;
+        args->fileio_obj = f;
+        args->stringArg = std::string(val);
+        // set shred to wait for I/O completion
+        // TODO: make sure using g_vm is OK
+        f->m_asyncEvent->wait( SHRED, g_vm );
+        // start thread
+        bool ret = f->m_thread->start( f->writeStr_thread, (void *)args );
+        if (!ret) {
+            // for some reason, the XThread object needs to be
+            // deleted and reconstructed every time after call #375
+            delete f->m_thread;
+            f->m_thread = new XThread;
+            ret = f->m_thread->start( f->writeStr_thread, (void *)args );
+            if (!ret) {
+                EM_error3( "(FileIO): failed to start thread for asynchronous mode I/O" );
+            }
+        }
+    } else {
+        f->write(val);
+    }
+}
+
+CK_DLL_MFUN( fileio_writeint )
+{
+    t_CKINT val = GET_NEXT_INT(ARGS);
+    
+    Chuck_IO_File * f = (Chuck_IO_File *)SELF;
+    if (f->mode() == Chuck_IO::MODE_ASYNC)
+    {
+        // set up arguments
+        Chuck_IO::async_args *args = new Chuck_IO::async_args;
+        args->RETURN = (void *)RETURN;
+        args->fileio_obj = f;
+        args->intArg = val;
+        // set shred to wait for I/O completion
+        // TODO: make sure using g_vm is OK
+        f->m_asyncEvent->wait( SHRED, g_vm );
+        // start thread
+        bool ret = f->m_thread->start( f->writeInt_thread, (void *)args );
+        if (!ret) {
+            // for some reason, the XThread object needs to be
+            // deleted and reconstructed every time after call #375
+            delete f->m_thread;
+            f->m_thread = new XThread;
+            ret = f->m_thread->start( f->writeInt_thread, (void *)args );
+            if (!ret) {
+                EM_error3( "(FileIO): failed to start thread for asynchronous mode I/O" );
+            }
+        }
+    } else {
+        f->write(val);
+    }
+}
+
+CK_DLL_MFUN( fileio_writeintflags )
+{
+    t_CKINT val = GET_NEXT_INT(ARGS);
+    t_CKINT flags = GET_NEXT_INT(ARGS);
+    
+    Chuck_IO_File * f = (Chuck_IO_File *)SELF;
+    if (f->mode() == Chuck_IO::MODE_ASYNC)
+    {
+        // TODO: pass flags in args
+        // set up arguments
+        Chuck_IO::async_args *args = new Chuck_IO::async_args;
+        args->RETURN = (void *)RETURN;
+        args->fileio_obj = f;
+        args->intArg = val;
+        // set shred to wait for I/O completion
+        // TODO: make sure using g_vm is OK
+        f->m_asyncEvent->wait( SHRED, g_vm );
+        // start thread
+        bool ret = f->m_thread->start( f->writeInt_thread, (void *)args );
+        if (!ret) {
+            // for some reason, the XThread object needs to be
+            // deleted and reconstructed every time after call #375
+            delete f->m_thread;
+            f->m_thread = new XThread;
+            ret = f->m_thread->start( f->writeInt_thread, (void *)args );
+            if (!ret) {
+                EM_error3( "(FileIO): failed to start thread for asynchronous mode I/O" );
+            }
+        }
+    } else {
+        f->write(val, flags);
+    }
+}
+
+CK_DLL_MFUN( fileio_writefloat )
+{
+    t_CKFLOAT val = GET_NEXT_FLOAT(ARGS);
+    
+    Chuck_IO_File * f = (Chuck_IO_File *)SELF;
+    if (f->mode() == Chuck_IO::MODE_ASYNC)
+    {
+        // set up arguments
+        Chuck_IO::async_args *args = new Chuck_IO::async_args;
+        args->RETURN = (void *)RETURN;
+        args->fileio_obj = f;
+        args->floatArg = val;
+        // set shred to wait for I/O completion
+        // TODO: make sure using g_vm is OK
+        f->m_asyncEvent->wait( SHRED, g_vm );
+        // start thread
+        bool ret = f->m_thread->start( f->writeFloat_thread, (void *)args );
+        if (!ret) {
+            // for some reason, the XThread object needs to be
+            // deleted and reconstructed every time after call #375
+            delete f->m_thread;
+            f->m_thread = new XThread;
+            ret = f->m_thread->start( f->writeFloat_thread, (void *)args );
+            if (!ret) {
+                EM_error3( "(FileIO): failed to start thread for asynchronous mode I/O" );
+            }
+        }
+    } else {
+        f->write(val);
+    }
+}
+
+
+//-----------------------------------------------------------------------------
+// Chout API
+//-----------------------------------------------------------------------------
+CK_DLL_MFUN( chout_close )
+{
+    // problem
+    fprintf( stderr, "[chuck]: cannot close 'chout'...\n" );
+    Chuck_IO_Chout * c = Chuck_IO_Chout::getInstance();
+    c->close();
+}
+
+CK_DLL_MFUN( chout_good )
+{
+    Chuck_IO_Chout * c = Chuck_IO_Chout::getInstance();
+    RETURN->v_int = c->good();
+}
+
+CK_DLL_MFUN( chout_flush )
+{
+    Chuck_IO_Chout * c = Chuck_IO_Chout::getInstance();
+    c->flush();
+}
+
+CK_DLL_MFUN( chout_getmode )
+{
+    // problem
+    Chuck_IO_Chout * c = Chuck_IO_Chout::getInstance();
+    RETURN->v_int = c->mode();
+}
+
+CK_DLL_MFUN( chout_setmode )
+{
+    Chuck_IO_Chout * c = Chuck_IO_Chout::getInstance();
+    c->mode( GET_NEXT_INT(ARGS) );
+    RETURN->v_int = c->mode();
+}
+
+/*
+ CK_DLL_MFUN( chout_read )
+ {
+ t_CKINT len = GET_NEXT_INT(ARGS);
+ Chuck_IO_File * f = (Chuck_IO_File *)SELF;
+ 
+ Chuck_String * s = f->read( len );
+ RETURN->v_object = s;
+ }
+ */
+
+CK_DLL_MFUN( chout_readline )
+{
+    Chuck_IO_Chout * c = Chuck_IO_Chout::getInstance();
+    Chuck_String * ret = c->readLine();
+    RETURN->v_object = ret;
+}
+
+CK_DLL_MFUN( chout_readint )
+{
+    Chuck_IO_Chout * c = Chuck_IO_Chout::getInstance();
+    RETURN->v_int = c->readInt( Chuck_IO::INT32 );
+}
+
+CK_DLL_MFUN( chout_readintflags )
+{    
+    t_CKINT flags = GET_NEXT_INT(ARGS);
+    
+    Chuck_IO_Chout * c = Chuck_IO_Chout::getInstance();
+    t_CKINT ret = c->readInt( flags );
+    
+    RETURN->v_int = ret;
+}
+
+CK_DLL_MFUN( chout_readfloat )
+{
+    Chuck_IO_Chout * c = Chuck_IO_Chout::getInstance();
+    t_CKFLOAT ret = c->readFloat();
+    RETURN->v_float = ret;
+}
+
+CK_DLL_MFUN( chout_eof )
+{
+    Chuck_IO_Chout * c = Chuck_IO_Chout::getInstance();
+    t_CKBOOL ret = c->eof();
+    RETURN->v_int = ret;
+}
+
+CK_DLL_MFUN( chout_more )
+{
+    Chuck_IO_Chout * c = Chuck_IO_Chout::getInstance();
+    t_CKBOOL ret = !c->eof();
+    RETURN->v_int = ret;
+}
+
+CK_DLL_MFUN( chout_writestring )
+{
+    std::string val = GET_NEXT_STRING(ARGS)->str;
+
+    Chuck_IO_Chout * c = Chuck_IO_Chout::getInstance();
+    c->write( val );
+}
+
+CK_DLL_MFUN( chout_writeint )
+{
+    t_CKINT val = GET_NEXT_INT(ARGS);
+    
+    Chuck_IO_Chout * c = Chuck_IO_Chout::getInstance();
+    c->write(val);
+}
+
+CK_DLL_MFUN( chout_writefloat )
+{
+    t_CKFLOAT val = GET_NEXT_FLOAT(ARGS);
+    
+    Chuck_IO_Chout * c = Chuck_IO_Chout::getInstance();
+    c->write(val);
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// Cherr API
+//-----------------------------------------------------------------------------
+CK_DLL_MFUN( cherr_close )
+{
+    // problem
+    fprintf( stderr, "[chuck]: cannot close 'cherr'...\n" );
+    Chuck_IO_Cherr * c = Chuck_IO_Cherr::getInstance();
+    c->close();
+}
+
+CK_DLL_MFUN( cherr_good )
+{
+    Chuck_IO_Cherr * c = Chuck_IO_Cherr::getInstance();
+    RETURN->v_int = c->good();
+}
+
+CK_DLL_MFUN( cherr_flush )
+{
+    Chuck_IO_Cherr * c = Chuck_IO_Cherr::getInstance();
+    c->flush();
+}
+
+CK_DLL_MFUN( cherr_getmode )
+{
+    // problem
+    Chuck_IO_Cherr * c = Chuck_IO_Cherr::getInstance();
+    RETURN->v_int = c->mode();
+}
+
+CK_DLL_MFUN( cherr_setmode )
+{
+    Chuck_IO_Cherr * c = Chuck_IO_Cherr::getInstance();
+    c->mode( GET_NEXT_INT(ARGS) );
+    RETURN->v_int = c->mode();
+}
+
+/*
+ CK_DLL_MFUN( cherr_read )
+ {
+ t_CKINT len = GET_NEXT_INT(ARGS);
+ Chuck_IO_File * f = (Chuck_IO_File *)SELF;
+ 
+ Chuck_String * s = f->read( len );
+ RETURN->v_object = s;
+ }
+ */
+
+CK_DLL_MFUN( cherr_readline )
+{
+    Chuck_IO_Cherr * c = Chuck_IO_Cherr::getInstance();
+    Chuck_String * ret = c->readLine();
+    RETURN->v_object = ret;
+}
+
+CK_DLL_MFUN( cherr_readint )
+{
+    Chuck_IO_Cherr * c = Chuck_IO_Cherr::getInstance();
+    RETURN->v_int = c->readInt( Chuck_IO::INT32 );
+}
+
+CK_DLL_MFUN( cherr_readintflags )
+{    
+    t_CKINT flags = GET_NEXT_INT(ARGS);
+    
+    Chuck_IO_Cherr * c = Chuck_IO_Cherr::getInstance();
+    t_CKINT ret = c->readInt( flags );
+    
+    RETURN->v_int = ret;
+}
+
+CK_DLL_MFUN( cherr_readfloat )
+{
+    Chuck_IO_Cherr * c = Chuck_IO_Cherr::getInstance();
+    t_CKFLOAT ret = c->readFloat();
+    RETURN->v_float = ret;
+}
+
+CK_DLL_MFUN( cherr_eof )
+{
+    Chuck_IO_Cherr * c = Chuck_IO_Cherr::getInstance();
+    t_CKBOOL ret = c->eof();
+    RETURN->v_int = ret;
+}
+
+CK_DLL_MFUN( cherr_more )
+{
+    Chuck_IO_Cherr * c = Chuck_IO_Cherr::getInstance();
+    t_CKBOOL ret = !c->eof();
+    RETURN->v_int = ret;
+}
+
+CK_DLL_MFUN( cherr_writestring )
+{
+    std::string val = GET_NEXT_STRING(ARGS)->str;
+    
+    Chuck_IO_Cherr * c = Chuck_IO_Cherr::getInstance();
+    c->write( val );
+}
+
+CK_DLL_MFUN( cherr_writeint )
+{
+    t_CKINT val = GET_NEXT_INT(ARGS);
+    
+    Chuck_IO_Chout * c = Chuck_IO_Chout::getInstance();
+    c->write(val);
+}
+
+CK_DLL_MFUN( cherr_writefloat )
+{
+    t_CKFLOAT val = GET_NEXT_FLOAT(ARGS);
+    
+    Chuck_IO_Cherr * c = Chuck_IO_Cherr::getInstance();
+    c->write(val);
+}
+
+
+
+
+//-----------------------------------------------------------------------------
 // Shred API
 //-----------------------------------------------------------------------------
 
@@ -1466,7 +3137,18 @@ CK_DLL_MFUN( shred_exit )
     // end the shred
     derhs->is_done = TRUE;
     derhs->is_running = FALSE;
-// return; // thanks
+}
+
+CK_DLL_MFUN( shred_running )
+{
+    Chuck_VM_Shred * derhs = (Chuck_VM_Shred *)SELF;
+    RETURN->v_int = derhs->is_running;
+}
+
+CK_DLL_MFUN( shred_done )
+{
+    Chuck_VM_Shred * derhs = (Chuck_VM_Shred *)SELF;
+    RETURN->v_int = derhs->is_done;
 }
 
 CK_DLL_MFUN( shred_clone )
@@ -1512,6 +3194,55 @@ CK_DLL_MFUN( shred_getArg )
     str->str = ( i < num ? derhs->args[i] : "" );
     RETURN->v_string = str; 
 }
+
+CK_DLL_MFUN( shred_sourcePath ) // added 1.3.0.0
+{
+    Chuck_VM_Shred * derhs = (Chuck_VM_Shred *)SELF;
+    
+    Chuck_String * str = (Chuck_String *)instantiate_and_initialize_object( &t_string, NULL );
+    str->str = derhs->code->filename;
+    RETURN->v_string = str; 
+}
+
+CK_DLL_MFUN( shred_sourceDir ) // added 1.3.0.0
+{
+    Chuck_VM_Shred * derhs = (Chuck_VM_Shred *)SELF;
+    
+    Chuck_String * str = (Chuck_String *)instantiate_and_initialize_object( &t_string, NULL );
+    
+    str->str = extract_filepath_dir(derhs->code->filename);
+    
+    RETURN->v_string = str;
+}
+
+CK_DLL_MFUN( shred_sourceDir2 ) // added 1.3.2.0
+{
+    Chuck_VM_Shred * derhs = (Chuck_VM_Shred *)SELF;
+    // get num up
+    t_CKINT i = GET_NEXT_INT(ARGS);
+    // abs
+    if( i < 0 ) i = -i;
+
+    // new chuck string
+    Chuck_String * str = (Chuck_String *)instantiate_and_initialize_object( &t_string, NULL );
+    // set the content
+    str->str = extract_filepath_dir(derhs->code->filename);
+    // up
+    str->str = dir_go_up( str->str, i );
+    
+    RETURN->v_string = str;
+}
+
+
+CK_DLL_SFUN( shred_fromId ) // added 1.3.2.0
+{
+    t_CKINT shred_id = GET_NEXT_INT(ARGS);
+    
+    Chuck_VM_Shred * derhs = SHRED->vm_ref->shreduler()->lookup(shred_id);
+    
+    RETURN->v_object = derhs;
+}
+
 
 CK_DLL_MFUN( string_length )
 {
@@ -1559,6 +3290,360 @@ CK_DLL_MFUN( string_trim )
     RETURN->v_string = str;
 }
 
+CK_DLL_MFUN( string_toString )
+{
+    Chuck_String * s = (Chuck_String *)SELF;
+    RETURN->v_string = s;
+}
+
+CK_DLL_MFUN(string_charAt)
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    t_CKINT index = GET_NEXT_INT(ARGS);
+    
+    if(index < 0 || index >= str->str.length())
+    {
+        throw_exception(SHRED, "IndexOutOfBoundsException", index);
+        RETURN->v_int = -1;
+        return;
+    }
+    
+    RETURN->v_int = str->str.at(index);
+}
+
+CK_DLL_MFUN(string_setCharAt)
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    t_CKINT index = GET_NEXT_INT(ARGS);
+    t_CKINT the_char = GET_NEXT_INT(ARGS);
+    
+    if(index < 0 || index >= str->str.length())
+    {
+        throw_exception(SHRED, "IndexOutOfBoundsException", index);
+        RETURN->v_int = -1;
+        return;
+    }
+
+    str->str.at(index) = the_char;
+    RETURN->v_int = str->str.at(index);
+}
+
+CK_DLL_MFUN(string_substring)
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    t_CKINT start = GET_NEXT_INT(ARGS);
+    
+    if(start < 0 || start >= str->str.length())
+    {
+        throw_exception(SHRED, "IndexOutOfBoundsException", start);
+        RETURN->v_string = NULL;
+        return;
+    }
+
+    Chuck_String * ss = (Chuck_String *) instantiate_and_initialize_object(&t_string, SHRED);
+    ss->str = str->str.substr(start);
+    
+    RETURN->v_string = ss;
+}
+
+CK_DLL_MFUN(string_substringN)
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    t_CKINT start = GET_NEXT_INT(ARGS);
+    t_CKINT length = GET_NEXT_INT(ARGS);
+    
+    if(start < 0 || start >= str->str.length())
+    {
+        throw_exception(SHRED, "IndexOutOfBoundsException", start);
+        RETURN->v_string = NULL;
+        return;
+    }
+
+    if(length < 0 || start+length > str->str.length())
+    {
+        throw_exception(SHRED, "IndexOutOfBoundsException", length);
+        RETURN->v_string = NULL;
+        return;
+    }
+    
+    Chuck_String * ss = (Chuck_String *) instantiate_and_initialize_object(&t_string, SHRED);
+    ss->str = str->str.substr(start, length);
+    
+    RETURN->v_string = ss;
+}
+
+CK_DLL_MFUN(string_insert)
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    t_CKINT position = GET_NEXT_INT(ARGS);
+    Chuck_String * str2 = GET_NEXT_STRING(ARGS);
+    
+    if(position < 0 || position >= str->str.length())
+    {
+        throw_exception(SHRED, "IndexOutOfBoundsException", position);
+        return;
+    }
+    if(str2 == NULL)
+    {
+        throw_exception(SHRED, "NullPointerException");
+        return;
+    }
+
+
+    str->str.insert(position, str2->str);
+}
+
+CK_DLL_MFUN(string_replace)
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    t_CKINT position = GET_NEXT_INT(ARGS);
+    Chuck_String * str2 = GET_NEXT_STRING(ARGS);
+    
+    if(position < 0 || position >= str->str.length())
+    {
+        throw_exception(SHRED, "IndexOutOfBoundsException", position);
+        return;
+    }
+    if(str2 == NULL)
+    {
+        throw_exception(SHRED, "NullPointerException");
+        return;
+    }
+
+    string::size_type length;
+    if(position + str2->str.length() > str->str.length())
+        length = str->str.length() - position;
+    else
+        length = str2->str.length();
+    
+    str->str.replace(position, length, str2->str);
+}
+
+CK_DLL_MFUN(string_replaceN)
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    t_CKINT position = GET_NEXT_INT(ARGS);
+    t_CKINT length = GET_NEXT_INT(ARGS);
+    Chuck_String * str2 = GET_NEXT_STRING(ARGS);
+
+    if(position < 0 || position >= str->str.length())
+    {
+        throw_exception(SHRED, "IndexOutOfBoundsException", position);
+        return;
+    }
+
+    if(length < 0 || position+length > str->str.length())
+    {
+        throw_exception(SHRED, "IndexOutOfBoundsException", length);
+        return;
+    }
+
+    if(str2 == NULL)
+    {
+        throw_exception(SHRED, "NullPointerException");
+        return;
+    }
+
+    str->str.replace(position, length, str2->str);
+}
+
+CK_DLL_MFUN(string_find)
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    t_CKINT the_char = GET_NEXT_INT(ARGS);
+    
+    string::size_type index = str->str.find(the_char);
+    
+    if(index == string::npos)
+        RETURN->v_int = -1;
+    else
+        RETURN->v_int = index;
+}
+
+CK_DLL_MFUN(string_findStart)
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    t_CKINT the_char = GET_NEXT_INT(ARGS);
+    t_CKINT start = GET_NEXT_INT(ARGS);
+    
+    if(start < 0 || start >= str->str.length())
+    {
+        throw_exception(SHRED, "IndexOutOfBoundsException", start);
+        RETURN->v_int = -1;
+        return;
+    }
+
+    string::size_type index = str->str.find(the_char, start);
+    
+    if(index == string::npos)
+        RETURN->v_int = -1;
+    else
+        RETURN->v_int = index;
+}
+
+CK_DLL_MFUN(string_findStr)
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    Chuck_String * the_str = GET_NEXT_STRING(ARGS);
+    
+    string::size_type index = str->str.find(the_str->str);
+    
+    if(index == string::npos)
+        RETURN->v_int = -1;
+    else
+        RETURN->v_int = index;
+}
+
+CK_DLL_MFUN(string_findStrStart)
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    Chuck_String * the_str = GET_NEXT_STRING(ARGS);
+    t_CKINT start = GET_NEXT_INT(ARGS);
+    
+    if(start < 0 || start >= str->str.length())
+    {
+        throw_exception(SHRED, "IndexOutOfBoundsException", start);
+        RETURN->v_int = -1;
+        return;
+    }
+    
+    string::size_type index = str->str.find(the_str->str, start);
+    
+    if(index == string::npos)
+        RETURN->v_int = -1;
+    else
+        RETURN->v_int = index;
+}
+
+CK_DLL_MFUN(string_rfind)
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    t_CKINT the_char = GET_NEXT_INT(ARGS);
+    
+    string::size_type index = str->str.rfind(the_char);
+    
+    if(index == string::npos)
+        RETURN->v_int = -1;
+    else
+        RETURN->v_int = index;
+}
+
+CK_DLL_MFUN(string_rfindStart)
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    t_CKINT the_char = GET_NEXT_INT(ARGS);
+    t_CKINT start = GET_NEXT_INT(ARGS);
+    
+    if(start < 0 || start >= str->str.length())
+    {
+        throw_exception(SHRED, "IndexOutOfBoundsException", start);
+        RETURN->v_int = -1;
+        return;
+    }
+    
+    string::size_type index = str->str.rfind(the_char, start);
+    
+    if(index == string::npos)
+        RETURN->v_int = -1;
+    else
+        RETURN->v_int = index;
+}
+
+CK_DLL_MFUN(string_rfindStr)
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    Chuck_String * the_str = GET_NEXT_STRING(ARGS);
+    
+    string::size_type index = str->str.rfind(the_str->str);
+    
+    if(index == string::npos)
+        RETURN->v_int = -1;
+    else
+        RETURN->v_int = index;
+}
+
+CK_DLL_MFUN(string_rfindStrStart)
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    Chuck_String * the_str = GET_NEXT_STRING(ARGS);
+    t_CKINT start = GET_NEXT_INT(ARGS);
+    
+    if(start < 0 || start >= str->str.length())
+    {
+        throw_exception(SHRED, "IndexOutOfBoundsException", start);
+        RETURN->v_int = -1;
+        return;
+    }
+    
+    string::size_type index = str->str.rfind(the_str->str, start);
+    
+    if(index == string::npos)
+        RETURN->v_int = -1;
+    else
+        RETURN->v_int = index;
+}
+
+CK_DLL_MFUN(string_erase)
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    t_CKINT start = GET_NEXT_INT(ARGS);
+    t_CKINT length = GET_NEXT_INT(ARGS);
+    
+    if(start < 0 || start >= str->str.length())
+    {
+        throw_exception(SHRED, "IndexOutOfBoundsException", start);
+        return;
+    }
+    
+    if(length < 0 || start+length > str->str.length())
+    {
+        throw_exception(SHRED, "IndexOutOfBoundsException", length);
+        return;
+    }
+    
+    str->str.erase(start, length);
+}
+
+CK_DLL_MFUN( string_toInt )
+{
+    // get pointer to self
+    Chuck_String * str = (Chuck_String *)SELF;
+    // convert to int
+    RETURN->v_int = ::atoi( str->str.c_str() );
+}
+
+CK_DLL_MFUN( string_toFloat )
+{
+    // get pointer to self
+    Chuck_String * str = (Chuck_String *)SELF;
+    // convert to int
+    RETURN->v_float = (t_CKFLOAT)::atof( str->str.c_str() );
+}
+
+CK_DLL_MFUN( string_parent )
+{
+    Chuck_String * str = (Chuck_String *) SELF;
+    
+    string::size_type i = str->str.rfind('/', str->str.length()-2);
+#ifdef WIN32
+    // SPENCERTODO: make this legit on windows
+    if(i == string::npos)
+        i = str->str.rfind('\\', str->str.length()-2);
+#endif // WIN32
+    
+    Chuck_String * parent = (Chuck_String *) instantiate_and_initialize_object(&t_string, SHRED);
+    
+    if(i != string::npos)
+    {
+        if(i == 0)
+            parent->str = "/";
+        else
+            parent->str = str->str.substr(0, i);
+    }
+    
+    RETURN->v_string = parent;
+}
+
 /*
 CK_DLL_MFUN( string_set_at )
 {
@@ -1576,9 +3661,28 @@ CK_DLL_MFUN( string_get_at )
 
 
 // array.size()
-CK_DLL_MFUN( array_size )
+CK_DLL_MFUN( array_get_size )
 {
     Chuck_Array * array = (Chuck_Array *)SELF;
+    RETURN->v_int = array->size();
+}
+
+// array.size()
+CK_DLL_MFUN( array_set_size )
+{
+    Chuck_Array * array = (Chuck_Array *)SELF;
+    t_CKINT size = GET_NEXT_INT(ARGS);
+    if( size < 0 )
+    {
+        // TODO: make this exception
+        fprintf( stderr, "[chuck](via array): attempt to set negative array size!\n" );
+        RETURN->v_int = 0;
+    }
+    else
+    {
+        array->set_size( size );
+        RETURN->v_int = array->size();
+    }
     RETURN->v_int = array->size();
 }
 
@@ -1587,6 +3691,15 @@ CK_DLL_MFUN( array_clear )
 {
     Chuck_Array * array = (Chuck_Array *)SELF;
     array->clear();
+}
+
+// array.reset()
+CK_DLL_MFUN( array_reset )
+{
+    Chuck_Array * array = (Chuck_Array *)SELF;
+    array->clear();
+    // default capacity
+    array->set_capacity( 8 );
 }
 
 // array.cap()
@@ -1608,6 +3721,13 @@ CK_DLL_MFUN( array_set_capacity )
 }
 
 // array.cap()
+CK_DLL_MFUN( array_get_capacity_hack )
+{
+    Chuck_Array * array = (Chuck_Array *)SELF;
+    RETURN->v_int = array->size();
+}
+
+// array.capacity()
 CK_DLL_MFUN( array_get_capacity )
 {
     Chuck_Array * array = (Chuck_Array *)SELF;
@@ -1634,22 +3754,34 @@ CK_DLL_MFUN( array_erase )
 CK_DLL_MFUN( array_push_back )
 {
     Chuck_Array * array = (Chuck_Array *)SELF;
-    if( array->data_type_size() == CHUCK_ARRAY4_DATASIZE )
+    // ISSUE: 64-bit (fixed 1.3.1.0 using data kind)
+    if( array->data_type_kind() == CHUCK_ARRAY4_DATAKIND )
         RETURN->v_int = ((Chuck_Array4 *)array)->push_back( GET_NEXT_UINT( ARGS ) );
-    else 
-        RETURN->v_float = ((Chuck_Array8 *)array)->push_back( GET_NEXT_FLOAT( ARGS ) );
+    else if( array->data_type_kind() == CHUCK_ARRAY8_DATAKIND )
+        RETURN->v_int = ((Chuck_Array8 *)array)->push_back( GET_NEXT_FLOAT( ARGS ) );
+    else if( array->data_type_kind() == CHUCK_ARRAY16_DATAKIND )
+        RETURN->v_int = ((Chuck_Array16 *)array)->push_back( GET_NEXT_COMPLEX( ARGS ) );
+    else
+        assert( FALSE );
 }
 
 // array.pop_back()
 CK_DLL_MFUN( array_pop_back )
 {
     Chuck_Array * array = (Chuck_Array *)SELF;
-    if( array->data_type_size() == CHUCK_ARRAY4_DATASIZE )
+    // ISSUE: 64-bit (fixed 1.3.1.0 using data kind)
+    if( array->data_type_kind() == CHUCK_ARRAY4_DATAKIND )
         RETURN->v_int = ((Chuck_Array4 *)array)->pop_back( );
-    else 
-        RETURN->v_float = ((Chuck_Array8 *)array)->pop_back( );
+    else if( array->data_type_kind() == CHUCK_ARRAY8_DATAKIND )
+        RETURN->v_int = ((Chuck_Array8 *)array)->pop_back( );
+    else if( array->data_type_kind() == CHUCK_ARRAY16_DATAKIND )
+        RETURN->v_int = ((Chuck_Array16 *)array)->pop_back( );
+    else
+        assert( FALSE );
 }
 
+
+#ifndef __DISABLE_MIDI__
 
 //-----------------------------------------------------------------------------
 // MidiIn API
@@ -1672,6 +3804,13 @@ CK_DLL_MFUN( MidiIn_open )
     MidiIn * min = (MidiIn *)OBJ_MEMBER_INT(SELF, MidiIn_offset_data);
     t_CKINT port = GET_CK_INT(ARGS);
     RETURN->v_int = min->open( port );
+}
+
+CK_DLL_MFUN( MidiIn_open_named ) // added 1.3.0.0
+{
+    MidiIn * min = (MidiIn *)OBJ_MEMBER_INT(SELF, MidiIn_offset_data);
+    Chuck_String * name = GET_CK_STRING(ARGS);
+    RETURN->v_int = min->open( name->str );
 }
 
 CK_DLL_MFUN( MidiIn_good )
@@ -1747,6 +3886,13 @@ CK_DLL_MFUN( MidiOut_open )
     RETURN->v_int = mout->open( port );
 }
 
+CK_DLL_MFUN( MidiOut_open_named ) // added 1.3.0.0
+{
+    MidiOut * mout = (MidiOut *)OBJ_MEMBER_INT(SELF, MidiOut_offset_data);
+    Chuck_String * name = GET_CK_STRING(ARGS);
+    RETURN->v_int = mout->open( name->str );
+}
+
 CK_DLL_MFUN( MidiOut_good )
 {
     MidiOut * mout = (MidiOut *)OBJ_MEMBER_INT(SELF, MidiOut_offset_data);
@@ -1788,6 +3934,7 @@ CK_DLL_MFUN( MidiOut_send )
     RETURN->v_int = mout->send( &the_msg );
 }
 
+#endif // __DISABLE_MIDI__
 
 
 //-----------------------------------------------------------------------------
@@ -1850,7 +3997,15 @@ CK_DLL_MFUN( HidIn_open )
     HidIn * min = (HidIn *)OBJ_MEMBER_INT(SELF, HidIn_offset_data);
     t_CKINT type = GET_NEXT_INT(ARGS);
     t_CKINT num = GET_NEXT_INT(ARGS);
+    // fprintf(stderr, "HidIn_open %li %li\n", type, num);
     RETURN->v_int = min->open( type, num );
+}
+
+CK_DLL_MFUN( HidIn_open_named )
+{
+    HidIn * min = (HidIn *)OBJ_MEMBER_INT(SELF, HidIn_offset_data);
+    Chuck_String * name = GET_NEXT_STRING(ARGS);
+    RETURN->v_int = min->open( name->str );
 }
 
 CK_DLL_MFUN( HidIn_open_joystick )
@@ -1950,7 +4105,12 @@ CK_DLL_MFUN( HidIn_recv )
         // accelerometer (tilt sensor, wii remote) specific members
         OBJ_MEMBER_INT(fake_msg, HidMsg_offset_x) = the_msg.idata[0];
         OBJ_MEMBER_INT(fake_msg, HidMsg_offset_y) = the_msg.idata[1];
-        OBJ_MEMBER_INT(fake_msg, HidMsg_offset_z) = the_msg.idata[2];        
+        OBJ_MEMBER_INT(fake_msg, HidMsg_offset_z) = the_msg.idata[2];
+        
+        // multitouch stuff - added 1.3.0.0
+        OBJ_MEMBER_FLOAT(fake_msg, HidMsg_offset_touchx) = the_msg.fdata[0];
+        OBJ_MEMBER_FLOAT(fake_msg, HidMsg_offset_touchy) = the_msg.fdata[1];
+        OBJ_MEMBER_FLOAT(fake_msg, HidMsg_offset_touchsize) = the_msg.fdata[2];
     }
 }
 
@@ -2033,6 +4193,8 @@ CK_DLL_SFUN( HidIn_read_tilt_sensor )
     array->set( 1, 0 );
     array->set( 2, 0 );
     
+    // TODO: reference count?
+    array->add_ref();
     RETURN->v_object = array;
     
     if( hi_good == FALSE )
@@ -2058,6 +4220,46 @@ CK_DLL_SFUN( HidIn_read_tilt_sensor )
     array->set( 0, msg.idata[0] );
     array->set( 1, msg.idata[1] );
     array->set( 2, msg.idata[2] );
+}
+
+CK_DLL_SFUN( HidIn_ctrl_tiltPollRate )
+{
+    // get srate
+    if( !SHRED || !SHRED->vm_ref )
+    {
+        // problem
+        fprintf( stderr, "[chuck](via HID): can't set tiltPollRate on NULL shred/VM...\n" );
+        RETURN->v_dur = 0;
+        return;
+    }
+    t_CKFLOAT srate = SHRED->vm_ref->srate();
+    
+    // get arg
+    t_CKDUR v = GET_NEXT_DUR( ARGS );
+    
+    // get in microseconds
+    t_CKINT usec = (t_CKINT)( v / srate * 1000000 );
+    
+    // make sure it's nonnegative
+    if( usec < 0 ) usec = 0;
+    
+    // go
+    RETURN->v_dur = TiltSensor_setPollRate( usec ) * srate / 1000000;
+}
+
+CK_DLL_SFUN( HidIn_cget_tiltPollRate )
+{
+    // get srate
+    if( !SHRED || !SHRED->vm_ref )
+    {
+        // problem
+        fprintf( stderr, "[chuck](via HID): can't get tiltPollRate on NULL shred/VM...\n" );
+        RETURN->v_dur = 0;
+        return;
+    }
+    t_CKFLOAT srate = SHRED->vm_ref->srate();
+    
+    RETURN->v_dur = TiltSensor_getPollRate() * srate / 1000000;
 }
 
 CK_DLL_SFUN( HidIn_start_cursor_track )
@@ -2105,7 +4307,7 @@ CK_DLL_MFUN( HidOut_num )
 
 CK_DLL_MFUN( HidOut_name )
 {
-    HidOut * mout = (HidOut *)OBJ_MEMBER_INT(SELF, HidOut_offset_data);
+    // HidOut * mout = (HidOut *)OBJ_MEMBER_INT(SELF, HidOut_offset_data);
     // TODO: memory leak, please fix, Thanks.
     Chuck_String * a = (Chuck_String *)instantiate_and_initialize_object( &t_string, NULL );
     // only if valid
@@ -2124,14 +4326,13 @@ CK_DLL_MFUN( HidOut_printerr )
 CK_DLL_MFUN( HidOut_send )
 {
     HidOut * mout = (HidOut *)OBJ_MEMBER_INT(SELF, HidOut_offset_data);
-    Chuck_Object * fake_msg = GET_CK_OBJECT(ARGS);
+    // Chuck_Object * fake_msg = GET_CK_OBJECT(ARGS);
     HidMsg the_msg;
-/*    the_msg.data[0] = (t_CKBYTE)OBJ_MEMBER_INT(fake_msg, HidMsg_offset_data1);
-    the_msg.data[1] = (t_CKBYTE)OBJ_MEMBER_INT(fake_msg, HidMsg_offset_data2);
-    the_msg.data[2] = (t_CKBYTE)OBJ_MEMBER_INT(fake_msg, HidMsg_offset_data3);
-*/    RETURN->v_int = mout->send( &the_msg );
+    // the_msg.data[0] = (t_CKBYTE)OBJ_MEMBER_INT(fake_msg, HidMsg_offset_data1);
+    // the_msg.data[1] = (t_CKBYTE)OBJ_MEMBER_INT(fake_msg, HidMsg_offset_data2);
+    // the_msg.data[2] = (t_CKBYTE)OBJ_MEMBER_INT(fake_msg, HidMsg_offset_data3);
+    RETURN->v_int = mout->send( &the_msg );
 }
-
 
 
 //-----------------------------------------------------------------------------
@@ -2139,30 +4340,39 @@ CK_DLL_MFUN( HidOut_send )
 //-----------------------------------------------------------------------------
 CK_DLL_CTOR( MidiRW_ctor )
 {
+#ifndef __DISABLE_MIDI__
     OBJ_MEMBER_INT(SELF, MidiRW_offset_data) = (t_CKUINT)new MidiRW;
+#endif // __DISABLE_MIDI__
 }
 
 CK_DLL_DTOR( MidiRW_dtor )
 {
+#ifndef __DISABLE_MIDI__
     delete (MidiRW *)OBJ_MEMBER_INT(SELF, MidiRW_offset_data);
     OBJ_MEMBER_INT(SELF, MidiRW_offset_data) = 0;
+#endif // __DISABLE_MIDI__
 }
 
 CK_DLL_MFUN( MidiRW_open )
 {
+#ifndef __DISABLE_MIDI__
     MidiRW * mrw = (MidiRW *)OBJ_MEMBER_INT(SELF, MidiRW_offset_data);
     const char * filename = GET_CK_STRING(ARGS)->str.c_str();
     RETURN->v_int = mrw->open( filename );
+#endif // __DISABLE_MIDI__
 }
 
 CK_DLL_MFUN( MidiRW_close )
 {
+#ifndef __DISABLE_MIDI__
     MidiRW * mrw = (MidiRW *)OBJ_MEMBER_INT(SELF, MidiRW_offset_data);
     RETURN->v_int = mrw->close();
+#endif // __DISABLE_MIDI__
 }
 
 CK_DLL_MFUN( MidiRW_read )
 {
+#ifndef __DISABLE_MIDI__
     MidiRW * mrw = (MidiRW *)OBJ_MEMBER_INT(SELF, MidiRW_offset_data);
     Chuck_Object * fake_msg = GET_NEXT_OBJECT(ARGS);
     MidiMsg the_msg;
@@ -2172,10 +4382,12 @@ CK_DLL_MFUN( MidiRW_read )
     OBJ_MEMBER_INT(fake_msg, MidiMsg_offset_data2) = the_msg.data[1];
     OBJ_MEMBER_INT(fake_msg, MidiMsg_offset_data3) = the_msg.data[2];
     OBJ_MEMBER_TIME(fake_msg, MidiMsg_offset_when) = time;
+#endif // __DISABLE_MIDI__
 }
 
 CK_DLL_MFUN( MidiRW_write )
 {
+#ifndef __DISABLE_MIDI__
     MidiRW * mrw = (MidiRW *)OBJ_MEMBER_INT(SELF, MidiRW_offset_data);
     Chuck_Object * fake_msg = GET_NEXT_OBJECT(ARGS);
     t_CKTIME time = GET_NEXT_TIME(ARGS);
@@ -2184,6 +4396,7 @@ CK_DLL_MFUN( MidiRW_write )
     the_msg.data[1] = (t_CKBYTE)OBJ_MEMBER_INT(fake_msg, MidiMsg_offset_data2);
     the_msg.data[2] = (t_CKBYTE)OBJ_MEMBER_INT(fake_msg, MidiMsg_offset_data3);
     RETURN->v_int = mrw->write( &the_msg, &time );
+#endif // __DISABLE_MIDI__
 }
 
 
@@ -2192,30 +4405,39 @@ CK_DLL_MFUN( MidiRW_write )
 //-----------------------------------------------------------------------------
 CK_DLL_CTOR( MidiMsgOut_ctor )
 {
+#ifndef __DISABLE_MIDI__
     OBJ_MEMBER_INT(SELF, MidiMsgOut_offset_data) = (t_CKUINT)new MidiMsgOut;
+#endif // __DISABLE_MIDI__
 }
 
 CK_DLL_DTOR( MidiMsgOut_dtor )
 {
+#ifndef __DISABLE_MIDI__
     delete (MidiMsgOut *)OBJ_MEMBER_INT(SELF, MidiMsgOut_offset_data);
     OBJ_MEMBER_INT(SELF, MidiMsgOut_offset_data) = 0;
+#endif // __DISABLE_MIDI__
 }
 
 CK_DLL_MFUN( MidiMsgOut_open )
 {
+#ifndef __DISABLE_MIDI__
     MidiMsgOut * mrw = (MidiMsgOut *)OBJ_MEMBER_INT(SELF, MidiMsgOut_offset_data);
     const char * filename = GET_CK_STRING(ARGS)->str.c_str();
     RETURN->v_int = mrw->open( filename );
+#endif // __DISABLE_MIDI__
 }
 
 CK_DLL_MFUN( MidiMsgOut_close )
 {
+#ifndef __DISABLE_MIDI__
     MidiMsgOut * mrw = (MidiMsgOut *)OBJ_MEMBER_INT(SELF, MidiMsgOut_offset_data);
     RETURN->v_int = mrw->close();
+#endif // __DISABLE_MIDI__
 }
 
 CK_DLL_MFUN( MidiMsgOut_write )
 {
+#ifndef __DISABLE_MIDI__
     MidiMsgOut * mrw = (MidiMsgOut *)OBJ_MEMBER_INT(SELF, MidiMsgOut_offset_data);
     Chuck_Object * fake_msg = GET_NEXT_OBJECT(ARGS);
     t_CKTIME time = GET_NEXT_TIME(ARGS);
@@ -2224,6 +4446,7 @@ CK_DLL_MFUN( MidiMsgOut_write )
     the_msg.data[1] = (t_CKBYTE)OBJ_MEMBER_INT(fake_msg, MidiMsg_offset_data2);
     the_msg.data[2] = (t_CKBYTE)OBJ_MEMBER_INT(fake_msg, MidiMsg_offset_data3);
     RETURN->v_int = mrw->write( &the_msg, &time );
+#endif // __DISABLE_MIDI__
 }
 
 
@@ -2232,30 +4455,39 @@ CK_DLL_MFUN( MidiMsgOut_write )
 //-----------------------------------------------------------------------------
 CK_DLL_CTOR( MidiMsgIn_ctor )
 {
+#ifndef __DISABLE_MIDI__
     OBJ_MEMBER_INT(SELF, MidiMsgIn_offset_data) = (t_CKUINT)new MidiMsgIn;
+#endif // __DISABLE_MIDI__
 }
 
 CK_DLL_DTOR( MidiMsgIn_dtor )
 {
+#ifndef __DISABLE_MIDI__
     delete (MidiMsgIn *)OBJ_MEMBER_INT(SELF, MidiMsgIn_offset_data);
     OBJ_MEMBER_INT(SELF, MidiMsgIn_offset_data) = 0;
+#endif // __DISABLE_MIDI__
 }
 
 CK_DLL_MFUN( MidiMsgIn_open )
 {
+#ifndef __DISABLE_MIDI__
     MidiMsgIn * mrw = (MidiMsgIn *)OBJ_MEMBER_INT(SELF, MidiMsgIn_offset_data);
     const char * filename = GET_CK_STRING(ARGS)->str.c_str();
     RETURN->v_int = mrw->open( filename );
+#endif // __DISABLE_MIDI__
 }
 
 CK_DLL_MFUN( MidiMsgIn_close )
 {
+#ifndef __DISABLE_MIDI__
     MidiMsgIn * mrw = (MidiMsgIn *)OBJ_MEMBER_INT(SELF, MidiMsgIn_offset_data);
     RETURN->v_int = mrw->close();
+#endif // __DISABLE_MIDI__
 }
 
 CK_DLL_MFUN( MidiMsgIn_read )
 {
+#ifndef __DISABLE_MIDI__
     MidiMsgIn * mrw = (MidiMsgIn *)OBJ_MEMBER_INT(SELF, MidiMsgIn_offset_data);
     Chuck_Object * fake_msg = GET_NEXT_OBJECT(ARGS);
     MidiMsg the_msg;
@@ -2265,120 +4497,5 @@ CK_DLL_MFUN( MidiMsgIn_read )
     OBJ_MEMBER_INT(fake_msg, MidiMsg_offset_data2) = the_msg.data[1];
     OBJ_MEMBER_INT(fake_msg, MidiMsg_offset_data3) = the_msg.data[2];
     OBJ_MEMBER_TIME(fake_msg, MidiMsg_offset_when) = time;
+#endif // __DISABLE_MIDI__
 }
-
-
-/*//-----------------------------------------------------------------------------
-// SkiniIn API
-//-----------------------------------------------------------------------------
-CK_DLL_CTOR( SkiniIn_ctor )
-{
-    SkiniIn * skin = new SkiniIn;
-//  skin->SELF = SELF;
-    OBJ_MEMBER_INT(SELF, SkiniIn_offset_data) = (t_CKINT)skin;
-}
-
-CK_DLL_DTOR( SkiniIn_dtor )
-{
-    delete (SkiniIn *)OBJ_MEMBER_INT(SELF, SkiniIn_offset_data);
-}
-
-CK_DLL_MFUN( SkiniIn_open )
-{
-    SkiniIn * skin = (SkiniIn *)OBJ_MEMBER_INT(SELF, SkiniIn_offset_data);
-    const char * filename = GET_CK_STRING(ARGS)->str.c_str();
-    RETURN->v_int = skin->open( filename );
-}
-
-CK_DLL_MFUN( SkiniIn_recv )
-{
-    SkiniIn * skin = (SkiniIn *)OBJ_MEMBER_INT(SELF, SkiniIn_offset_data);
-    Chuck_Object * fake_msg = GET_CK_OBJECT(ARGS);
-    SkiniMsg the_msg;
-    RETURN->v_int = skin->recv( &the_msg );
-    if( RETURN->v_int )
-    {
-        OBJ_MEMBER_INT( fake_msg, SkiniMsg_offset_type ) = the_msg.type;
-        OBJ_MEMBER_FLOAT( fake_msg, SkiniMsg_offset_time ) = the_msg.time;
-        OBJ_MEMBER_INT( fake_msg, SkiniMsg_offset_channel ) = the_msg.channel;
-        OBJ_MEMBER_FLOAT( fake_msg, SkiniMsg_offset_data1 ) = the_msg.data1;
-        OBJ_MEMBER_FLOAT( fake_msg, SkiniMsg_offset_data2 ) = the_msg.data2;
-    }
-}
-
-
-//-----------------------------------------------------------------------------
-// SkiniOut API
-//-----------------------------------------------------------------------------
-CK_DLL_CTOR( SkiniOut_ctor )
-{
-    OBJ_MEMBER_INT(SELF, SkiniOut_offset_data) = (t_CKUINT)new SkiniOut;
-}
-
-CK_DLL_DTOR( SkiniOut_dtor )
-{
-    delete (SkiniOut *)OBJ_MEMBER_INT(SELF, SkiniOut_offset_data);
-}
-
-CK_DLL_MFUN( SkiniOut_open )
-{
-    SkiniOut * sout = (SkiniOut *)OBJ_MEMBER_INT(SELF, SkiniOut_offset_data);
-    const char * filename = GET_CK_STRING(ARGS)->str.c_str();
-    RETURN->v_int = sout->open( filename );
-}
-
-CK_DLL_MFUN( SkiniOut_send )
-{
-    SkiniOut * sout = (SkiniOut *)OBJ_MEMBER_INT(SELF, SkiniOut_offset_data);
-    Chuck_Object * fake_msg = GET_CK_OBJECT(ARGS);
-    SkiniMsg the_msg;
-    
-    the_msg.type = OBJ_MEMBER_INT( fake_msg, SkiniMsg_offset_type );
-    the_msg.time = OBJ_MEMBER_FLOAT( fake_msg, SkiniMsg_offset_time );
-    the_msg.channel = OBJ_MEMBER_INT( fake_msg, SkiniMsg_offset_channel );
-    the_msg.data1 = OBJ_MEMBER_FLOAT( fake_msg, SkiniMsg_offset_data1 );
-    the_msg.data2 = OBJ_MEMBER_FLOAT( fake_msg, SkiniMsg_offset_data2 );
-
-    //the_msg.data[0] = (t_CKBYTE)OBJ_MEMBER_INT(fake_msg, SkiniMsg_offset_data1);
-    //the_msg.data[1] = (t_CKBYTE)OBJ_MEMBER_INT(fake_msg, SkiniMsg_offset_data2);
-    //the_msg.data[2] = (t_CKBYTE)OBJ_MEMBER_INT(fake_msg, SkiniMsg_offset_data3);
-    
-    RETURN->v_int = sout->send( &the_msg );
-}
-*/
-
-/*
-//-----------------------------------------------------------------------------
-// name: lang_query()
-// desc: query entry point
-//-----------------------------------------------------------------------------
-DLL_QUERY lang_query( Chuck_DL_Query * QUERY )
-{
-    QUERY->setname( QUERY, "Lang" );
-
-    // class
-    QUERY->begin_class( QUERY, "Object", "" );
-    
-    // add ctor
-    QUERY->add_ctor( QUERY, object_ctor );
-
-    // add dtor
-    QUERY->add_dtor( QUERY, object_dtor );
-
-    // add setTestID
-    QUERY->add_mfun( QUERY, object_setTestID, "void", "setTestID" );
-    QUERY->add_arg( QUERY, "int", "value" );
-
-    // add getTestID
-    QUERY->add_mfun( QUERY, object_getTestID, "int", "getTestID" );
-
-    // add toString
-    //! return string that represents the value of the object
-    // QUERY->add_mfun( QUERY, object_toString, "string", "toString" );
-    
-    // end class
-    QUERY->end_class( QUERY );
-
-    return TRUE;
-}
-*/

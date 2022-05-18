@@ -1,33 +1,32 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // file: chuck_scan.cpp
 // desc: chuck type-system / type-checker pre-scan
 //
-// author: Ge Wang (gewang@cs.princeton.edu)
-//         Perry R. Cook (prc@cs.princeton.edu)
+// author: Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
 // date: Summer 2005 - original
 //-----------------------------------------------------------------------------
 #include "chuck_type.h"
@@ -62,6 +61,7 @@ t_CKBOOL type_engine_scan1_exp_binary( Chuck_Env * env, a_Exp_Binary binary );
 t_CKBOOL type_engine_scan1_op( Chuck_Env * env, ae_Operator op, a_Exp lhs, a_Exp rhs, a_Exp_Binary binary );
 t_CKBOOL type_engine_scan1_op_chuck( Chuck_Env * env, a_Exp lhs, a_Exp rhs, a_Exp_Binary binary );
 t_CKBOOL type_engine_scan1_op_unchuck( Chuck_Env * env, a_Exp lhs, a_Exp rhs );
+t_CKBOOL type_engine_scan1_op_upchuck( Chuck_Env * env, a_Exp lhs, a_Exp rhs );
 t_CKBOOL type_engine_scan1_op_at_chuck( Chuck_Env * env, a_Exp lhs, a_Exp rhs );
 t_CKBOOL type_engine_scan1_exp_unary( Chuck_Env * env, a_Exp_Unary unary );
 t_CKBOOL type_engine_scan1_exp_primary( Chuck_Env * env, a_Exp_Primary exp );
@@ -98,6 +98,7 @@ t_CKBOOL type_engine_scan2_exp_binary( Chuck_Env * env, a_Exp_Binary binary );
 t_CKBOOL type_engine_scan2_op( Chuck_Env * env, ae_Operator op, a_Exp lhs, a_Exp rhs, a_Exp_Binary binary );
 t_CKBOOL type_engine_scan2_op_chuck( Chuck_Env * env, a_Exp lhs, a_Exp rhs, a_Exp_Binary binary );
 t_CKBOOL type_engine_scan2_op_unchuck( Chuck_Env * env, a_Exp lhs, a_Exp rhs );
+t_CKBOOL type_engine_scan2_op_upchuck( Chuck_Env * env, a_Exp lhs, a_Exp rhs );
 t_CKBOOL type_engine_scan2_op_at_chuck( Chuck_Env * env, a_Exp lhs, a_Exp rhs );
 t_CKBOOL type_engine_scan2_exp_unary( Chuck_Env * env, a_Exp_Unary unary );
 t_CKBOOL type_engine_scan2_exp_primary( Chuck_Env * env, a_Exp_Primary exp );
@@ -172,7 +173,7 @@ t_CKBOOL type_engine_scan0_prog( Chuck_Env * env, a_Program prog,
                 }
 
                 // make global
-                prog->section->class_def->home = env->global();
+                prog->section->class_def->home = env->user();
                 // remember
                 env->context->public_class_def = prog->section->class_def;
             }
@@ -907,6 +908,18 @@ t_CKBOOL type_engine_scan1_op_chuck( Chuck_Env * env, a_Exp lhs, a_Exp rhs,
 // desc: ...
 //-----------------------------------------------------------------------------
 t_CKBOOL type_engine_scan1_op_unchuck( Chuck_Env * env, a_Exp lhs, a_Exp rhs )
+{
+    return TRUE;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: type_engine_scan1_op_upchuck()
+// desc: ...
+//-----------------------------------------------------------------------------
+t_CKBOOL type_engine_scan1_op_upchuck( Chuck_Env * env, a_Exp lhs, a_Exp rhs )
 {
     return TRUE;
 }
@@ -1944,6 +1957,18 @@ t_CKBOOL type_engine_scan2_op_unchuck( Chuck_Env * env, a_Exp lhs, a_Exp rhs )
 
 
 //-----------------------------------------------------------------------------
+// name: type_engine_scan2_op_upchuck()
+// desc: ...
+//-----------------------------------------------------------------------------
+t_CKBOOL type_engine_scan2_op_upchuck( Chuck_Env * env, a_Exp lhs, a_Exp rhs )
+{
+    return TRUE;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
 // name: type_engine_scan2_op_at_chuck()
 // desc: ...
 //-----------------------------------------------------------------------------
@@ -2653,7 +2678,7 @@ t_CKBOOL type_engine_scan2_func_def( Chuck_Env * env, a_Func_Def f )
     if( !overload )
     {
         env->curr->value.add( orig_name, value );
-        env->curr->func.add( func->name, func );
+        env->curr->func.add( orig_name, func );
     }
 
     // if overload

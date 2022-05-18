@@ -1,33 +1,32 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // file: chuck_absyn.cpp
-// desc: ...
+// desc: chuck abstract syntax
 //
-// author: Ge Wang (gewang@cs.princeton.edu)
-//         Perry R. Cook (prc@cs.princeton.edu)
+// author: Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
 // date: Autumn 2002
 //-----------------------------------------------------------------------------
 #include <stdlib.h>
@@ -494,7 +493,21 @@ a_Exp new_exp_from_str( c_str str, int pos )
     a->linepos = pos;
     a->primary.linepos = pos;
     a->primary.self = a;
+    
+    return a;
+}
 
+a_Exp new_exp_from_char( c_str chr, int pos )
+{
+    a_Exp a = (a_Exp)checked_malloc( sizeof( struct a_Exp_ ) );
+    a->s_type = ae_exp_primary;
+    a->s_meta = ae_meta_value;
+    a->primary.s_type = ae_primary_char;
+    a->primary.chr = chr;
+    a->linepos = pos;
+    a->primary.linepos = pos;
+    a->primary.self = a;
+    
     return a;
 }
 
@@ -552,6 +565,36 @@ a_Exp new_exp_from_hack( a_Exp exp, int pos )
     a->primary.exp = exp;
     a->primary.linepos = pos;
     a->linepos = pos;
+    a->primary.self = a;
+
+    return a;
+}
+
+a_Exp new_exp_from_complex( a_Complex exp, int pos )
+{
+    a_Exp a = (a_Exp)checked_malloc( sizeof( struct a_Exp_ ) );
+    a->s_type = ae_exp_primary;
+    a->s_meta = ae_meta_value;
+    a->primary.s_type = ae_primary_complex;
+    a->primary.complex = exp;
+    a->primary.linepos = pos;
+    a->linepos = pos;
+    a->primary.complex->self = a;
+    a->primary.self = a;
+
+    return a;
+}
+
+a_Exp new_exp_from_polar( a_Polar exp, int pos )
+{
+    a_Exp a = (a_Exp)checked_malloc( sizeof( struct a_Exp_ ) );
+    a->s_type = ae_exp_primary;
+    a->s_meta = ae_meta_value;
+    a->primary.s_type = ae_primary_polar;
+    a->primary.polar = exp;
+    a->primary.linepos = pos;
+    a->linepos = pos;
+    a->primary.polar->self = a;
     a->primary.self = a;
 
     return a;
@@ -707,7 +750,7 @@ a_Class_Ext new_class_ext( a_Id_List extend_id, a_Id_List impl_list, int pos )
     return a;
 }
 
-a_Id_List new_id_list( c_str xid, int pos )
+a_Id_List new_id_list( c_constr xid, int pos )
 {
     a_Id_List a = (a_Id_List)checked_malloc( sizeof( struct a_Id_List_ ) );
     a->xid = insert_symbol( xid );
@@ -717,7 +760,7 @@ a_Id_List new_id_list( c_str xid, int pos )
     return a;
 }
 
-a_Id_List prepend_id_list( c_str xid, a_Id_List list, int pos )
+a_Id_List prepend_id_list( c_constr xid, a_Id_List list, int pos )
 {
     a_Id_List a = new_id_list( xid, pos );
     a->next = list;
@@ -799,6 +842,26 @@ a_Array_Sub prepend_array_sub( a_Array_Sub a, a_Exp exp, int pos )
     
 error:
     clean_exp( exp );
+    return a;
+}
+
+a_Complex new_complex( a_Exp re, int pos )
+{
+    a_Complex a = (a_Complex)checked_malloc( sizeof( struct a_Complex_ ) );
+    a->re = re;
+    if( re ) a->im = re->next;
+    a->linepos = pos;
+    
+    return a;
+}
+
+a_Polar new_polar( a_Exp mod, int pos )
+{
+    a_Polar a = (a_Polar)checked_malloc( sizeof( struct a_Polar_ ) );
+    a->mod = mod;
+    if( mod ) a->phase = mod->next;
+    a->linepos = pos;
+    
     return a;
 }
 

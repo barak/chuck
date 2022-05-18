@@ -1,39 +1,47 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // name: digiio_rtaudio.h
 // desc: digitalio over RtAudio (from Gary Scavone)
 //
-// author: Ge Wang (gewang@cs.princeton.edu)
-//         Perry R. Cook (prc@cs.princeton.edu)
+// author: Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
+//         Spencer Salazar (spencer@ccrma.stanford.edu)
+// RtAudio by: Gary Scavone
 // date: Spring 2004
 //-----------------------------------------------------------------------------
 #ifndef __DIGITAL_IO_H__
 #define __DIGITAL_IO_H__
 
 #include "chuck_def.h"
+#include <string>
+#ifndef __CHIP_MODE__
+#include "RtAudio/RtAudio.h"
+#else
+class RtAudio;
+typedef unsigned int RtAudioStreamStatus;
+#endif // __CHIP_MODE__
 
 
 
@@ -54,7 +62,7 @@
   #endif
 #define NUM_BUFFERS_DEFAULT          8
 #define NUM_CHANNELS_DEFAULT         2       // number of channels
-  #if defined(__LINUX_ALSA__ ) || defined(__LINUX_OSS__) || defined(__LINUX_JACK__)
+  #if defined(__PLATFORM__LINUX__)
 #define SAMPLING_RATE_DEFAULT        48000   // sampling rate
 #define USE_CB_DEFAULT               TRUE    // callback
   #else
@@ -104,36 +112,51 @@ struct Chuck_VM;
 class Digitalio
 {
 public:
-    static BOOL__ initialize( DWORD__ num_dac_channels = NUM_CHANNELS_DEFAULT,
-                              DWORD__ num_adc_channels = NUM_CHANNELS_DEFAULT,
-                              DWORD__ sampling_rate = SAMPLING_RATE_DEFAULT,
-                              DWORD__ bps = BITS_PER_SAMPLE_DEFAULT,
-                              DWORD__ buffer_size = BUFFER_SIZE_DEFAULT,
-                              DWORD__ num_buffers = NUM_BUFFERS_DEFAULT,
-                              DWORD__ block = TRUE,
-                              Chuck_VM * vm_ref = NULL,
-                              BOOL__  rt_audio = TRUE,
-                              void * callback = NULL, void * data = NULL );
+    static BOOL__ initialize( DWORD__ num_dac_channels,
+                              DWORD__ num_adc_channels,
+                              DWORD__ sampling_rate,
+                              DWORD__ bps,
+                              DWORD__ buffer_size,
+                              DWORD__ num_buffers,
+                              DWORD__ block,
+                              Chuck_VM * vm_ref,
+                              BOOL__ rt_audio,
+                              void * callback,
+                              void * data,
+                              // force_srate added 1.3.1.2
+                              BOOL__ force_srate );
     static BOOL__ watchdog_start();
     static BOOL__ watchdog_stop();
     static void shutdown();
     static void probe();
+    
+    static DWORD__ device_named( const std::string & name, t_CKBOOL needs_dac = FALSE, t_CKBOOL needs_adc = FALSE );
 
 public:
     static DWORD__ sampling_rate( ) { return m_sampling_rate; }
     static DWORD__ num_channels_out( ) { return m_num_channels_out; }
     static DWORD__ num_channels_in( ) { return m_num_channels_in; }
+    static DWORD__ dac_num( ) { return m_dac_n; }
+    static DWORD__ adc_num( ) { return m_adc_n; }
     static DWORD__ bps( ) { return m_bps; }
     static DWORD__ buffer_size( ) { return m_buffer_size; }
     static DWORD__ num_buffers( ) { return m_num_buffers; }
     static RtAudio * audio( ) { return m_rtaudio; }
     static BOOL__  start( );
     static BOOL__  stop( );
-    static BOOL__  tick( );
+    //static BOOL__  tick( );
     static void    set_extern( SAMPLE * in, SAMPLE * out )
                    { m_extern_in = in; m_extern_out = out; } 
-    static int cb( char * buffer, int buffer_size, void * user_data );
-    static int cb2( char * buffer, int buffer_size, void * user_data );
+    static int cb( void *output_buffer, void *input_buffer,
+                   unsigned int buffer_size,
+                   double streamTime,
+                   RtAudioStreamStatus status,
+                   void *user_data );
+    static int cb2( void *output_buffer, void *input_buffer,
+                    unsigned int buffer_size,
+                    double streamTime,
+                    RtAudioStreamStatus status,
+                    void *user_data );
 
 public: // data
     static BOOL__ m_init;

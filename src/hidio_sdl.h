@@ -1,25 +1,25 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
@@ -93,6 +93,7 @@ public:
 
 public:
     t_CKBOOL open( t_CKINT device_type, t_CKINT device_num );
+    t_CKBOOL open( std::string & name, t_CKUINT device_type = CK_HID_DEV_COUNT );
     t_CKBOOL close();
     t_CKBOOL read( t_CKINT type, t_CKINT num, HidMsg * msg );
     t_CKBOOL send( const HidMsg * msg );
@@ -127,6 +128,7 @@ public:
     static void init_default_drivers();
     static void cleanup();
     static t_CKBOOL open( HidIn * hin, t_CKINT device_type, t_CKINT device_num );
+    static t_CKBOOL open( HidIn * hin, t_CKINT device_type, std::string & device_name );
     static t_CKBOOL close( HidIn * hin );
     
     static void probeHidIn();
@@ -139,7 +141,9 @@ public:
 #endif
 
     static void push_message( HidMsg & msg );
-        
+    
+    static CBufferSimple * m_event_buffer;
+    
 protected:
     static std::vector< std::vector<PhyHidDevIn *> > the_matrix;
     static XThread * the_thread;
@@ -161,5 +165,7 @@ protected:
 
     static std::vector<PhyHidDevOut *> the_phouts;
 };
+
+extern Chuck_Hid_Driver * default_drivers;
 
 #endif

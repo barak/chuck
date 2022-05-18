@@ -143,6 +143,8 @@ long htol( c_str str )
     return n;
 }
 
+
+    
 // block comment hack (thanks to unput/yytext_ptr inconsistency)
 #define block_comment_hack loop: \
     while ((c = input()) != '*' && c != 0 && c != EOF ) \
@@ -163,11 +165,14 @@ long htol( c_str str )
        if (c == '\n') EM_newline(); \
     }
 
+// .*\-\->                 { adjust(); continue; }
+
 %}
 
 %%
 
 "//"                    { char c; adjust(); comment_hack; continue; }
+"<--"                   { char c; adjust(); comment_hack; continue; }
 "/*"                    { char c, c1; adjust(); block_comment_hack; continue; }
 " "                     { adjust(); continue; }
 "\t"                    { adjust(); continue; }
@@ -176,6 +181,8 @@ long htol( c_str str )
 
 "++"                    { adjust(); return PLUSPLUS; }
 "--"                    { adjust(); return MINUSMINUS; }
+"#("                    { adjust(); return POUNDPAREN; }
+"%("                    { adjust(); return PERCENTPAREN; }
 
 ","                     { adjust(); return COMMA; }
 ":"                     { adjust(); return COLON; }
@@ -246,6 +253,7 @@ typeof                  { adjust(); return TYPEOF; }
 "=>"                    { adjust(); return CHUCK; }
 "=<"                    { adjust(); return UNCHUCK; }
 "!=>"                   { adjust(); return UNCHUCK; }
+"=^"                    { adjust(); return UPCHUCK; }
 "@=>"                   { adjust(); return AT_CHUCK; }
 "+=>"                   { adjust(); return PLUS_CHUCK; }
 "-=>"                   { adjust(); return MINUS_CHUCK; }
@@ -259,6 +267,8 @@ typeof                  { adjust(); return TYPEOF; }
 "%=>"                   { adjust(); return PERCENT_CHUCK; }
 "@"                     { adjust(); return AT_SYM; }
 "@@"                    { adjust(); return ATAT_SYM; }
+"->"                    { adjust(); return ARROW_RIGHT; }
+"<-"                    { adjust(); return ARROW_LEFT; }
 
 0[xX][0-9a-fA-F]+{IS}?  { adjust(); yylval.ival=htol(yytext); return NUM; }
 0[cC][0-7]+{IS}?        { adjust(); yylval.ival=atoi(yytext); return NUM; }
@@ -266,6 +276,7 @@ typeof                  { adjust(); return TYPEOF; }
 ([0-9]+"."[0-9]*)|([0-9]*"."[0-9]+)   { adjust(); yylval.fval=atof(yytext); return FLOAT; }
 [A-Za-z_][A-Za-z0-9_]*  { adjust(); yylval.sval=alloc_str(yytext); return ID; }
 \"(\\.|[^\\"])*\"       { adjust(); yylval.sval=alloc_str(strip_lit(yytext)); return STRING_LIT; }
+'(\\.|[^\\'])'          { adjust(); yylval.sval=alloc_str(strip_lit(yytext)); return CHAR_LIT; }
 
 .                       { adjust(); EM_error( EM_tokPos, "illegal token" ); }
 

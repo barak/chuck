@@ -1,40 +1,50 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
-// file: digiio_rtaudio.cpp
-// desc: digitalio over rtaudio (from Gary Scavone)
+// name: digiio_rtaudio.cpp
+// desc: digitalio over RtAudio (from Gary Scavone)
 //
-// author: Ge Wang (gewang@cs.princeton.edu)
-//         Perry R. Cook (prc@cs.princeton.edu)
+// author: Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
+//         Spencer Salazar (spencer@ccrma.stanford.edu)
+// RtAudio by: Gary Scavone
+// date: Spring 2004
 //-----------------------------------------------------------------------------
 #include "digiio_rtaudio.h"
 #include "chuck_vm.h"
 #include "chuck_errmsg.h"
 #include "chuck_globals.h"
-#include "rtaudio.h"
+#include <limits.h>
+#ifndef __DISABLE_RTAUDIO__
+#include "RtAudio/RtAudio.h"
+#endif // __DISABLE_RTAUDIO__
+#if defined(__CHIP_MODE__)
+#include "momu/mo_audio.h"
+#endif // __CHIP_MODE__
+#ifndef __DISABLE_MIDI__
 #include "rtmidi.h"
+#endif // __DISABLE_MIDI__
 // #include <signal.h>
 #if (defined(__WINDOWS_DS__) || defined(__WINDOWS_ASIO__)) && !defined(__WINDOWS_PTHREAD__)
 #include <windows.h>
@@ -75,7 +85,7 @@ DWORD__ Digitalio::m_xrun = 0;
 
 
 // sample
-#if defined(CK_S_DOUBLE)
+#if defined(__CHUCK_USE_64_BIT_SAMPLE__)
 #define CK_RTAUDIO_FORMAT RTAUDIO_FLOAT64
 #else
 #define CK_RTAUDIO_FORMAT RTAUDIO_FLOAT32
@@ -84,11 +94,12 @@ DWORD__ Digitalio::m_xrun = 0;
 
 
 
+#ifndef __DISABLE_RTAUDIO__
 //-----------------------------------------------------------------------------
 // name: print()
 // desc: ...
 //-----------------------------------------------------------------------------
-void print( const RtAudioDeviceInfo & info )
+void print( const RtAudio::DeviceInfo & info )
 {
     EM_error2b( 0, "device name = \"%s\"", info.name.c_str() );
     if (info.probed == false)
@@ -99,8 +110,10 @@ void print( const RtAudioDeviceInfo & info )
         EM_error2b( 0, "# output channels = %d", info.outputChannels );
         EM_error2b( 0, "# input channels  = %d", info.inputChannels );
         EM_error2b( 0, "# duplex Channels = %d", info.duplexChannels );
-        if( info.isDefault ) EM_error2b( 0, "default device = YES" );
-        else EM_error2b( 0, "default device = NO" );
+        if( info.isDefaultOutput ) EM_error2b( 0, "default output = YES" );
+        else EM_error2b( 0, "default output = NO" );
+        if( info.isDefaultInput ) EM_error2b( 0, "default input = YES" );
+        else EM_error2b( 0, "default input = NO" );
         if( info.nativeFormats == 0 ) EM_error2b( 0, "no natively supported data formats(?)!" );
         else
         {
@@ -121,6 +134,7 @@ void print( const RtAudioDeviceInfo & info )
         }
     }
 }
+#endif // __DISABLE_RTAUDIO__
 
 
 
@@ -131,15 +145,16 @@ void print( const RtAudioDeviceInfo & info )
 //-----------------------------------------------------------------------------
 void Digitalio::probe()
 {
+#ifndef __DISABLE_RTAUDIO__
     RtAudio * rta = NULL;
-    RtAudioDeviceInfo info;
+    RtAudio::DeviceInfo info;
     
     // allocate RtAudio
     try { rta = new RtAudio( ); }
     catch( RtError err )
     {
         // problem finding audio devices, most likely
-        EM_error2b( 0, "%s", err.getMessageString() );
+        EM_error2b( 0, "%s", err.getMessage().c_str() );
         return;
     }
 
@@ -148,8 +163,10 @@ void Digitalio::probe()
     EM_error2b( 0, "found %d device(s) ...", devices );
     // EM_error2( 0, "--------------------------" );
     
+    EM_reset_msg();
+    
     // loop
-    for( int i = 1; i <= devices; i++ )
+    for( int i = 0; i < devices; i++ )
     {
         try { info = rta->getDeviceInfo(i); }
         catch( RtError & error )
@@ -159,17 +176,96 @@ void Digitalio::probe()
         }
         
         // print
-        EM_error2b( 0, "------( chuck -- dac%d )---------------", i );
+        EM_error2b( 0, "------( audio device: %d )---------------", i+1 );
         print( info );
         // skip
         if( i < devices ) EM_error2( 0, "" );
+        
+        EM_reset_msg();
     }
 
     delete rta;
+#endif // __DISABLE_RTAUDIO__
 
     return;
 }
 
+
+
+
+//-----------------------------------------------------------------------------
+// name: device_named()
+// desc: ...
+//-----------------------------------------------------------------------------
+DWORD__ Digitalio::device_named( const std::string & name, t_CKBOOL needs_dac, t_CKBOOL needs_adc )
+{
+#ifndef __DISABLE_RTAUDIO__
+    RtAudio * rta = NULL;
+    RtAudio::DeviceInfo info;
+    
+    // allocate RtAudio
+    try { rta = new RtAudio( ); }
+    catch( RtError err )
+    {
+        // problem finding audio devices, most likely
+        EM_error2b( 0, "%s", err.getMessage().c_str() );
+        return -1;
+    }
+    
+    // get count    
+    int devices = rta->getDeviceCount();
+    int device_no = -1;
+    
+    // loop
+    for( int i = 0; i < devices; i++ )
+    {
+        try { info = rta->getDeviceInfo(i); }
+        catch( RtError & error )
+        {
+            error.printMessage();
+            break;
+        }
+        
+        if( info.name.compare(name) == 0 )
+        {
+            device_no = i+1;
+            break;
+        }
+    }
+    
+    if( device_no == -1 )
+    {
+        // no exact match found; try partial match
+        for( int i = 0; i < devices; i++ )
+        {
+            try { info = rta->getDeviceInfo(i); }
+            catch( RtError & error )
+            {
+                error.printMessage();
+                break;
+            }
+            
+            if( info.name.find(name) != std::string::npos )
+            {
+                if( (needs_dac && info.outputChannels == 0) ||
+                    (needs_adc && info.inputChannels == 0) )
+                    continue;
+                device_no = i+1;
+                break;
+            }
+        }
+    }
+
+    // clean up
+    SAFE_DELETE( rta );
+    
+    // done
+    return device_no;
+    
+#endif // __DISABLE_RTAUDIO__
+    
+    return -1;
+}
 
 
 
@@ -384,7 +480,8 @@ BOOL__ Digitalio::initialize( DWORD__ num_dac_channels,
                               DWORD__ bps, DWORD__ buffer_size, 
                               DWORD__ num_buffers, DWORD__ block,
                               Chuck_VM * vm_ref, BOOL__ rt_audio,
-                              void * callback, void * data )
+                              void * callback, void * data,
+                              BOOL__ force_srate )
 {
     if( m_init )
         return FALSE;
@@ -402,11 +499,17 @@ BOOL__ Digitalio::initialize( DWORD__ num_dac_channels,
     m_block = block;
 
     DWORD__ num_channels;
-    int bufsize = m_buffer_size;
+    unsigned int bufsize = m_buffer_size;
 
+    // log
+    EM_log( CK_LOG_FINE, "initializing RtAudio..." );
+    // push indent
+    EM_pushlog();
+        
     // if rt_audio is false, then set block to FALSE to avoid deadlock
     if( !rt_audio ) m_block = FALSE;
 
+#ifndef __DISABLE_RTAUDIO__    
     // if real-time audio
     if( rt_audio )
     {
@@ -415,71 +518,205 @@ BOOL__ Digitalio::initialize( DWORD__ num_dac_channels,
         catch( RtError err )
         {
             // problem finding audio devices, most likely
-            EM_error2( 0, "%s", err.getMessageString() );
+            EM_error2( 0, "%s", err.getMessage().c_str() );
             return m_init = FALSE;
         }
+        
+        // convert 1-based ordinal to 0-based ordinal (added 1.3.0.0)
+        // note: this is to preserve previous devices numbering after RtAudio change
+        if( m_num_channels_out > 0 )
+        {
+            // check output device number; 0 used to mean "default"
+            bool useDefault = ( m_dac_n == 0 );
 
-        // log
-        EM_log( CK_LOG_FINE, "initializing RtAudio..." );
-        // push indent
-        EM_pushlog();
+            // default (refactor 1.3.1.2)
+            if( useDefault )
+            {
+                // get the default
+                m_dac_n = m_rtaudio->getDefaultOutputDevice();
+            }
+            else
+            {
+                m_dac_n -= 1;
+            }
+
+            // get device info
+            RtAudio::DeviceInfo device_info = m_rtaudio->getDeviceInfo(m_dac_n);
+                
+            // ensure correct channel count if default device is requested
+            if( useDefault )
+            {
+                // check
+                if( device_info.outputChannels < m_num_channels_out )
+                {
+                    // find first device with at least the requested channel count
+                    m_dac_n = -1;
+                    int num_devices = m_rtaudio->getDeviceCount();
+                    for( int i = 0; i < num_devices; i++ )
+                    {
+                        device_info = m_rtaudio->getDeviceInfo(i);
+                        if(device_info.outputChannels >= m_num_channels_out)
+                        {
+                            m_dac_n = i;
+                            break;
+                        }
+                    }
+                    
+                    // check for error
+                    if( m_dac_n == -1 )
+                    {
+                        EM_error2( 0, "no audio output device with requested channel count (%i)...", m_num_channels_out );
+                        return m_init = FALSE;
+                    }
+                }
+            }
+
+            // index of closest sample rate
+            long closestIndex = -1;
+            // difference of closest so far
+            long closestDiff = LONG_MAX;
+            // the next highest
+            long nextHighest = -1;
+            // diff to next highest so far
+            long diffToNextHighest = LONG_MAX;
+            // check if request sample rate in support rates (added 1.3.1.2)
+            for( long i = 0; i < device_info.sampleRates.size(); i++ )
+            {
+                // difference
+                long diff = device_info.sampleRates[i] - sampling_rate;
+                // check
+                if( ::abs(diff) < closestDiff )
+                {
+                    // remember index
+                    closestIndex = i;
+                    // update diff
+                    closestDiff = ::abs(diff);
+                }
+
+                // for next highest
+                if( diff > 0 && diff < diffToNextHighest )
+                {
+                    // remember index
+                    nextHighest = i;
+                    // update diff
+                    diffToNextHighest = diff;
+                }
+            }
+            
+            // see if we found exact match (added 1.3.1.2)
+            if( closestDiff != 0 )
+            {
+                // check
+                if( force_srate )
+                {
+                    // request sample rate not found, error out
+                    EM_error2( 0, "unsupported sample rate (%d) requested...", sampling_rate );
+                    EM_error2( 0, "| (try --probe to enumerate available sample rates)" );
+                    return m_init = FALSE;
+                }
+
+                // use next highest if available
+                if( nextHighest >= 0 )
+                {
+                    // log
+                    EM_log( CK_LOG_SEVERE, "new sample rate (next highest): %d -> %d",
+                            sampling_rate, device_info.sampleRates[nextHighest] );
+                    // update sampling rate
+                    m_sampling_rate = sampling_rate = device_info.sampleRates[nextHighest];
+                }
+                else if( closestIndex >= 0 ) // nothing higher
+                {
+                    // log
+                    EM_log( CK_LOG_SEVERE, "new sample rate (closest): %d -> %d",
+                            sampling_rate, device_info.sampleRates[closestIndex] );
+                    // update sampling rate
+                    m_sampling_rate = sampling_rate = device_info.sampleRates[closestIndex];
+                }
+                else
+                {
+                    // nothing to do (will fail and throw error message when opening)
+                }
+            }
+        }
+        
+        // convert 1-based ordinal to 0-based ordinal
+        if( m_num_channels_in > 0 )
+        {
+            if( m_adc_n == 0 )
+            {
+                m_adc_n = m_rtaudio->getDefaultInputDevice();
+                
+                // ensure correct channel count if default device is requested
+                RtAudio::DeviceInfo device_info = m_rtaudio->getDeviceInfo(m_adc_n);
+                
+                // check if input channels > 0
+                if( device_info.inputChannels < m_num_channels_in )
+                {
+                    // find first device with at least the requested channel count
+                    m_adc_n = -1;
+                    int num_devices = m_rtaudio->getDeviceCount();
+                    for(int i = 0; i < num_devices; i++)
+                    {
+                        device_info = m_rtaudio->getDeviceInfo(i);
+                        if(device_info.inputChannels >= m_num_channels_in)
+                        {
+                            m_adc_n = i;
+                            break;
+                        }
+                    }
+
+                    // changed 1.3.1.2 (ge): for input, if nothing found, we just gonna try to open half-duplex
+                    if( m_adc_n == -1 )
+                    {
+                        // set to 0
+                        m_num_channels_in = 0;
+                        // problem finding audio devices, most likely
+                        // EM_error2( 0, "unable to find audio input device with requested channel count (%i)...", m_num_channels_in);
+                        // return m_init = FALSE;
+                    }
+                }
+            }
+            else
+            {
+                m_adc_n -= 1;
+            }
+        }
 
         // open device
         try {
             // log
             EM_log( CK_LOG_FINE, "trying %d input %d output...", 
                     m_num_channels_in, m_num_channels_out );
+            
+            RtAudio::StreamParameters output_parameters;
+            output_parameters.deviceId = m_dac_n;
+            output_parameters.nChannels = m_num_channels_out;
+            output_parameters.firstChannel = 0;
+            
+            RtAudio::StreamParameters input_parameters;
+            input_parameters.deviceId = m_adc_n;
+            input_parameters.nChannels = m_num_channels_in;
+            input_parameters.firstChannel = 0;
+            
+            RtAudio::StreamOptions stream_options;
+            stream_options.flags = 0;
+            stream_options.numberOfBuffers = num_buffers;
+            stream_options.streamName = "ChucK";
+            stream_options.priority = 0;
+            
             // open RtAudio
             m_rtaudio->openStream(
-                m_dac_n, m_num_channels_out, m_adc_n, m_num_channels_in,
-                CK_RTAUDIO_FORMAT, sampling_rate,
-                &bufsize, num_buffers );
-            // set callback
-            if( m_use_cb )
-            {
-                // log
-                EM_log( CK_LOG_INFO, "initializing callback..." );
-                if( !callback )
-                {
-                    if( block ) m_rtaudio->setStreamCallback( &cb, vm_ref );
-                    else m_rtaudio->setStreamCallback( &cb2, vm_ref );
-                }
-                else
-                {
-                    m_rtaudio->setStreamCallback( (RtAudioCallback)callback, data );
-                }
-            }
+                m_num_channels_out > 0 ? &output_parameters : NULL, 
+                m_num_channels_in > 0 ? &input_parameters : NULL,
+                CK_RTAUDIO_FORMAT, sampling_rate, &bufsize, 
+                m_use_cb ? ( block ? &cb : &cb2 ) : NULL, vm_ref, 
+                &stream_options );
         } catch( RtError err ) {
             // log
-            EM_log( CK_LOG_INFO, "exception caught: '%s'...", err.getMessageString() );
-            EM_log( CK_LOG_INFO, "trying %d input %d output...", 0, m_num_channels_out );
-            try {
-                bufsize = buffer_size;
-                // try output only
-                m_rtaudio->openStream(
-                    m_dac_n, m_num_channels_out, 0, 0,
-                    RTAUDIO_FLOAT32, sampling_rate,
-                    &bufsize, num_buffers );
-                // set callback
-                if( m_use_cb )
-                {
-                    // log
-                    EM_log( CK_LOG_INFO, "initializing callback (again)..." );
-                    if( !callback )
-                    {
-                        if( block ) m_rtaudio->setStreamCallback( &cb, vm_ref );
-                        else m_rtaudio->setStreamCallback( &cb2, vm_ref );
-                    }
-                    else
-                    {
-                        m_rtaudio->setStreamCallback( (RtAudioCallback)callback, data );
-                    }
-                }
-            } catch( RtError err ) {
-                EM_error2( 0, "%s", err.getMessageString() );
-                SAFE_DELETE( m_rtaudio );
-                return m_init = FALSE;
-            }
+            EM_log( CK_LOG_INFO, "exception caught: '%s'...", err.getMessage().c_str() );
+            EM_error2( 0, "%s", err.getMessage().c_str() );
+            SAFE_DELETE( m_rtaudio );
+            return m_init = FALSE;
         }
         
         // check bufsize
@@ -492,6 +729,15 @@ BOOL__ Digitalio::initialize( DWORD__ num_dac_channels,
         // pop indent
         EM_poplog();
     }
+#endif // __DISABLE_RTAUDIO__
+
+#if defined(__CHIP_MODE__)
+    if( !MoAudio::init( sampling_rate, buffer_size, 2 ) )
+    {
+        EM_error2( 0, "%s", "(chuck)error: unable to initialize MoAudio..." );
+        return m_init = FALSE;
+    }
+#endif // __CHIP_MODE__
 
     if( m_use_cb )
     {
@@ -522,7 +768,12 @@ BOOL__ Digitalio::initialize( DWORD__ num_dac_channels,
 // name: cb()
 // desc: ...
 //-----------------------------------------------------------------------------
-int Digitalio::cb( char * buffer, int buffer_size, void * user_data )
+//int Digitalio::cb( char * buffer, int buffer_size, void * user_data )
+int Digitalio::cb( void *output_buffer, void *input_buffer,
+                   unsigned int buffer_size,
+                   double streamTime,
+                   RtAudioStreamStatus status,
+                   void *user_data )
 {
     DWORD__ len = buffer_size * sizeof(SAMPLE) * m_num_channels_out;
     DWORD__ n = 20;
@@ -531,9 +782,9 @@ int Digitalio::cb( char * buffer, int buffer_size, void * user_data )
     // copy input to local buffer
     if( m_num_channels_in )
     {
-        memcpy( m_buffer_in, buffer, len );
+        memcpy( m_buffer_in, input_buffer, len );
         // copy to extern
-        if( m_extern_in ) memcpy( m_extern_in, buffer, len );
+        if( m_extern_in ) memcpy( m_extern_in, input_buffer, len );
     }
     // flag ready
     m_in_ready = TRUE;
@@ -546,9 +797,9 @@ int Digitalio::cb( char * buffer, int buffer_size, void * user_data )
         if( m_out_ready && g_do_watchdog )
             g_watchdog_time = get_current_time( TRUE );
         // copy local buffer to be rendered
-        if( m_out_ready && !m_end ) memcpy( buffer, m_buffer_out, len );
+        if( m_out_ready && !m_end ) memcpy( output_buffer, m_buffer_out, len );
         // set all elements of local buffer to silence
-        else memset( buffer, 0, len );
+        else memset( output_buffer, 0, len );
     }
     else  // initial condition
     {
@@ -561,23 +812,24 @@ int Digitalio::cb( char * buffer, int buffer_size, void * user_data )
         // timestamp
         if( g_do_watchdog ) g_watchdog_time = get_current_time( TRUE );
 
-        memset( buffer, 0, len );
+        memset( output_buffer, 0, len );
         m_go++;
         return 0;
     }
 
     // 2nd buffer
-    if( m_go == start )
-    {
-        n = 8; while( !m_out_ready && n-- ) usleep( 250 );
-        len /= sizeof(SAMPLE); DWORD__ i = 0;
-        SAMPLE * s = (SAMPLE *)buffer;
-        while( i < len ) *s++ *= (SAMPLE)i++/len;
-        m_go++;
-    }
+    // RtAudio4 TODO
+//    if( m_go == start )
+//    {
+//        n = 8; while( !m_out_ready && n-- ) usleep( 250 );
+//        len /= sizeof(SAMPLE); DWORD__ i = 0;
+//        SAMPLE * s = (SAMPLE *) buffer;
+//        while( i < len ) *s++ *= (SAMPLE)i++/len;
+//        m_go++;
+//    }
 
     // copy to extern
-    if( m_extern_out ) memcpy( m_extern_out, buffer, len );
+    if( m_extern_out ) memcpy( m_extern_out, output_buffer, len );
 
     // set pointer to the beginning - if not ready, then too late anyway
     //*m_write_ptr = (SAMPLE *)m_buffer_out;
@@ -594,7 +846,12 @@ int Digitalio::cb( char * buffer, int buffer_size, void * user_data )
 // name: cb2()
 // desc: ...
 //-----------------------------------------------------------------------------
-int Digitalio::cb2( char * buffer, int buffer_size, void * user_data )
+//int Digitalio::cb2( char * buffer, int buffer_size, void * user_data )
+int Digitalio::cb2( void *output_buffer, void *input_buffer,
+                    unsigned int buffer_size,
+                    double streamTime,
+                    RtAudioStreamStatus status,
+                    void *user_data )
 {
     DWORD__ len = buffer_size * sizeof(SAMPLE) * m_num_channels_out;
     Chuck_VM * vm_ref = (Chuck_VM *)user_data;
@@ -620,7 +877,7 @@ int Digitalio::cb2( char * buffer, int buffer_size, void * user_data )
         // TODO: close the duplicate handle?
 #endif
         Chuck_VM::set_priority( Chuck_VM::our_priority, NULL );
-        memset( buffer, 0, len );
+        memset( output_buffer, 0, len );
         m_go = TRUE;
 
         // start watchdog
@@ -639,9 +896,9 @@ int Digitalio::cb2( char * buffer, int buffer_size, void * user_data )
     // copy input to local buffer
     if( m_num_channels_in )
     {
-        memcpy( m_buffer_in, buffer, len );
+        memcpy( m_buffer_in, input_buffer, len );
         // copy to extern
-        if( m_extern_in ) memcpy( m_extern_in, buffer, len );
+        if( m_extern_in ) memcpy( m_extern_in, input_buffer, len );
     }
 
     // check xrun
@@ -661,16 +918,30 @@ int Digitalio::cb2( char * buffer, int buffer_size, void * user_data )
     }
 
     // copy local buffer to be rendered
-    if( !m_end ) memcpy( buffer, m_buffer_out, len );
+    if( !m_end ) memcpy( output_buffer, m_buffer_out, len );
     // set all elements of local buffer to silence
-    else memset( buffer, 0, len );
+    else memset( output_buffer, 0, len );
 
     // copy to extern
-    if( m_extern_out ) memcpy( m_extern_out, buffer, len );
+    if( m_extern_out ) memcpy( m_extern_out, output_buffer, len );
 
 
     return 0;
 }
+
+
+
+
+#ifdef __CHIP_MODE__
+//-----------------------------------------------------------------------------
+// name: MoAudio_cb()
+// desc: ...
+//-----------------------------------------------------------------------------
+void MoAudio_cb( Float32 * buffer, UInt32 numFrames, void * userData )
+{
+    Digitalio::cb2( (char *)buffer, (char *)buffer, numFrames, 0, 0, userData );
+}
+#endif // __CHIP_MODE__
 
 
 
@@ -681,11 +952,18 @@ int Digitalio::cb2( char * buffer, int buffer_size, void * user_data )
 //-----------------------------------------------------------------------------
 BOOL__ Digitalio::start( )
 {
+#ifndef __DISABLE_RTAUDIO__
     try{ if( !m_start )
               m_rtaudio->startStream();
          m_start = TRUE;
     } catch( RtError err ){ return FALSE; }
-    
+#endif // __DISABLE_RTAUDIO__
+
+#if defined(__CHIP_MODE__)
+    if( !m_start )
+        m_start = MoAudio::start( MoAudio_cb, g_vm );
+#endif // __CHIP_MODE__
+
     return m_start;
 }
 
@@ -698,10 +976,18 @@ BOOL__ Digitalio::start( )
 //-----------------------------------------------------------------------------
 BOOL__ Digitalio::stop( )
 {
+#ifndef __DISABLE_RTAUDIO__
     try{ if( m_start )
              m_rtaudio->stopStream();
          m_start = FALSE;
     } catch( RtError err ){ return FALSE; }
+#endif // __DISABLE_RTAUDIO__
+
+#if defined(__CHIP_MODE__)
+    if( m_start )
+        MoAudio::stop();
+    m_start = FALSE;
+#endif
 
     return !m_start;
 }
@@ -713,21 +999,25 @@ BOOL__ Digitalio::stop( )
 // name: tick()
 // desc: ...
 //-----------------------------------------------------------------------------
-BOOL__ Digitalio::tick( )
-{
-    try
-    {
-        if( ++m_tick_count >= m_start )
-        {
-            m_rtaudio->tickStream();
-            m_tick_count = 0;
-            m_out_ready = TRUE;
-            m_in_ready = TRUE;
-        }
-        
-        return TRUE;
-    } catch( RtError err ){ return FALSE; }
-}
+//BOOL__ Digitalio::tick( )
+//{
+//#ifndef __DISABLE_RTAUDIO__
+//    try
+//    {
+//        if( ++m_tick_count >= m_start )
+//        {
+//            m_rtaudio->tickStream();
+//            m_tick_count = 0;
+//            m_out_ready = TRUE;
+//            m_in_ready = TRUE;
+//        }
+//        
+//        return TRUE;
+//    } catch( RtError err ){ return FALSE; }
+//#endif // __DISABLE_RTAUDIO__
+//    
+//    return FALSE;
+//}
 
 
 
@@ -739,14 +1029,18 @@ BOOL__ Digitalio::tick( )
 void Digitalio::shutdown()
 {
     if( !m_init ) return;
+
+#ifndef __DISABLE_RTAUDIO__
     if( m_start )
     {
-        if( m_use_cb ) m_rtaudio->cancelStreamCallback();
+        //if( m_use_cb ) m_rtaudio->cancelStreamCallback();
         m_rtaudio->stopStream();
     }
-    
+
     m_rtaudio->closeStream();
     SAFE_DELETE( m_rtaudio );
+#endif // __DISABLE_RTAUDIO__
+
     m_init = FALSE;
     m_start = FALSE;
     
@@ -788,9 +1082,16 @@ DigitalOut::~DigitalOut()
 //-----------------------------------------------------------------------------
 BOOL__ DigitalOut::initialize( )
 {
+#ifndef __DISABLE_RTAUDIO__
     // set pointer to beginning of local buffer
-    m_data_ptr_out = Digitalio::m_use_cb ? Digitalio::m_buffer_out
-        : (SAMPLE *)Digitalio::audio()->getStreamBuffer();
+    // RtAudio4 TODO
+    m_data_ptr_out = Digitalio::m_use_cb ? Digitalio::m_buffer_out : NULL;
+    // : (SAMPLE *)Digitalio::audio()->getStreamBuffer();
+#else
+    // set pointer
+    assert( Digitalio::m_use_cb );
+    m_data_ptr_out = Digitalio::m_buffer_out;
+#endif // __DISABLE_RTAUDIO__
     // calculate the end of the buffer
     m_data_max_out = m_data_ptr_out + 
         Digitalio::buffer_size() * Digitalio::num_channels_out();
@@ -972,9 +1273,16 @@ BOOL__ DigitalIn::initialize( )
 {
     m_data = new SAMPLE[Digitalio::buffer_size() * Digitalio::num_channels_in()];
     memset( m_data, 0, Digitalio::buffer_size() * Digitalio::num_channels_in() * sizeof(SAMPLE) );
+#ifndef __DISABLE_RTAUDIO__
     // set the buffer to the beginning of the local buffer
-    m_data_ptr_in = Digitalio::m_use_cb ? m_data
-        : (SAMPLE *)Digitalio::audio()->getStreamBuffer();
+    // RtAudio4 TODO
+    m_data_ptr_in = Digitalio::m_use_cb ? m_data : NULL;
+    // : (SAMPLE *)Digitalio::audio()->getStreamBuffer();
+#else
+    // set the buffer pointer
+    assert( Digitalio::m_use_cb );
+    m_data_ptr_in = m_data;
+#endif // __DISABLE_RTAUDIO__
     // calculate past buffer
     m_data_max_in = m_data_ptr_in + 
         Digitalio::buffer_size() * Digitalio::num_channels_in();

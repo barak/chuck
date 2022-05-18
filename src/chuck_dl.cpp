@@ -1,34 +1,34 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // name: chuck_dl.cpp
-// desc: chuck dynamic linking
+// desc: chuck dynamic linking header
 //
-// authors: Ge Wang (gewang@cs.princeton.edu)
-//          Perry R. Cook (prc@cs.princeton.edu)
+// authors: Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
 //          Ari Lazier (alazier@cs.princeton.edu)
+//          Spencer Salazar (spencer@ccrma.stanford.edu)
 // mac os code based on apple's open source
 //
 // date: spring 2004 - 1.1
@@ -37,7 +37,26 @@
 #include "chuck_dl.h"
 #include "chuck_errmsg.h"
 #include "chuck_bbq.h"
+#include "chuck_type.h"
+#include "chuck_instr.h"
+#include "chuck_globals.h"
+#include "chuck_compile.h"
+#include "chuck_vm.h"
+#include <sstream>
 using namespace std;
+
+
+
+
+#if defined(__MACOSX_CORE__)
+char g_default_chugin_path[] = "/usr/local/lib/chuck:/Library/Application Support/ChucK/ChuGins:~/Library/Application Support/ChucK/ChuGins";
+#elif defined(__PLATFORM_WIN32__)
+char g_default_chugin_path[] = "C:\\WINDOWS\\system32\\ChucK;C:\\Program Files\\ChucK\\chugins";
+#else // Linux/Cygwin
+char g_default_chugin_path[] = "/usr/local/lib/chuck";
+#endif
+
+char g_chugin_path_envvar[] = "CHUCK_CHUGIN_PATH";
 
 
 
@@ -46,6 +65,9 @@ using namespace std;
 // internal implementation of query functions
 //-----------------------------------------------------------------------------
 
+
+
+t_CKUINT ck_builtin_declversion() { return CK_DLL_VERSION; }
 
 
 
@@ -68,6 +90,33 @@ void CK_DLL_CALL ck_setname( Chuck_DL_Query * query, const char * name )
 //-----------------------------------------------------------------------------
 void CK_DLL_CALL ck_begin_class( Chuck_DL_Query * query, const char * name, const char * parent )
 {
+    // find parent mvar offset
+    t_CKINT parent_offset = 0;
+    if(parent && parent[0] != '\0')
+    {
+        a_Id_List parent_path = str2list( parent );
+        if( !parent_path )
+        {
+            // error
+            EM_error2( 0, "class import: ck_begin_class: unknown parent type '%s'", 
+                      query->curr_class->name.c_str(), name, parent );
+            return;
+        }
+        
+        Chuck_Type * ck_parent_type = type_engine_find_type( Chuck_Env::instance(), parent_path );
+        
+        delete_id_list( parent_path );
+        
+        if( !ck_parent_type )
+        {
+            // error
+            EM_error2( 0, "class import: ck_begin_class: unable to find parent type '%s'", ck_parent_type );
+            return;
+        }
+        
+        parent_offset = ck_parent_type->obj_size;
+    }
+    
     // push
     query->stack.push_back( query->curr_class );
     // allocate
@@ -77,14 +126,16 @@ void CK_DLL_CALL ck_begin_class( Chuck_DL_Query * query, const char * name, cons
     if( query->curr_class )
         // recursive
         query->curr_class->classes.push_back( c );
-    else
-        // first level
-        query->classes.push_back( c );
+    // 1.3.2.0: do not save class for later import (will import it on class close)
+//    else
+//        // first level
+//        query->classes.push_back( c );
 
     // remember info
     c->name = name;
     c->parent = parent;
-
+    c->current_mvar_offset = parent_offset;
+    
     // curr
     query->curr_class = c;
     query->curr_func = NULL;
@@ -220,17 +271,38 @@ void CK_DLL_CALL ck_add_sfun( Chuck_DL_Query * query, f_sfun addr,
 // name: ck_add_mvar()
 // desc: add member var
 //-----------------------------------------------------------------------------
-void CK_DLL_CALL ck_add_mvar( Chuck_DL_Query * query, const char * type, const char * name,
-                              t_CKBOOL is_const )
+t_CKUINT CK_DLL_CALL ck_add_mvar( Chuck_DL_Query * query, 
+                                  const char * type, const char * name,
+                                  t_CKBOOL is_const )
 {
     // make sure there is class
     if( !query->curr_class )
     {
         // error
         EM_error2( 0, "class import: add_mvar invoked without begin_class..." );
-        return;
+        return CK_INVALID_OFFSET;
     }
 
+    a_Id_List path = str2list( type );
+    if( !path )
+    {
+        // error
+        EM_error2( 0, "class import: add_mvar: mvar %s.%s has unknown type '%s'", 
+                   query->curr_class->name.c_str(), name, type );
+        return CK_INVALID_OFFSET;
+    }
+    
+    Chuck_Type * ck_type = type_engine_find_type( Chuck_Env::instance(), path );
+    
+    delete_id_list( path );
+    
+    if( !ck_type )
+    {
+        // error
+        EM_error2( 0, "class import: add_mvar: unable to find type '%s'", type );
+        return CK_INVALID_OFFSET;
+    }
+       
     // allocate
     Chuck_DL_Value * v = new Chuck_DL_Value;
     v->name = name;
@@ -240,6 +312,13 @@ void CK_DLL_CALL ck_add_mvar( Chuck_DL_Query * query, const char * type, const c
     // add
     query->curr_class->mvars.push_back( v );
     query->curr_func = NULL;
+    query->last_var = v;
+    
+    t_CKUINT offset = query->curr_class->current_mvar_offset;
+    query->curr_class->current_mvar_offset = type_engine_next_offset( query->curr_class->current_mvar_offset,
+                                                                      ck_type );
+    
+    return offset;
 }
 
 
@@ -270,6 +349,8 @@ void CK_DLL_CALL ck_add_svar( Chuck_DL_Query * query, const char * type, const c
     // add
     query->curr_class->svars.push_back( v );
     query->curr_func = NULL;
+    
+    query->last_var = v;
 }
 
 
@@ -313,7 +394,7 @@ void CK_DLL_CALL ck_add_arg( Chuck_DL_Query * query, const char * type, const ch
 // name: ck_add_ugen_func()
 // desc: (ugen only) add tick and pmsg functions
 //-----------------------------------------------------------------------------
-void CK_DLL_CALL ck_add_ugen_func( Chuck_DL_Query * query, f_tick ugen_tick, f_pmsg ugen_pmsg )
+void CK_DLL_CALL ck_add_ugen_func( Chuck_DL_Query * query, f_tick ugen_tick, f_pmsg ugen_pmsg, t_CKUINT num_in, t_CKUINT num_out )
 {
     // make sure there is class
     if( !query->curr_class )
@@ -342,6 +423,49 @@ void CK_DLL_CALL ck_add_ugen_func( Chuck_DL_Query * query, f_tick ugen_tick, f_p
     // set
     if( ugen_tick ) query->curr_class->ugen_tick = ugen_tick;
     if( ugen_pmsg ) query->curr_class->ugen_pmsg = ugen_pmsg;
+    query->curr_class->ugen_num_in = num_in;
+    query->curr_class->ugen_num_out = num_out;
+    query->curr_func = NULL;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: ck_add_ugen_func()
+// desc: (ugen only) add tick and pmsg functions
+//-----------------------------------------------------------------------------
+void CK_DLL_CALL ck_add_ugen_funcf( Chuck_DL_Query * query, f_tickf ugen_tickf, f_pmsg ugen_pmsg, t_CKUINT num_in, t_CKUINT num_out )
+{
+    // make sure there is class
+    if( !query->curr_class )
+    {
+        // error
+        EM_error2( 0, "class import: add_ugen_func invoked without begin_class..." );
+        return;
+    }
+    
+    // make sure tick not defined already
+    if( query->curr_class->ugen_tickf && ugen_tickf )
+    {
+        // error
+        EM_error2( 0, "class import: ugen_tick already defined..." );
+        return;
+    }
+    
+    // make sure pmsg not defined already
+    if( query->curr_class->ugen_pmsg && ugen_pmsg )
+    {
+        // error
+        EM_error2( 0, "class import: ugen_pmsg already defined..." );
+        return;
+    }
+    
+    // set
+    if( ugen_tickf ) query->curr_class->ugen_tickf = ugen_tickf;
+    if( ugen_pmsg ) query->curr_class->ugen_pmsg = ugen_pmsg;
+    query->curr_class->ugen_num_in = num_in;
+    query->curr_class->ugen_num_out = num_out;
     query->curr_func = NULL;
 }
 
@@ -392,6 +516,22 @@ t_CKBOOL CK_DLL_CALL ck_end_class( Chuck_DL_Query * query )
     }
     
     // type check the class?
+    // 1.3.2.0: import class into type engine if at top level
+    if( query->stack.size() == 1 ) // top level class
+    {
+        if( !type_engine_add_class_from_dl(g_compiler->env, query->curr_class) )
+        {
+            EM_log(CK_LOG_SEVERE, "[chuck](DL): error importing class '%s' into type engine",
+                   query->curr_class->name.c_str());
+            
+            // pop
+            assert( query->stack.size() );
+            query->curr_class = query->stack.back();
+            query->stack.pop_back();
+            
+            return FALSE;
+        }
+    }
     
     // pop
     assert( query->stack.size() );
@@ -401,6 +541,79 @@ t_CKBOOL CK_DLL_CALL ck_end_class( Chuck_DL_Query * query )
     return TRUE;
 }
 
+
+
+//-----------------------------------------------------------------------------
+// name: ck_create_main_thread_hook()
+// desc: ...
+//-----------------------------------------------------------------------------
+Chuck_DL_MainThreadHook * CK_DLL_CALL ck_create_main_thread_hook( Chuck_DL_Query * query,
+                                                          f_mainthreadhook hook,
+                                                          f_mainthreadquit quit,
+                                                          void * bindle )
+{
+    assert(g_vm);
+    
+    return new Chuck_DL_MainThreadHook( hook, quit, bindle, g_vm );
+}
+
+//-----------------------------------------------------------------------------
+// name: ck_doc_class()
+// desc: set current class documentation
+//-----------------------------------------------------------------------------
+t_CKBOOL CK_DLL_CALL ck_doc_class( Chuck_DL_Query * query, const char * doc )
+{
+#ifdef CK_DOC // disable unless CK_DOC
+    if(query->curr_class)
+        query->curr_class->doc = doc;
+    else
+        return FALSE;
+#endif // CK_DOC
+    
+    return TRUE;
+}
+
+//-----------------------------------------------------------------------------
+// name: ck_add_example()
+// desc: set current class documentation
+//-----------------------------------------------------------------------------
+t_CKBOOL CK_DLL_CALL ck_add_example( Chuck_DL_Query * query, const char * ex )
+{
+#ifdef CK_DOC // disable unless CK_DOC
+    if(query->curr_class)
+        query->curr_class->examples.push_back(ex);
+    else
+        return FALSE;
+#endif // CK_DOC
+    
+    return TRUE;
+}
+
+// set current function documentation
+t_CKBOOL CK_DLL_CALL ck_doc_func( Chuck_DL_Query * query, const char * doc )
+{
+#ifdef CK_DOC // disable unless CK_DOC
+    if(query->curr_func)
+        query->curr_func->doc = doc;
+    else
+        return FALSE;
+#endif // CK_DOC
+    
+    return TRUE;
+}
+
+// set last mvar documentation
+t_CKBOOL CK_DLL_CALL ck_doc_var( Chuck_DL_Query * query, const char * doc )
+{
+#ifdef CK_DOC // disable unless CK_DOC
+    if(query->last_var)
+        query->last_var->doc = doc;
+    else
+        return FALSE;
+#endif // CK_DOC
+    
+    return TRUE;
+}
 
 
 
@@ -459,6 +672,7 @@ t_CKBOOL Chuck_DLL::load( const char * filename, const char * func, t_CKBOOL laz
 t_CKBOOL Chuck_DLL::load( f_ck_query query_func, t_CKBOOL lazy )
 {
     m_query_func = query_func;
+    m_version_func = ck_builtin_declversion;
     m_done_query = FALSE;
     m_func = "ck_query";
     
@@ -499,6 +713,47 @@ const Chuck_DL_Query * Chuck_DLL::query( )
     // return if there already
     if( m_done_query )
         return &m_query;
+    
+    // get the address of the DL version function from the DLL
+    if( !m_version_func )
+        m_version_func = (f_ck_declversion)this->get_addr( CK_DECLVERSION_FUNC );
+    if( !m_version_func )
+        m_version_func = (f_ck_declversion)this->get_addr( (string("_")+CK_DECLVERSION_FUNC).c_str() );
+    if( !m_version_func )
+    {
+        m_last_error = string("no version function found in dll '") 
+        + m_filename + string("'");
+        return NULL;
+    }
+    
+    // check version
+    t_CKUINT dll_version = m_version_func();
+    t_CKBOOL version_ok = FALSE;
+    // oops lets have version 4 be ok actually
+    if(CK_DLL_VERSION_GETMAJOR(dll_version) == 4)
+        version_ok = TRUE;
+    // major version must be same
+    // minor version must less than or equal
+    if(CK_DLL_VERSION_GETMAJOR(dll_version) == CK_DLL_VERSION_MAJOR &&
+       CK_DLL_VERSION_GETMINOR(dll_version) <= CK_DLL_VERSION_MINOR)
+        version_ok = TRUE;
+    
+    if(!version_ok)
+        // SPENCERTODO: do they need to be equal, or can dll_version be < ?
+    {
+        ostringstream oss;
+        oss << "DL version not supported: " 
+        << CK_DLL_VERSION_GETMAJOR(dll_version)
+        << "."
+        << CK_DLL_VERSION_GETMINOR(dll_version)
+        << " in '"
+        << m_filename
+        << "'";
+        
+        m_last_error = oss.str();
+        
+        return NULL;
+    }
     
     // get the address of the query function from the DLL
     if( !m_query_func )
@@ -656,7 +911,7 @@ const char * Chuck_DLL::name() const
 }
 
 
-
+//const t_CKUINT Chuck_DL_Query::RESERVED_SIZE;
 
 //-----------------------------------------------------------------------------
 // name: Chuck_DL_Query
@@ -675,8 +930,16 @@ Chuck_DL_Query::Chuck_DL_Query( )
     add_svar = ck_add_svar;
     add_arg = ck_add_arg;
     add_ugen_func = ck_add_ugen_func;
+    add_ugen_funcf = ck_add_ugen_funcf;
     add_ugen_ctrl = ck_add_ugen_ctrl;
     end_class = ck_end_class;
+    create_main_thread_hook = ck_create_main_thread_hook;
+    doc_class = ck_doc_class;
+    doc_func = ck_doc_func;
+    doc_var = ck_doc_var;
+    
+//    memset(reserved2, NULL, sizeof(void*)*RESERVED_SIZE);
+    
     dll_name = "[noname]";
     reserved = NULL;
     curr_class = NULL;
@@ -748,6 +1011,146 @@ Chuck_DL_Func::~Chuck_DL_Func()
 
 
 
+t_CKBOOL ck_mthook_activate(Chuck_DL_MainThreadHook *hook)
+{
+    hook->m_active = hook->m_vm->set_main_thread_hook(hook->m_hook,
+                                                      hook->m_quit,
+                                                      hook->m_bindle);
+    return hook->m_active;
+}
+
+t_CKBOOL ck_mthook_deactivate(Chuck_DL_MainThreadHook *hook)
+{
+    if(hook->m_active)
+        return hook->m_vm->clear_main_thread_hook();
+    else
+        return FALSE;
+}
+
+//-----------------------------------------------------------------------------
+// name: Chuck_DL_MainThreadHook()
+// desc: ...
+//-----------------------------------------------------------------------------
+Chuck_DL_MainThreadHook::Chuck_DL_MainThreadHook(f_mainthreadhook hook, f_mainthreadquit quit,
+                                                 void * bindle, Chuck_VM * vm) :
+m_hook(hook),
+m_quit(quit),
+m_vm(vm),
+m_bindle(bindle),
+activate(ck_mthook_activate),
+deactivate(ck_mthook_deactivate),
+m_active(FALSE)
+{ }
+
+
+
+/*******************************************************************************
+ 
+ Chuck_DL_Api stuff 
+ 
+*******************************************************************************/
+
+namespace Chuck_DL_Api
+{
+    Api Api::g_api;
+}
+
+
+static t_CKUINT ck_get_srate()
+{
+    return g_vm->srate();
+}
+
+static Chuck_DL_Api::Type ck_get_type( std::string & name )
+{
+    Chuck_Env * env = Chuck_Env::instance();
+    a_Id_List list = new_id_list( name.c_str(), 0 ); // TODO: nested types
+    
+    Chuck_Type * t = type_engine_find_type( env, list );
+    
+    delete_id_list( list );
+    
+    return ( Chuck_DL_Api::Type ) t;
+}
+
+static Chuck_DL_Api::Object ck_create( Chuck_DL_Api::Type t )
+{
+    assert( t != NULL );
+    
+    Chuck_Type * type = ( Chuck_Type * ) t;
+    Chuck_Object * o = instantiate_and_initialize_object( type, NULL );
+    
+    return ( Chuck_DL_Api::Object ) o;
+}
+
+static Chuck_DL_Api::String ck_create_string( std::string & str )
+{
+    Chuck_String * string = ( Chuck_String * ) instantiate_and_initialize_object( &t_string, NULL );
+    
+    string->str = str;
+    
+    return ( Chuck_DL_Api::String ) string;
+}
+
+static t_CKBOOL ck_get_mvar_int( Chuck_DL_Api::Object, std::string &, t_CKINT & )
+{
+    return TRUE;
+}
+
+static t_CKBOOL ck_get_mvar_float( Chuck_DL_Api::Object, std::string &, t_CKFLOAT & )
+{
+    return TRUE;
+}
+
+static t_CKBOOL ck_get_mvar_dur( Chuck_DL_Api::Object, std::string &, t_CKDUR & )
+{
+    return TRUE;
+}
+
+static t_CKBOOL ck_get_mvar_time( Chuck_DL_Api::Object, std::string &, t_CKTIME & )
+{
+    return TRUE;
+}
+
+static t_CKBOOL ck_get_mvar_string( Chuck_DL_Api::Object, std::string &, Chuck_DL_Api::String & )
+{
+    return TRUE;
+}
+
+static t_CKBOOL ck_get_mvar_object( Chuck_DL_Api::Object, std::string &, Chuck_DL_Api::Object & )
+{
+    return TRUE;
+}
+
+static t_CKBOOL ck_set_string( Chuck_DL_Api::String s, std::string & str )
+{
+    assert( s != NULL );
+    
+    Chuck_String * string = ( Chuck_String * ) s;
+    string->str = str;
+    
+    return TRUE;
+}
+
+
+Chuck_DL_Api::Api::VMApi::VMApi() :
+get_srate(ck_get_srate)
+{ }
+
+
+Chuck_DL_Api::Api::ObjectApi::ObjectApi() :
+get_type(ck_get_type),
+create(ck_create),
+create_string(ck_create_string),
+get_mvar_int(ck_get_mvar_int),
+get_mvar_float(ck_get_mvar_float),
+get_mvar_dur(ck_get_mvar_dur),
+get_mvar_time(ck_get_mvar_time),
+get_mvar_string(ck_get_mvar_string),
+get_mvar_object(ck_get_mvar_object),
+set_string(ck_set_string)
+{ }
+
 
 // windows
 #if defined(__WINDOWS_DS__)
@@ -779,505 +1182,4 @@ const char * dlerror( void )
     return dlerror_buffer;
 }
 }
-#endif
-
-// mac os x
-#if defined(__MACOSX_CORE__) && MAC_OS_X_VERSION_MAX_ALLOWED <= 1030
-
-extern "C"
-{
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <errno.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <limits.h>
-#include "mach-o/dyld.h"
-
-/*
- * debugging macros
- */
-#if DEBUG > 0
-#define DEBUG_PRINT(format) fprintf(stderr,(format));fflush(stderr)
-#define DEBUG_PRINT1(format,arg1) fprintf(stderr,(format),(arg1));\
-  fflush(stderr)
-#define DEBUG_PRINT2(format,arg1,arg2) fprintf(stderr,(format),\
-  (arg1),(arg2));fflush(stderr)
-#define DEBUG_PRINT3(format,arg1,arg2,arg3) fprintf(stderr,(format),\
-  (arg1),(arg2),(arg3));fflush(stderr)
-#else
-#define DEBUG_PRINT(format) /**/
-#define DEBUG_PRINT1(format,arg1) /**/
-#define DEBUG_PRINT2(format,arg1,arg2) /**/
-#define DEBUG_PRINT3(format,arg1,arg2,arg3) /**/
-#undef DEBUG
-#endif
-
-/*
- * The structure of a dlopen() handle.
- */
-struct dlopen_handle {
-    dev_t dev;      /* the path's device and inode number from stat(2) */
-    ino_t ino; 
-    int dlopen_mode;    /* current dlopen mode for this handle */
-    int dlopen_count;   /* number of times dlopen() called on this handle */
-    NSModule module;    /* the NSModule returned by NSLinkModule() */
-    struct dlopen_handle *prev;
-    struct dlopen_handle *next;
-};
-static struct dlopen_handle *dlopen_handles = NULL;
-static const struct dlopen_handle main_program_handle = {NULL};
-static char *dlerror_pointer = NULL;
-
-
-/*
- * NSMakePrivateModulePublic() is not part of the public dyld API so we define
- * it here.  The internal dyld function pointer for
- * __dyld_NSMakePrivateModulePublic is returned so thats all that maters to get
- * the functionality need to implement the dlopen() interfaces.
- */
-static
-int
-NSMakePrivateModulePublic(
-NSModule module)
-{
-    static int (*p)(NSModule module) = NULL;
-
-    if(p == NULL)
-        _dyld_func_lookup("__dyld_NSMakePrivateModulePublic",
-                  (unsigned long *)&p);
-
-    if(p == NULL){
-#ifdef DEBUG
-        printf("_dyld_func_lookup of __dyld_NSMakePrivateModulePublic "
-           "failed\n");
-#endif
-        return(FALSE);
-    }
-    return(p(module));
-}
-
-/*
- * helper routine: search for a named module in various locations
- */
-static
-int
-_dl_search_paths(
-const char *filename,
-char *pathbuf,
-struct stat *stat_buf)
-{
-    const char *pathspec;
-    const char *element;
-    const char *p;
-    char *q;
-    char *pathbuf_end;
-    const char *envvars[] = {
-        "$DYLD_LIBRARY_PATH",
-        "$LD_LIBRARY_PATH",
-        "/usr/lib:/lib",
-        NULL };
-    int envvar_index;
-
-        pathbuf_end = pathbuf + PATH_MAX - 8;
-
-    for(envvar_index = 0; envvars[envvar_index]; envvar_index++){
-        if(envvars[envvar_index][0] == '$'){
-            pathspec = getenv(envvars[envvar_index]+1);
-        }
-        else {
-            pathspec = envvars[envvar_index];
-        }
-
-        if(pathspec != NULL){
-            element = pathspec;
-        while(*element){
-                /* extract path list element */
-            p = element;
-            q = pathbuf;
-            while(*p && *p != ':' && q < pathbuf_end) *q++ = *p++;
-            if(q == pathbuf){  /* empty element */
-                if(*p){
-                    element = p+1;
-                continue;
-            }
-            break;
-            }
-            if (*p){
-                element = p+1;
-            }
-            else{
-                element = p;  /* this terminates the loop */
-            }
-
-            /* add slash if neccessary */
-            if(*(q-1) != '/' && q < pathbuf_end){
-                *q++ = '/';
-            }
-
-            /* append module name */
-            p = filename;
-            while(*p && q < pathbuf_end) *q++ = *p++;
-            *q++ = 0;
-
-            if(q >= pathbuf_end){
-                /* maybe add an error message here */
-                break;
-            }
-
-            if(stat(pathbuf, stat_buf) == 0){
-                return 0;
-            }
-        }
-        }
-    }
-
-    /* we have searched everywhere, now we give up */
-    return -1;
-}
-
-/*
- * dlopen() the MacOS X version of the FreeBSD dlopen() interface.
- */
-void *
-dlopen(
-const char *path,
-int mode)
-{
-    const char *module_path;
-    void *retval;
-    struct stat stat_buf;
-    NSObjectFileImage objectFileImage;
-    NSObjectFileImageReturnCode ofile_result_code;
-    NSModule module;
-    struct dlopen_handle *p;
-    unsigned long options;
-    NSSymbol NSSymbol;
-    void (*init)(void);
-    char pathbuf[PATH_MAX];
-
-        DEBUG_PRINT2("libdl: dlopen(%s,0x%x) -> ", path, (unsigned int)mode);
-
-    dlerror_pointer = NULL;
-    /*
-     * A NULL path is to indicate the caller wants a handle for the
-     * main program.
-     */
-    if(path == NULL){
-        retval = (void *)&main_program_handle;
-        DEBUG_PRINT1("main / %p\n", retval);
-        return(retval);
-    }
-
-    /* see if the path exists and if so get the device and inode number */
-    if(stat(path, &stat_buf) == -1){
-        dlerror_pointer = strerror(errno);
-
-        if(path[0] == '/'){
-            DEBUG_PRINT1("ERROR (stat): %s\n", dlerror_pointer);
-            return(NULL);
-        }
-
-        /* search for the module in various places */
-        if(_dl_search_paths(path, pathbuf, &stat_buf)){
-            /* dlerror_pointer is unmodified */
-            DEBUG_PRINT1("ERROR (stat): %s\n", dlerror_pointer);
-            return(NULL);
-        }
-        DEBUG_PRINT1("found %s -> ", pathbuf);
-        module_path = pathbuf;
-        dlerror_pointer = NULL;
-    }
-    else{
-        module_path = path;
-    }
-
-    /*
-     * If we don't want an unshared handle see if we already have a handle
-     * for this path.
-     */
-    if((mode & RTLD_UNSHARED) != RTLD_UNSHARED){
-        p = dlopen_handles;
-        while(p != NULL){
-        if(p->dev == stat_buf.st_dev && p->ino == stat_buf.st_ino){
-            /* skip unshared handles */
-            if((p->dlopen_mode & RTLD_UNSHARED) == RTLD_UNSHARED)
-            continue;
-            /*
-             * We have already created a handle for this path.  The
-             * caller might be trying to promote an RTLD_LOCAL handle
-             * to a RTLD_GLOBAL.  Or just looking it up with
-             * RTLD_NOLOAD.
-             */
-            if((p->dlopen_mode & RTLD_LOCAL) == RTLD_LOCAL &&
-               (mode & RTLD_GLOBAL) == RTLD_GLOBAL){
-            /* promote the handle */
-            if(NSMakePrivateModulePublic(p->module) == TRUE){
-                p->dlopen_mode &= ~RTLD_LOCAL;
-                p->dlopen_mode |= RTLD_GLOBAL;
-                p->dlopen_count++;
-                DEBUG_PRINT1("%p\n", p);
-                return(p);
-            }
-            else{
-                dlerror_pointer = "can't promote handle from "
-                          "RTLD_LOCAL to RTLD_GLOBAL";
-                DEBUG_PRINT1("ERROR: %s\n", dlerror_pointer);
-                return(NULL);
-            }
-            }
-            p->dlopen_count++;
-            DEBUG_PRINT1("%p\n", p);
-            return(p);
-        }
-        p = p->next;
-        }
-    }
-    
-    /*
-     * We do not have a handle for this path if we were just trying to
-     * look it up return NULL to indicate we don't have it.
-     */
-    if((mode & RTLD_NOLOAD) == RTLD_NOLOAD){
-        dlerror_pointer = "no existing handle for path RTLD_NOLOAD test";
-        DEBUG_PRINT1("ERROR: %s\n", dlerror_pointer);
-        return(NULL);
-    }
-
-    /* try to create an object file image from this path */
-    ofile_result_code = NSCreateObjectFileImageFromFile(module_path,
-                                &objectFileImage);
-    if(ofile_result_code != NSObjectFileImageSuccess){
-        switch(ofile_result_code){
-        case NSObjectFileImageFailure:
-        dlerror_pointer = "object file setup failure";
-        DEBUG_PRINT1("ERROR: %s\n", dlerror_pointer);
-        return(NULL);
-        case NSObjectFileImageInappropriateFile:
-        dlerror_pointer = "not a Mach-O MH_BUNDLE file type";
-        DEBUG_PRINT1("ERROR: %s\n", dlerror_pointer);
-        return(NULL);
-        case NSObjectFileImageArch:
-        dlerror_pointer = "no object for this architecture";
-        DEBUG_PRINT1("ERROR: %s\n", dlerror_pointer);
-        return(NULL);
-        case NSObjectFileImageFormat:
-        dlerror_pointer = "bad object file format";
-        DEBUG_PRINT1("ERROR: %s\n", dlerror_pointer);
-        return(NULL);
-        case NSObjectFileImageAccess:
-        dlerror_pointer = "can't read object file";
-        DEBUG_PRINT1("ERROR: %s\n", dlerror_pointer);
-        return(NULL);
-        default:
-        dlerror_pointer = "unknown error from "
-                  "NSCreateObjectFileImageFromFile()";
-        DEBUG_PRINT1("ERROR: %s\n", dlerror_pointer);
-        return(NULL);
-        }
-    }
-
-    /* try to link in this object file image */
-    options = NSLINKMODULE_OPTION_PRIVATE;
-    if((mode & RTLD_NOW) == RTLD_NOW)
-        options |= NSLINKMODULE_OPTION_BINDNOW;
-    module = NSLinkModule(objectFileImage, module_path, options);
-    NSDestroyObjectFileImage(objectFileImage) ;
-    if(module == NULL){
-        dlerror_pointer = "NSLinkModule() failed for dlopen()";
-        DEBUG_PRINT1("ERROR: %s\n", dlerror_pointer);
-        return(NULL);
-    }
-
-    /*
-     * If the handle is to be global promote the handle.  It is done this
-     * way to avoid multiply defined symbols.
-     */
-    if((mode & RTLD_GLOBAL) == RTLD_GLOBAL){
-        if(NSMakePrivateModulePublic(module) == FALSE){
-        dlerror_pointer = "can't promote handle from RTLD_LOCAL to "
-                  "RTLD_GLOBAL";
-        DEBUG_PRINT1("ERROR: %s\n", dlerror_pointer);
-        return(NULL);
-        }
-    }
-
-    p = (dlopen_handle *)malloc(sizeof(struct dlopen_handle));
-    if(p == NULL){
-        dlerror_pointer = "can't allocate memory for the dlopen handle";
-        DEBUG_PRINT1("ERROR: %s\n", dlerror_pointer);
-        return(NULL);
-    }
-
-    /* fill in the handle */
-    p->dev = stat_buf.st_dev;
-        p->ino = stat_buf.st_ino;
-    if(mode & RTLD_GLOBAL)
-        p->dlopen_mode = RTLD_GLOBAL;
-    else
-        p->dlopen_mode = RTLD_LOCAL;
-    p->dlopen_mode |= (mode & RTLD_UNSHARED) |
-              (mode & RTLD_NODELETE) |
-              (mode & RTLD_LAZY_UNDEF);
-    p->dlopen_count = 1;
-    p->module = module;
-    p->prev = NULL;
-    p->next = dlopen_handles;
-    if(dlopen_handles != NULL)
-        dlopen_handles->prev = p;
-    dlopen_handles = p;
-
-    /* call the init function if one exists */
-    NSSymbol = NSLookupSymbolInModule(p->module, "__init");
-    if(NSSymbol != NULL){
-        init = ( void(*)() )NSAddressOfSymbol(NSSymbol);
-        init();
-    }
-    
-    DEBUG_PRINT1("%p\n", p);
-    return(p);
-}
-
-/*
- * dlsym() the MacOS X version of the FreeBSD dlopen() interface.
- */
-void *
-dlsym(
-void * handle,
-const char *symbol)
-{
-    struct dlopen_handle *dlopen_handle, *p;
-    NSSymbol NSSymbol;
-    void *address;
-
-        DEBUG_PRINT2("libdl: dlsym(%p,%s) -> ", handle, symbol);
-
-    dlopen_handle = (struct dlopen_handle *)handle;
-
-    /*
-     * If this is the handle for the main program do a global lookup.
-     */
-    if(dlopen_handle == (struct dlopen_handle *)&main_program_handle){
-        if(NSIsSymbolNameDefined(symbol) == TRUE){
-        NSSymbol = NSLookupAndBindSymbol(symbol);
-        address = NSAddressOfSymbol(NSSymbol);
-        dlerror_pointer = NULL;
-        DEBUG_PRINT1("%p\n", address);
-        return(address);
-        }
-        else{
-        dlerror_pointer = "symbol not found";
-        DEBUG_PRINT1("ERROR: %s\n", dlerror_pointer);
-        return(NULL);
-        }
-    }
-
-    /*
-     * Find this handle and do a lookup in just this module.
-     */
-    p = dlopen_handles;
-    while(p != NULL){
-        if(dlopen_handle == p){
-        NSSymbol = NSLookupSymbolInModule(p->module, symbol);
-        if(NSSymbol != NULL){
-            address = NSAddressOfSymbol(NSSymbol);
-            dlerror_pointer = NULL;
-            DEBUG_PRINT1("%p\n", address);
-            return(address);
-        }
-        else{
-            dlerror_pointer = "symbol not found";
-            DEBUG_PRINT1("ERROR: %s\n", dlerror_pointer);
-            return(NULL);
-        }
-        }
-        p = p->next;
-    }
-
-    dlerror_pointer = "bad handle passed to dlsym()";
-    DEBUG_PRINT1("ERROR: %s\n", dlerror_pointer);
-    return(NULL);
-}
-
-/*
- * dlerror() the MacOS X version of the FreeBSD dlopen() interface.
- */
-const char *
-dlerror(
-void)
-{
-    const char *p;
-
-    p = (const char *)dlerror_pointer;
-    dlerror_pointer = NULL;
-    return(p);
-}
-
-/*
- * dlclose() the MacOS X version of the FreeBSD dlopen() interface.
- */
-int
-dlclose(
-void * handle)
-{
-    struct dlopen_handle *p, *q;
-    unsigned long options;
-    NSSymbol NSSymbol;
-    void (*fini)(void);
-
-        DEBUG_PRINT1("libdl: dlclose(%p) -> ", handle);
-
-    dlerror_pointer = NULL;
-    q = (struct dlopen_handle *)handle;
-    p = dlopen_handles;
-    while(p != NULL){
-        if(p == q){
-        /* if the dlopen() count is not zero we are done */
-        p->dlopen_count--;
-        if(p->dlopen_count != 0){
-            DEBUG_PRINT("OK");
-            return(0);
-        }
-
-        /* call the fini function if one exists */
-        NSSymbol = NSLookupSymbolInModule(p->module, "__fini");
-        if(NSSymbol != NULL){
-            fini = ( void(*)() )NSAddressOfSymbol(NSSymbol);
-            fini();
-        }
-
-        /* unlink the module for this handle */
-        options = 0;
-        if(p->dlopen_mode & RTLD_NODELETE)
-            options |= NSUNLINKMODULE_OPTION_KEEP_MEMORY_MAPPED;
-        if(p->dlopen_mode & RTLD_LAZY_UNDEF)
-            options |= NSUNLINKMODULE_OPTION_RESET_LAZY_REFERENCES;
-        if(NSUnLinkModule(p->module, options) == FALSE){
-            dlerror_pointer = "NSUnLinkModule() failed for dlclose()";
-            DEBUG_PRINT1("ERROR: %s\n", dlerror_pointer);
-            return(-1);
-        }
-        if(p->prev != NULL)
-            p->prev->next = p->next;
-        if(p->next != NULL)
-            p->next->prev = p->prev;
-        if(dlopen_handles == p)
-            dlopen_handles = p->next;
-        free(p);
-        DEBUG_PRINT("OK");
-        return(0);
-        }
-        p = p->next;
-    }
-    dlerror_pointer = "invalid handle passed to dlclose()";
-    DEBUG_PRINT1("ERROR: %s\n", dlerror_pointer);
-    return(-1);
-}
-
-}
-
-#else
-    // do nothing, it's all in dlfcn
 #endif

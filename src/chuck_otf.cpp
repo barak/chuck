@@ -1,33 +1,32 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // file: chuck_otf.cpp
 // desc: on-the-fly programming utilities
 //
-// author: Ge Wang (gewang@cs.princeton.edu)
-//         Perry R. Cook (prc@cs.princeton.edu)
+// author: Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
 // date: Autumn 2004
 //-----------------------------------------------------------------------------
 #include "chuck_otf.h"
@@ -161,10 +160,11 @@ t_CKUINT otf_process_msg( Chuck_VM * vm, Chuck_Compiler * compiler,
             goto cleanup;
         }
 
-        // copy stuff
+        // copy de-escaped filename
+        strcpy( msg->buffer, filename.c_str() );
+        // copy args if needed
         if( args.size() > 0 )
         {
-            strcpy( msg->buffer, filename.c_str() );
             cmd->args = new vector<string>;
             *(cmd->args) = args;
         }
@@ -182,8 +182,11 @@ t_CKUINT otf_process_msg( Chuck_VM * vm, Chuck_Compiler * compiler,
             }
         }
 
+        // construct full path to be associated with the file so me.sourceDir() works
+        // (added 1.3.5.2)
+        std::string full_path = get_full_path( msg->buffer );
         // parse, type-check, and emit
-        if( !compiler->go( msg->buffer, fd ) )
+        if( !compiler->go( msg->buffer, fd, NULL, full_path.c_str() ) )
         {
             SAFE_DELETE(cmd);
             goto cleanup;
@@ -201,14 +204,24 @@ t_CKUINT otf_process_msg( Chuck_VM * vm, Chuck_Compiler * compiler,
             cmd->param = msg->param;
     }
     else if( msg->type == MSG_STATUS || msg->type == MSG_REMOVE || msg->type == MSG_REMOVEALL
-             || msg->type == MSG_KILL || msg->type == MSG_TIME || msg->type == MSG_RESET_ID )
+             || msg->type == MSG_KILL || msg->type == MSG_TIME || msg->type == MSG_RESET_ID
+             || msg->type == MSG_CLEARVM )
     {
         cmd->type = msg->type;
         cmd->param = msg->param;
     }
+    else if( msg->type == MSG_ABORT )
+    {
+        // halt and clear current shred
+        vm->abort_current_shred();
+        // short circuit
+        ret = 1;
+        SAFE_DELETE(cmd);
+        goto cleanup;
+    }
     else
     {
-        fprintf( stderr, "[chuck]: unrecognized incoming command from network: '%i'\n", cmd->type );
+        fprintf( stderr, "[chuck]: unrecognized incoming command from network: '%li'\n", cmd->type );
         SAFE_DELETE(cmd);
         goto cleanup;
     }
@@ -218,7 +231,9 @@ t_CKUINT otf_process_msg( Chuck_VM * vm, Chuck_Compiler * compiler,
         ret = vm->process_msg( cmd );
     else
     {
+        // queue message
         vm->queue_msg( cmd, 1 );
+        // return code
         ret = 1;
     }
 
@@ -374,7 +389,7 @@ ck_socket otf_send_connect( const char * host, int port )
 // name: otf_send_cmd()
 // desc: ...
 //-----------------------------------------------------------------------------
-int otf_send_cmd( int argc, char ** argv, t_CKINT & i, const char * host, int port,
+int otf_send_cmd( int argc, const char ** argv, t_CKINT & i, const char * host, int port,
                   int * is_otf )
 {
     Net_Msg msg;
@@ -471,12 +486,23 @@ int otf_send_cmd( int argc, char ** argv, t_CKINT & i, const char * host, int po
             goto error;
         EM_poplog();
     }
-    else if( !strcmp( argv[i], "--removeall" ) || !strcmp( argv[i], "--remall" ) )
+    else if( !strcmp( argv[i], "--removeall" ) || !strcmp( argv[i], "--remall" ) || !strcmp( argv[i], "--remove.all" ) )
     {
         if( !(dest = otf_send_connect( host, port )) ) return 0;
         EM_pushlog();
         EM_log( CK_LOG_INFO, "requesting removeall..." );
         msg.type = MSG_REMOVEALL;
+        msg.param = 0;
+        otf_hton( &msg );
+        ck_send( dest, (char *)&msg, sizeof(msg) );
+        EM_poplog();
+    }
+    else if( !strcmp( argv[i], "--clear.vm" ) )
+    {
+        if( !(dest = otf_send_connect( host, port )) ) return 0;
+        EM_pushlog();
+        EM_log( CK_LOG_INFO, "requesting clearvm..." );
+        msg.type = MSG_CLEARVM;
         msg.param = 0;
         otf_hton( &msg );
         ck_send( dest, (char *)&msg, sizeof(msg) );
@@ -514,6 +540,14 @@ int otf_send_cmd( int argc, char ** argv, t_CKINT & i, const char * host, int po
     {
         if( !(dest = otf_send_connect( host, port )) ) return 0;
         msg.type = MSG_STATUS;
+        msg.param = 0;
+        otf_hton( &msg );
+        ck_send( dest, (char *)&msg, sizeof(msg) );
+    }
+    else if( !strcmp( argv[i], "--abort.shred" ) )
+    {
+        if( !(dest = otf_send_connect( host, port )) ) return 0;
+        msg.type = MSG_ABORT;
         msg.param = 0;
         otf_hton( &msg );
         ck_send( dest, (char *)&msg, sizeof(msg) );

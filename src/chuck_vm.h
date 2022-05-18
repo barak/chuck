@@ -1,33 +1,32 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // file: chuck_vm.h
-// desc: ...
+// desc: chuck virtual machine
 //
-// author: Ge Wang (gewang@cs.princeton.edu)
-//         Perry R. Cook (prc@cs.princeton.edu)
+// author: Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
 // date: Autumn 2002
 //-----------------------------------------------------------------------------
 #ifndef __CHUCK_VM_H__
@@ -44,7 +43,17 @@
 #include <string>
 #include <map>
 #include <vector>
+#include <list>
 
+
+
+#define CK_DEBUG_MEMORY_MGMT (0)
+
+#if CK_DEBUG_MEMORY_MGMT
+#define CK_MEMMGMT_TRACK(x) do{ x; } while(0)
+#else
+#define CK_MEMMGMT_TRACK(x)
+#endif
 
 
 
@@ -131,12 +140,16 @@ public:
     t_CKUINT native_func;
     // is ctor?
     t_CKUINT native_func_type;
+    
+    // filename this code came from (added 1.3.0.0)
+    std::string filename;
 
     // native func types
     enum { NATIVE_UNKNOWN, NATIVE_CTOR, NATIVE_DTOR, NATIVE_MFUN, NATIVE_SFUN };
 };
 
 
+struct Chuck_IO_Serial;
 
 
 //-----------------------------------------------------------------------------
@@ -159,7 +172,15 @@ public:
     t_CKBOOL run( Chuck_VM * vm );
     t_CKBOOL add( Chuck_UGen * ugen );
     t_CKBOOL remove( Chuck_UGen * ugen );
-
+    
+    // add parent object reference (added 1.3.1.2)
+    t_CKVOID add_parent_ref( Chuck_Object * obj );
+    
+    // HACK - spencer (added 1.3.2.0)
+    // add/remove SerialIO devices to close on shred exit
+    t_CKVOID add_serialio( Chuck_IO_Serial * serial );
+    t_CKVOID remove_serialio( Chuck_IO_Serial * serial );
+    
 //-----------------------------------------------------------------------------
 // data
 //-----------------------------------------------------------------------------
@@ -186,17 +207,22 @@ public: // machine components
     t_CKTIME now;
     t_CKTIME start;
 
-    // state
-    t_CKUINT * obj_array;
-    t_CKUINT obj_array_size;
+    // state (no longer needed, see array_alloc)
+    // t_CKUINT * obj_array;
+    // t_CKUINT obj_array_size;
 
 public:
     t_CKTIME wake_time;
     t_CKUINT next_pc;
     t_CKBOOL is_done;
     t_CKBOOL is_running;
+    t_CKBOOL is_abort;
+    t_CKBOOL is_dumped;
     Chuck_Event * event;  // event shred is waiting on
     std::map<Chuck_UGen *, Chuck_UGen *> m_ugen_map;
+    // references kept by the shred itself (e.g., when sporking member functions)
+    // to be released when shred is done -- added 1.3.1.2
+    std::vector<Chuck_Object *> m_parent_objects;
 
 public: // id
     t_CKUINT xid;
@@ -209,6 +235,9 @@ public:
 
     // tracking
     CK_TRACK( Shred_Stat * stat );
+    
+private:
+    std::list<Chuck_IO_Serial *> * m_serials;
 };
 
 
@@ -289,6 +318,8 @@ public: // shreduling
     Chuck_VM_Shred * get( );
     void advance( );
     void advance2( );
+    void advance_v( t_CKINT & num_left );
+    void set_adaptive( t_CKUINT max_block_size );
 
 public: // high-level shred interface
     t_CKBOOL remove( Chuck_VM_Shred * shred );
@@ -315,6 +346,8 @@ public:
     Chuck_VM_Shred * shred_list;
     // shreds waiting on events
     std::map<Chuck_VM_Shred *, Chuck_VM_Shred *> blocked;
+    // current shred
+    Chuck_VM_Shred * m_current_shred; // TODO: ref count?
 
     // ugen
     Chuck_UGen * m_dac;
@@ -325,6 +358,11 @@ public:
     
     // status cache
     Chuck_VM_Status m_status;
+    
+    // max block size for adaptive block processing
+    t_CKUINT m_max_block_size;
+    t_CKBOOL m_adaptive;
+    t_CKDUR m_samps_until_next;
 };
 
 
@@ -349,7 +387,9 @@ public: // init
                          t_CKUINT buffer_size = 512, t_CKUINT num_buffers = 4,
                          t_CKUINT dac = 0, t_CKUINT adc = 0,
                          t_CKUINT dac_chan = 2, t_CKUINT adc_chan = 2,
-                         t_CKBOOL block = TRUE );
+                         t_CKBOOL block = TRUE, t_CKUINT adaptive = 0,
+                         // force_srate added 1.3.1.2
+                         t_CKBOOL force_srate = FALSE );
     t_CKBOOL initialize_synthesis( );
     t_CKBOOL shutdown();
 
@@ -371,6 +411,7 @@ public: // running the machine
     t_CKBOOL pause( );
     t_CKBOOL stop( );
     t_CKBOOL start_audio( );
+    t_CKBOOL abort_current_shred( );
 
 public: // invoke functions
     t_CKBOOL invoke_static( Chuck_VM_Shred * shred );
@@ -381,9 +422,14 @@ public: // garbage collection
 
 public: // msg
     t_CKBOOL queue_msg( Chuck_Msg * msg, int num_msg );
-    t_CKBOOL queue_event( Chuck_Event * event, int num_msg );
+    // CBufferSimple added 1.3.0.0 to fix uber-crash
+    t_CKBOOL queue_event( Chuck_Event * event, int num_msg, CBufferSimple * buffer = NULL );
     t_CKUINT process_msg( Chuck_Msg * msg );
     Chuck_Msg * get_reply( );
+
+    // added 1.3.0.0 to fix uber-crash
+    CBufferSimple * create_event_buffer();
+    void destroy_event_buffer( CBufferSimple * buffer );
 
 public: // static/dynamic function table
     //void set_env( void * env ) { m_env = env; }
@@ -395,6 +441,10 @@ public: // get error
     const char * last_error() const
     { return m_last_error.c_str(); }
 
+    t_CKBOOL set_main_thread_hook( f_mainthreadhook hook, f_mainthreadquit quit,
+                                   void * bindle );
+    t_CKBOOL clear_main_thread_hook();
+    
 //-----------------------------------------------------------------------------
 // data
 //-----------------------------------------------------------------------------
@@ -414,6 +464,8 @@ protected:
     Chuck_VM_Shred * spork( Chuck_VM_Shred * shred );
     t_CKBOOL free( Chuck_VM_Shred * shred, t_CKBOOL cascade, 
                    t_CKBOOL dec = TRUE );
+    void dump( Chuck_VM_Shred * shred );
+    void release_dump();
 
 protected:
     t_CKBOOL m_init;
@@ -426,6 +478,9 @@ protected:
     t_CKUINT m_num_shreds;
     t_CKUINT m_shred_id;
     Chuck_VM_Shreduler * m_shreduler;
+    // place to put dumped shreds
+    std::vector<Chuck_VM_Shred *> m_shred_dump;
+    t_CKUINT m_num_dumped_shreds;
 
     // audio
     BBQ * m_bbq;
@@ -438,6 +493,14 @@ protected:
     CBufferSimple * m_msg_buffer;
     CBufferSimple * m_reply_buffer;
     CBufferSimple * m_event_buffer;
+    
+    // TODO: vector? (added 1.3.0.0 to fix uber-crash)
+    std::list<CBufferSimple *> m_event_buffers;
+    
+    // added 1.3.2.0
+    f_mainthreadhook m_main_thread_hook;
+    f_mainthreadquit m_main_thread_quit;
+    void *m_main_thread_bindle;
 
 public:
     // running
@@ -466,7 +529,10 @@ enum Chuck_Msg_Type
     MSG_KILL,
     MSG_TIME,
     MSG_RESET_ID,
-    MSG_DONE
+    MSG_DONE,
+    MSG_ABORT,
+    MSG_ERROR, // added 1.3.0.0
+    MSG_CLEARVM,
 };
 
 
@@ -494,8 +560,11 @@ struct Chuck_Msg
 
     std::vector<std::string> * args;
 
-    Chuck_Msg() { memset( this, 0, sizeof(*this) ); }
+    Chuck_Msg() : args(NULL) { clear(); }
     ~Chuck_Msg() { SAFE_DELETE( args ); }
+    
+    // added 1.3.0.0
+    void clear() { SAFE_DELETE( args ); memset( this, 0, sizeof(*this) ); }
     
     void set( const std::vector<std::string> & vargs )
     {

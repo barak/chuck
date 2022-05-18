@@ -14,7 +14,7 @@ T - (now % T) => now;
 
 // construct the patch
 SndBuf buf => Gain g => Dyno dy => JCRev r => dac;
-"../data/kick.wav" => buf.read;
+me.sourceDir() + "/../data/kick.wav" => buf.read;
 .01 => r.mix;
 
 // make gain way too high, i.e. force clipping
@@ -33,9 +33,10 @@ dy.limit();
 // time loop
 while( true )
 {
-    Std.rand2f(.8,.9) => buf.gain;
+    Math.random2f(.8,.9) => buf.gain;
 
-    if( Std.randf() > .5 )
+    // note: Math.randomf() returns value between 0 and 1
+    if( Math.randomf() > .75 )
     {
         0 => int i;
         while( i < 8 )

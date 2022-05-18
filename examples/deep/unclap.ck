@@ -10,7 +10,7 @@ SndBuf clapper2 => dac.right;
 
 // load built-in sounds
 "special:glot_ahh" => clapper1.read; 3.0 => clapper1.gain;
-"special:glot_ooo" => clapper2.read; 3.0 => clapper2.gain;
+"special:glot_ahh" => clapper2.read; 3.0 => clapper2.gain;
 
 // the full "clapping music" figure
 [.5, .5, 1, .5, 1, 1, .5, 1 ] @=> float seq[];
@@ -28,7 +28,7 @@ fun void clap( SndBuf buffy, int max, float factor )
     1 => int shifts;
 
     // infinite time loop
-    for( ; ; shifts++ )
+    for( ; true; shifts++ )
     {
         // one measure
         for( 0 => int count; count < seq.cap(); count++ )

@@ -1,46 +1,50 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // file: ugen_stk.cpp
-// desc: import library for Synthesis ToolKit (STK) - Perry Cook + Gary Scavone
+// desc: ChucK import for Synthesis ToolKit (STK)
+//                        by Perry Cook and Gary Scavone
 //
-// author: Ge Wang (gewang@cs.princeton.edu)
+// author: Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
 //         Perry R. Cook (prc@cs.princeton.edu)
 //         Ananya Misra (amisra@cs.princeton.edu)
 //         Ari Lazier (alazier@cs.princeton.edu)
-//         Philip Davidson (philipd@cs.princeton.edu)
+//         Philip L. Davidson (philipd@cs.princeton.edu)
 //         Mark Daly (mdaly@cs.princeton.edu)
 // date: Spring 2004
 //-----------------------------------------------------------------------------
 #include "ugen_stk.h"
 #include "chuck_type.h"
 #include "util_math.h"
+#include "chuck_vm.h"
+#include "chuck_lang.h"
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <float.h>
+#include <limits.h>
 
 
 
@@ -108,6 +112,13 @@ static t_CKUINT JetTabl_offset_data = 0;
 
 static t_CKUINT Mesh2D_offset_data = 0;
 
+static t_CKUINT MidiFileIn_offset_data = 0;
+
+static t_CKINT ADSR_state_ATTACK = ADSR::ATTACK;
+static t_CKINT ADSR_state_DECAY = ADSR::DECAY;
+static t_CKINT ADSR_state_SUSTAIN = ADSR::SUSTAIN;
+static t_CKINT ADSR_state_RELEASE = ADSR::RELEASE;
+static t_CKINT ADSR_state_DONE = ADSR::DONE;
 
 // SKINI
 /*
@@ -176,9 +187,12 @@ CK_DLL_TICK( Chorus_tick );
 CK_DLL_PMSG( Chorus_pmsg );
 CK_DLL_CTRL( Chorus_ctrl_modDepth );
 CK_DLL_CTRL( Chorus_ctrl_modFreq );
+CK_DLL_CTRL( Chorus_ctrl_baseDelay );
+CK_DLL_CTRL( Chorus_ctrl_set );
 CK_DLL_CTRL( Chorus_ctrl_mix );
 CK_DLL_CGET( Chorus_cget_modDepth );
 CK_DLL_CGET( Chorus_cget_modFreq );
+CK_DLL_CGET( Chorus_cget_baseDelay );
 CK_DLL_CGET( Chorus_cget_mix );
 
 // Delay
@@ -428,19 +442,28 @@ CK_DLL_CGET( WvIn_cget_path );
 CK_DLL_CTOR( WvOut_ctor );
 CK_DLL_DTOR( WvOut_dtor );
 CK_DLL_TICK( WvOut_tick );
+CK_DLL_TICKF( WvOut2_tickf );
 CK_DLL_PMSG( WvOut_pmsg );
 CK_DLL_CTRL( WvOut_ctrl_filename );
 CK_DLL_CTRL( WvOut_ctrl_matFilename );
+CK_DLL_CTRL( WvOut2_ctrl_matFilename );
 CK_DLL_CTRL( WvOut_ctrl_sndFilename );
+CK_DLL_CTRL( WvOut2_ctrl_sndFilename );
 CK_DLL_CTRL( WvOut_ctrl_wavFilename );
+CK_DLL_CTRL( WvOut2_ctrl_wavFilename );
 CK_DLL_CTRL( WvOut_ctrl_rawFilename );
+CK_DLL_CTRL( WvOut2_ctrl_rawFilename );
 CK_DLL_CTRL( WvOut_ctrl_aifFilename );
+CK_DLL_CTRL( WvOut2_ctrl_aifFilename );
 CK_DLL_CTRL( WvOut_ctrl_closeFile );
 CK_DLL_CTRL( WvOut_ctrl_record );
 CK_DLL_CTRL( WvOut_ctrl_autoPrefix );
 CK_DLL_CGET( WvOut_cget_filename );
 CK_DLL_CGET( WvOut_cget_record );
 CK_DLL_CGET( WvOut_cget_autoPrefix );
+CK_DLL_CTRL( WvOut_ctrl_fileGain );
+CK_DLL_CGET( WvOut_cget_fileGain );
+
 
 // FM
 CK_DLL_CTOR( FM_ctor );
@@ -1186,6 +1209,17 @@ CK_DLL_CTRL( Mesh2D_ctrl_note_on );
 CK_DLL_CTRL( Mesh2D_ctrl_note_off );
 CK_DLL_CTRL( Mesh2D_cget_energy );
 CK_DLL_CTRL( Mesh2D_ctrl_control_change );
+
+
+// MidiFileIn
+CK_DLL_CTOR( MidiFileIn_ctor );
+CK_DLL_DTOR( MidiFileIn_dtor );
+CK_DLL_MFUN( MidiFileIn_open );
+CK_DLL_MFUN( MidiFileIn_close );
+CK_DLL_MFUN( MidiFileIn_numTracks );
+CK_DLL_MFUN( MidiFileIn_read );
+CK_DLL_MFUN( MidiFileIn_readTrack );
+CK_DLL_MFUN( MidiFileIn_rewind );
 
 
 
@@ -2300,8 +2334,8 @@ DLL_QUERY stk_query( Chuck_DL_Query * QUERY )
     //------------------------------------------------------------------------
 
     if( !type_engine_import_ugen_begin( env, "FM", "StkInstrument", env->global(), 
-                        FM_ctor, FM_dtor,
-                        FM_tick, FM_pmsg ) ) return FALSE;
+                                        FM_ctor, FM_dtor,
+                                        FM_tick, FM_pmsg ) ) return FALSE;
 
     // member variable
     // all subclasses of FM must use this offset, as this is where the inherited 
@@ -2731,6 +2765,12 @@ DLL_QUERY stk_query( Chuck_DL_Query * QUERY )
     func = make_new_mfun( "int", "state", ADSR_cget_state ); //! attack=0, decay=1 , sustain=2, release=3, done=4
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
+    if( !type_engine_import_svar( env, "int", "ATTACK", TRUE, (t_CKUINT) &ADSR_state_ATTACK) ) goto error;
+    if( !type_engine_import_svar( env, "int", "DECAY", TRUE, (t_CKUINT) &ADSR_state_DECAY) ) goto error;
+    if( !type_engine_import_svar( env, "int", "SUSTAIN", TRUE, (t_CKUINT) &ADSR_state_SUSTAIN) ) goto error;
+    if( !type_engine_import_svar( env, "int", "RELEASE", TRUE, (t_CKUINT) &ADSR_state_RELEASE) ) goto error;
+    if( !type_engine_import_svar( env, "int", "DONE", TRUE, (t_CKUINT) &ADSR_state_DONE) ) goto error;
+    
     // end the class import
     type_engine_import_class_end( env );
 
@@ -3175,11 +3215,23 @@ DLL_QUERY stk_query( Chuck_DL_Query * QUERY )
     func = make_new_mfun( "float", "modDepth", Chorus_cget_modDepth ); //! modulation depth
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
+    func = make_new_mfun( "dur", "baseDelay", Chorus_ctrl_baseDelay ); //! base delay
+    func->add_arg( "dur", "value" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    func = make_new_mfun( "dur", "baseDelay", Chorus_cget_baseDelay ); //! base delay
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
     func = make_new_mfun( "float", "mix", Chorus_ctrl_mix ); //! effect mix
     func->add_arg( "float", "value" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     func = make_new_mfun( "float", "mix", Chorus_cget_mix ); //! effect mix
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    func = make_new_mfun( "void", "max", Chorus_ctrl_set );
+    func->add_arg( "dur", "baseDelay" );
+    func->add_arg( "float", "modDepth" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
 
@@ -3355,6 +3407,7 @@ DLL_QUERY stk_query( Chuck_DL_Query * QUERY )
     //member variable
     WvOut_offset_data = type_engine_import_mvar ( env, "int", "@WvOut_data", FALSE );
     if( WvOut_offset_data == CK_INVALID_OFFSET ) goto error;
+    
     func = make_new_mfun( "string", "matFilename", WvOut_ctrl_matFilename ); //!open matlab file for writing
     func->add_arg( "string", "value" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
@@ -3398,7 +3451,42 @@ DLL_QUERY stk_query( Chuck_DL_Query * QUERY )
 
     func = make_new_mfun( "string", "autoPrefix", WvOut_cget_autoPrefix ); //! set/get auto prefix string
     if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    func = make_new_mfun( "float", "fileGain", WvOut_ctrl_fileGain ); //! set/get auto prefix string
+    func->add_arg( "float", "value" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    func = make_new_mfun( "float", "fileGain", WvOut_cget_fileGain ); //! set/get auto prefix string
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // end the class import
+    type_engine_import_class_end( env );
+    
+    
+    if( !type_engine_import_ugen_begin( env, "WvOut2", "WvOut", env->global(), 
+                                        NULL, NULL,
+                                        NULL, WvOut2_tickf, WvOut_pmsg, 2, 2 ) ) return FALSE;
 
+    func = make_new_mfun( "string", "matFilename", WvOut2_ctrl_matFilename ); //!open matlab file for writing
+    func->add_arg( "string", "value" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    func = make_new_mfun( "string", "sndFilename", WvOut2_ctrl_sndFilename ); //!open snd file for writing
+    func->add_arg( "string", "value" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    func = make_new_mfun( "string", "wavFilename", WvOut2_ctrl_wavFilename ); //!open WAVE file for writing
+    func->add_arg( "string", "value" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    func = make_new_mfun( "string", "rawFilename", WvOut2_ctrl_rawFilename ); //!open raw file for writing
+    func->add_arg( "string", "value" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    func = make_new_mfun( "string", "aifFilename", WvOut2_ctrl_aifFilename ); //!open AIFF file for writing
+    func->add_arg( "string", "value" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
     // end the class import
     type_engine_import_class_end( env );
     
@@ -3544,6 +3632,38 @@ DLL_QUERY stk_query( Chuck_DL_Query * QUERY )
     // end the class import
     type_engine_import_class_end( env );
     
+    
+    if(!type_engine_import_class_begin( env, "MidiFileIn", "Object", env->global(), MidiFileIn_ctor, MidiFileIn_dtor ))
+        return FALSE;
+    
+    MidiFileIn_offset_data = type_engine_import_mvar ( env, "int", "@MidiFileIn_data", FALSE );
+    if( MidiFileIn_offset_data == CK_INVALID_OFFSET ) goto error;
+    
+    func = make_new_mfun( "int", "open", MidiFileIn_open );
+    func->add_arg( "string", "path" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    func = make_new_mfun( "void", "close", MidiFileIn_close );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    func = make_new_mfun( "int", "read", MidiFileIn_read );
+    func->add_arg( "MidiMsg", "msg" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    func = make_new_mfun( "int", "read", MidiFileIn_readTrack );
+    func->add_arg( "MidiMsg", "msg" );
+    func->add_arg( "int", "track" );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    func = make_new_mfun( "int", "numTracks", MidiFileIn_numTracks );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    func = make_new_mfun( "void", "rewind", MidiFileIn_rewind );
+    if( !type_engine_import_mfun( env, func ) ) goto error;
+    
+    // end the class import
+    type_engine_import_class_end( env );
+
     
     return TRUE;
 
@@ -3717,7 +3837,7 @@ ADSR :: ADSR() : Envelope()
   releaseRate = (MY_FLOAT) 0.01;
   m_decayTime = (MY_FLOAT) -1.0; // not used
   m_releaseTime = (MY_FLOAT) -1.0; // not used
-  state = ATTACK;
+  state = DONE;
 }
 
 ADSR :: ~ADSR()
@@ -3912,7 +4032,12 @@ MY_FLOAT ADSR :: tick()
     break;
 
   case RELEASE:
-    value -= releaseRate;
+    // WAS:
+    // value -= releaseRate;
+
+    // chuck
+    value -= rate;
+
     if (value <= 0.0)
     {
       value = (MY_FLOAT) 0.0;
@@ -4275,7 +4400,7 @@ void BandedWG :: controlChange(int number, MY_FLOAT value)
   }
   else if ( norm > 1.0 ) {
     norm = 1.0;
-    std::cerr << "[chuck](via STK): BandedWG: Control value greater than 128.0!" << std::endl;
+    std::cerr << "[chuck](via STK): BandedWG: Control value exceeds nominal range!" << std::endl;
   }
 
   if (number == __SK_BowPressure_) { // 2
@@ -5075,7 +5200,7 @@ void BlowBotl :: controlChange(int number, MY_FLOAT value)
   }
   else if ( norm > 1.0 ) {
     norm = 1.0;
-    std::cerr << "[chuck](via STK): BlowBotl: Control value greater than 128.0!" << std::endl;
+    std::cerr << "[chuck](via STK): BlowBotl: Control value exceeds nominal range!" << std::endl;
   }
 
   if( number == __SK_NoiseLevel_ ) { // 4
@@ -5358,7 +5483,7 @@ void BlowHole :: controlChange(int number, MY_FLOAT value)
   }
   else if ( norm > 1.0 ) {
     norm = 1.0;
-    std::cerr << "[chuck](via STK): BlowHole: Control value greater than 128.0!" << std::endl;
+    std::cerr << "[chuck](via STK): BlowHole: Control value exceeds nominal range!" << std::endl;
   }
 
   if (number == __SK_ReedStiffness_) { // 2 
@@ -5629,7 +5754,7 @@ void Bowed :: controlChange(int number, MY_FLOAT value)
   }
   else if ( norm > 1.0 ) {
     norm = 1.0;
-    std::cerr << "[chuck](via STK): Bowed: Control value greater than 128.0!" << std::endl;
+    std::cerr << "[chuck](via STK): Bowed: Control value exceeds nominal range!" << std::endl;
   }
 
   if (number == __SK_BowPressure_) { // 2
@@ -5832,7 +5957,7 @@ void Brass :: controlChange(int number, MY_FLOAT value)
   }
   else if ( norm > 1.0 ) {
     norm = 1.0;
-    std::cerr << "[chuck](via STK): Brass: Control value greater than 128.0!" << std::endl;
+    std::cerr << "[chuck](via STK): Brass: Control value exceeds nominal range!" << std::endl;
   }
 
   if (number == __SK_LipTension_) { // 2
@@ -5877,32 +6002,47 @@ void Brass :: controlChange(int number, MY_FLOAT value)
 
 Chorus :: Chorus(MY_FLOAT baseDelay)
 {
-  delayLine[0] = new DelayL((long) baseDelay, (long) (baseDelay * 1.414) + 2);
-  delayLine[1] = new DelayL((long) (baseDelay), (long) baseDelay + 2);
-  baseLength = baseDelay;
+  delayLine[0] = delayLine[1] = NULL;
+  mods[0] = new WaveLoop( "special:sinewave", TRUE );
+  mods[1] = NULL;
+  set(baseDelay, 4);
+  setDelay( baseDelay );
+  setModDepth( .5 );
+  setModFrequency( .25 );
 
   // Concatenate the STK rawwave path to the rawwave file
-  mods[0] = new WaveLoop( "special:sinewave", TRUE );
-  mods[1] = new WaveLoop( "special:sinewave", TRUE );
-  mods[0]->setFrequency(0.2);
-  mods[1]->setFrequency(0.222222);
-  modDepth = 0.05;
+  // mods[0] = new WaveLoop( "special:sinewave", TRUE );
+  // mods[1] = new WaveLoop( "special:sinewave", TRUE );
+  // mods[0]->setFrequency(0.2);
+  // mods[1]->setFrequency(0.222222);
   effectMix = 0.5;
-  this->clear();
 }
 
 Chorus :: ~Chorus()
 {
-  delete delayLine[0];
-  delete delayLine[1];
-  delete mods[0];
-  delete mods[1];
+  SAFE_DELETE( delayLine[0] );
+  SAFE_DELETE( delayLine[1] );
+  SAFE_DELETE( mods[0] );
+  SAFE_DELETE( mods[1] );
+}
+
+// chuck
+void Chorus :: set(MY_FLOAT baseDelay, MY_FLOAT depth)
+{
+  SAFE_DELETE( delayLine[0] );
+  SAFE_DELETE( delayLine[1] );
+
+  delayLine[0] = new DelayL((long) baseDelay, (long) (baseDelay + baseDelay * depth) + 2);
+  // delayLine[0] = new DelayL((long) baseDelay, (long) (baseDelay + baseDelay * 1.414 * depth) + 2);
+  // delayLine[1] = new DelayL((long) baseDelay, (long) (baseDelay + baseDelay * depth) + 2);
+
+  this->clear();
 }
 
 void Chorus :: clear()
 {
   delayLine[0]->clear();
-  delayLine[1]->clear();
+  // delayLine[1]->clear();
   lastOutput[0] = 0.0;
   lastOutput[1] = 0.0;
 }
@@ -5925,15 +6065,21 @@ void Chorus :: setModDepth(MY_FLOAT depth)
   modDepth = depth;
 }
 
+void Chorus :: setDelay(MY_FLOAT baseDelay)
+{
+  baseLength = baseDelay;
+}
+
 void Chorus :: setModFrequency(MY_FLOAT frequency)
 {
   mods[0]->setFrequency(frequency);
-  mods[1]->setFrequency(frequency * 1.1111);
+  // mods[1]->setFrequency(frequency * 1.1111);
 }
 
 MY_FLOAT Chorus :: lastOut() const
 {
-  return (lastOutput[0] + lastOutput[1]) * (MY_FLOAT) 0.5;
+//  return (lastOutput[0] + lastOutput[1]) * (MY_FLOAT) 0.5;
+    return lastOutput[0];
 }
 
 MY_FLOAT Chorus :: lastOutLeft() const
@@ -5948,13 +6094,15 @@ MY_FLOAT Chorus :: lastOutRight() const
 
 MY_FLOAT Chorus :: tick(MY_FLOAT input)
 {
-  delayLine[0]->setDelay(baseLength * 0.707 * (1.0 + mods[0]->tick()));
-  delayLine[1]->setDelay(baseLength  * 0.5 *  (1.0 - mods[1]->tick()));
+  delayLine[0]->setDelay(baseLength * modDepth * .5 * (1.0 + mods[0]->tick()));
+  // delayLine[0]->setDelay(baseLength * 0.707 * modDepth * (1.0 + mods[0]->tick()));
+  // delayLine[1]->setDelay(baseLength  * 0.5 * modDepth * (1.0 + mods[1]->tick()));
   lastOutput[0] = input * (1.0 - effectMix);
   lastOutput[0] += effectMix * delayLine[0]->tick(input);
-  lastOutput[1] = input * (1.0 - effectMix);
-  lastOutput[1] += effectMix * delayLine[1]->tick(input);
-  return (lastOutput[0] + lastOutput[1]) * (MY_FLOAT) 0.5;
+  // lastOutput[1] = input * (1.0 - effectMix);
+  // lastOutput[1] += effectMix * delayLine[1]->tick(input);
+  // return (lastOutput[0] + lastOutput[1]) * (MY_FLOAT) 0.5;
+  return lastOutput[0];
 }
 
 MY_FLOAT *Chorus :: tick(MY_FLOAT *vec, unsigned int vectorSize)
@@ -6125,7 +6273,7 @@ void Clarinet :: controlChange(int number, MY_FLOAT value)
   }
   else if ( norm > 1.0 ) {
     norm = 1.0;
-    std::cerr << "[chuck](via STK): Clarinet: Control value greater than 128.0!" << std::endl;
+    std::cerr << "[chuck](via STK): Clarinet: Control value exceeds nominal range!" << std::endl;
   }
 
   if (number == __SK_ReedStiffness_) { // 2
@@ -6889,7 +7037,7 @@ Envelope :: Envelope(void) : Stk()
   value = (MY_FLOAT) 0.0;
   rate = (MY_FLOAT) 0.001;
   m_target = 1.0;
-  m_time = rate * Stk::sampleRate();
+  m_time = m_target / (rate * Stk::sampleRate());
   state = 0;
 }
 
@@ -6901,12 +7049,14 @@ void Envelope :: keyOn(void)
 {
   target = (MY_FLOAT) m_target;
   if (value != target) state = 1;
+  setTime( m_time );
 }
 
 void Envelope :: keyOff(void)
 {
   target = (MY_FLOAT) 0.0;
   if (value != target) state = 1;
+  setTime( m_time );
 }
 
 void Envelope :: setRate(MY_FLOAT aRate)
@@ -6918,7 +7068,7 @@ void Envelope :: setRate(MY_FLOAT aRate)
   else
     rate = aRate;
     
-  m_time = m_target / (rate * Stk::sampleRate());
+  m_time = (target - value) / (rate * Stk::sampleRate());
   if( m_time < 0.0 ) m_time = -m_time;
 }
 
@@ -6926,15 +7076,19 @@ void Envelope :: setTime(MY_FLOAT aTime)
 {
   if (aTime < 0.0) {
     printf("[chuck](via Envelope): negative times not allowed ... correcting!\n");
-    rate = m_target / (-aTime * Stk::sampleRate());
+    aTime = -aTime;
   }
-  else if( aTime == 0.0 )
+  
+  if( aTime == 0.0 )
     rate = FLT_MAX;
   else
-    rate = m_target / (aTime * Stk::sampleRate());
-    
+    rate = (target - value) / (aTime * Stk::sampleRate());
+
+  // rate
+  if( rate < 0 ) rate = -rate;
+
+  // should >= 0
   m_time = aTime;
-  if( m_time < 0.0 ) m_time = -m_time;
 }
 
 void Envelope :: setTarget(MY_FLOAT aTarget)
@@ -7189,7 +7343,7 @@ void FM :: controlChange(int number, MY_FLOAT value)
   }
   else if ( norm > 1.0 ) {
     norm = 1.0;
-    std::cerr << "[chuck](via STK): FM: Control value greater than 128.0!" << std::endl;
+    std::cerr << "[chuck](via STK): FM: Control value exceeds nominal range!" << std::endl;
   }
 
   if (number == __SK_Breath_) // 2
@@ -7371,7 +7525,7 @@ void FMVoices :: controlChange(int number, MY_FLOAT value)
   }
   else if ( norm > 1.0 ) {
     norm = 1.0;
-    std::cerr << "[chuck](via STK): FMVoices: Control value greater than 128.0!" << std::endl;
+    std::cerr << "[chuck](via STK): FMVoices: Control value exceeds nominal range!" << std::endl;
   }
 
 
@@ -7852,7 +8006,7 @@ void Flute :: controlChange(int number, MY_FLOAT value)
   }
   else if ( norm > 1.0 ) {
     norm = 1.0;
-    std::cerr << "[chuck](via STK): Flute: Control value greater than 128.0!" << std::endl;
+    std::cerr << "[chuck](via STK): Flute: Control value exceeds nominal range!" << std::endl;
   }
 
   if (number == __SK_JetDelay_) // 2
@@ -8411,7 +8565,9 @@ Mandolin :: Mandolin(MY_FLOAT lowestFrequency)
   directBody = 1.0;
   mic = 0;
   dampTime = 0;
-  waveDone = soundfile[mic]->isFinished();
+  // chuck: don't play
+  waveDone = true;
+  //waveDone = soundfile[mic]->isFinished();
   //reverse: nothing
   m_bodySize = 1.0;
 }
@@ -8424,8 +8580,13 @@ bool Mandolin :: setBodyIR( const char * path, bool isRaw )
 
 Mandolin :: ~Mandolin()
 {
-    for( int i=0; i<12; i++ )
-        SAFE_DELETE( soundfile[i] );
+//    for( int i=0; i<12; i++ )
+//        SAFE_DELETE( soundfile[i] );
+    
+    // chuck: all the soundfiles are the same object, only delete one of them 
+    SAFE_DELETE(soundfile[0]);
+    for( int i=1; i<12; i++ )
+        soundfile[i] = NULL;
 }
 
 void Mandolin :: pluck(MY_FLOAT amplitude)
@@ -8525,7 +8686,7 @@ void Mandolin :: controlChange(int number, MY_FLOAT value)
   }
   else if ( norm > 1.0 ) {
     norm = 1.0;
-    std::cerr << "[chuck](via STK): Mandolin: Control value greater than 128.0!" << std::endl;
+    std::cerr << "[chuck](via STK): Mandolin: Control value exceeds nominal range!" << std::endl;
   }
 
   if (number == __SK_BodySize_) // 2
@@ -8913,7 +9074,7 @@ void Mesh2D :: controlChange(int number, MY_FLOAT value)
   }
   else if ( norm > 1.0 ) {
     norm = 1.0;
-    std::cerr << "[chuck](via STK): Mesh2D: Control value greater than 128.0!" << std::endl;
+    std::cerr << "[chuck](via STK): Mesh2D: Control value exceeds nominal range!" << std::endl;
   }
 
   if (number == 2) // 2
@@ -9335,7 +9496,7 @@ void ModalBar :: controlChange(int number, MY_FLOAT value)
   }
   else if ( norm > 1.0 ) {
     norm = 1.0;
-    std::cerr << "[chuck](via STK): ModalBar: Control value greater than 128.0!" << std::endl;
+    std::cerr << "[chuck](via STK): ModalBar: Control value exceeds nominal range!" << std::endl;
   }
 
   if (number == __SK_StickHardness_) // 2
@@ -9582,7 +9743,7 @@ void Moog :: controlChange(int number, MY_FLOAT value)
   }
   else if ( norm > 1.0 ) {
     norm = 1.0;
-    std::cerr << "[chuck](via STK): Moog: Control value greater than 128.0!" << std::endl;
+    std::cerr << "[chuck](via STK): Moog: Control value exceeds nominal range!" << std::endl;
   }
 
   if (number == __SK_FilterQ_) // 2
@@ -11127,7 +11288,7 @@ void Resonate :: controlChange(int number, MY_FLOAT value)
   }
   else if ( norm > 1.0 ) {
     norm = 1.0;
-    std::cerr << "[chuck](via STK): Resonate: Control value greater than 128.0!" << std::endl;
+    std::cerr << "[chuck](via STK): Resonate: Control value exceeds nominal range!" << std::endl;
   }
 
   if (number == 2) // 2
@@ -11918,7 +12079,7 @@ void Saxofony :: controlChange(int number, MY_FLOAT value)
   }
   else if ( norm > 1.0 ) {
     norm = 1.0;
-    std::cerr << "[chuck](via STK): Saxofony: Control value greater than 128.0!" << std::endl;
+    std::cerr << "[chuck](via STK): Saxofony: Control value exceeds nominal range!" << std::endl;
   }
 
   if (number == __SK_ReedStiffness_) { // 2
@@ -12873,7 +13034,7 @@ void Shakers :: controlChange(int number, MY_FLOAT value)
   }
   else if ( norm > 1.0 ) {
     norm = 1.0;
-    std::cerr << "[chuck](via STK): Shakers: Control value greater than 128.0!" << std::endl;
+    std::cerr << "[chuck](via STK): Shakers: Control value exceeds nominal range!" << std::endl;
   }
 
   MY_FLOAT temp;
@@ -13206,7 +13367,7 @@ void Simple :: controlChange(int number, MY_FLOAT value)
   }
   else if ( norm > 1.0 ) {
     norm = 1.0;
-    std::cerr << "[chuck](via STK): Clarinet: Control value greater than 128.0!" << std::endl;
+    std::cerr << "[chuck](via STK): Clarinet: Control value exceeds nominal range!" << std::endl;
   }
 
   if (number == __SK_Breath_) // 2
@@ -13791,7 +13952,7 @@ void StifKarp :: controlChange(int number, MY_FLOAT value)
   }
   else if ( norm > 1.0 ) {
     norm = 1.0;
-    std::cerr << "[chuck](via STK): StifKarp: Control value greater than 128.0!" << std::endl;
+    std::cerr << "[chuck](via STK): StifKarp: Control value exceeds nominal range!" << std::endl;
   }
 
   if (number == __SK_PickPosition_) // 4
@@ -13940,18 +14101,17 @@ void Stk :: sleep(unsigned long milliseconds)
 
 void Stk :: handleError( const char *message, StkError::TYPE type )
 {
-  if (type == StkError::WARNING)
-    fprintf(stderr, "%s\n", message);
-  else if (type == StkError::DEBUG_WARNING) {
+    if (type == StkError::WARNING) {
+        fprintf(stderr, "%s\n", message);
+    } else if (type == StkError::DEBUG_WARNING) {
 #if defined(_STK_DEBUG_)
-    fprintf(stderr, "%s\n", message);
+        fprintf(stderr, "%s\n", message);
 #endif
-  }
-  else {
-    // Print error message before throwing.
-    fprintf(stderr, "%s\n", message);
-    throw StkError(message, type);
-  }
+    } else {
+        // print error message before throwing.
+        fprintf(stderr, "%s\n", message);
+        throw StkError(message, type);
+    }
 }
 
 StkError :: StkError(const char *p, TYPE tipe)
@@ -14694,7 +14854,7 @@ void VoicForm :: controlChange(int number, MY_FLOAT value)
     }
     else if ( norm > 1.0 ) {
         norm = 1.0;
-        std::cerr << "[chuck](via STK): VoicForm: Control value greater than 128.0!" << std::endl;
+        std::cerr << "[chuck](via STK): VoicForm: Control value exceeds nominal range!" << std::endl;
     }
 
     if (number == __SK_Breath_) { // 2
@@ -15398,7 +15558,7 @@ void Whistle :: controlChange(int number, MY_FLOAT value)
   }
   else if ( norm > 1.0 ) {
     norm = 1.0;
-    std::cerr << "[chuck](via STK): Whistle: Control value greater than 128.0!" << std::endl;
+    std::cerr << "[chuck](via STK): Whistle: Control value exceeds nominal range!" << std::endl;
   }
 
   if (number == __SK_NoiseLevel_) // 4
@@ -15412,7 +15572,7 @@ void Whistle :: controlChange(int number, MY_FLOAT value)
   else if (number == __SK_Breath_) // 2
     blowFreqMod = norm * 0.5;
   else if (number == __SK_Sustain_)  // 64
-      if (value < 1.0) subSample = 1;
+  { if (value < 1.0) subSample = 1; }
   else
     std::cerr << "[chuck](via STK): Whistle: Undefined Control Number (" << number << ")!!" << std::endl;
 
@@ -15704,7 +15864,7 @@ void WvIn :: openFile( const char *fileName, bool raw, bool doNormalize, bool ge
     }
     else
     {
-        bufferSize = 256;
+        bufferSize = 1024;
         channels = 1;
     }
 
@@ -15742,7 +15902,7 @@ void WvIn :: openFile( const char *fileName, bool raw, bool doNormalize, bool ge
         if( strstr(fileName, "special:sinewave") )
         {
             for (unsigned int j=0; j<bufferSize; j++)
-                data[j] = (SHRT_MAX) * sin(2*ONE_PI*j/256);
+                data[j] = (SHRT_MAX) * sin(2*ONE_PI*j/bufferSize);
         }
         else
         {
@@ -16685,9 +16845,61 @@ struct mathdr {
   // There's more, but it's of variable length
 };
 
+
+XWriteThread *WvOut::s_writeThread = NULL;
+
+
+size_t WvOut::fwrite(const void * ptr, size_t size, size_t nitems, FILE * stream)
+{
+    if(asyncIO)
+        return s_writeThread->fwrite(ptr, size, nitems, stream);
+    else
+        return ::fwrite(ptr, size, nitems, stream);
+}
+
+int WvOut::fseek(FILE *stream, long offset, int whence)
+{
+    if(asyncIO)
+        return s_writeThread->fseek(stream, offset, whence);
+    else
+        return ::fseek(stream, offset, whence);
+}
+
+int WvOut::fflush(FILE *stream)
+{
+    if(asyncIO)
+        return s_writeThread->fflush(stream);
+    else
+        return ::fflush(stream);
+}
+
+int WvOut::fclose(FILE *stream)
+{
+    if(asyncIO)
+        return s_writeThread->fclose(stream);
+    else
+        return ::fclose(stream);
+}
+
+size_t WvOut::fread(void *ptr, size_t size, size_t nitems, FILE *stream)
+{
+    // can't read asynchronously (yet)
+    assert(0);
+    return 0;
+}
+
+void WvOut::shutdown()
+{
+    if(s_writeThread)
+    {
+        s_writeThread->shutdown(); // deletes itself
+        s_writeThread = NULL;
+    }
+}
+
 WvOut :: WvOut()
 {
-  init();
+  init();    
 }
 
 WvOut::WvOut( const char *fileName, unsigned int nChannels, FILE_TYPE type, Stk::STK_FORMAT format )
@@ -16716,11 +16928,16 @@ void WvOut :: init()
   //m_filename[0] = '\0';
   start = TRUE;
   flush = 0;
+  fileGain = 1;
+    
+    if(s_writeThread == NULL)
+        s_writeThread = new XWriteThread(2<<20, 32);
+    asyncIO = TRUE;
 }
 
 void WvOut :: closeFile( void )
 {
-  if ( fd ) {
+  if( fd ) {
     // If there's an existing file, close it first.
     writeData( counter );
 
@@ -16742,7 +16959,6 @@ void WvOut :: closeFile( void )
 
   str_filename.str = "";
   //m_filename[0] = '\0';
-
 }
 
 void WvOut :: openFile( const char *fileName, unsigned int nChannels, WvOut::FILE_TYPE type, Stk::STK_FORMAT format )
@@ -16792,7 +17008,12 @@ void WvOut :: openFile( const char *fileName, unsigned int nChannels, WvOut::FIL
   }
 
   if ( result == false )
+  {
+    //closeFile();
     handleError(msg, StkError::FILE_ERROR);
+    // handleError( msg, StkError::WARNING );
+    // return;
+  }
 
   // Allocate new memory if necessary.
   if ( lastChannels < channels ) {
@@ -16820,8 +17041,8 @@ bool WvOut :: setRawFile( const char *fileName )
   }
 
   byteswap = false;
-if( little_endian )
-  byteswap = true;
+  if( little_endian )
+    byteswap = true;
 
   // printf("\nCreating RAW file: %s\n", name);
   return true;
@@ -16831,9 +17052,9 @@ bool WvOut :: setWavFile( const char *fileName )
 {
   char name[128];
   strncpy(name, fileName, 128);
-  if ( strstr(name, ".wav") == NULL) strcat(name, ".wav");
-  fd = fopen(name, "wb");
-  if ( !fd ) {
+  if( strstr(name, ".wav") == NULL ) strcat(name, ".wav");
+  fd = fopen( name, "wb" );
+  if( !fd ) {
     sprintf(msg, "[chuck](via WvOut): Could not create WAV file: %s", name);
     return false;
   }
@@ -16863,18 +17084,18 @@ bool WvOut :: setWavFile( const char *fileName )
   hdr.bytes_per_sec = (SINT32) (hdr.sample_rate * hdr.bytes_per_samp);
 
   byteswap = false;
-if( !little_endian )
-{
-  byteswap = true;
-  swap32((unsigned char *)&hdr.file_size);
-  swap32((unsigned char *)&hdr.chunk_size);
-  swap16((unsigned char *)&hdr.format_tag);
-  swap16((unsigned char *)&hdr.num_chans);
-  swap32((unsigned char *)&hdr.sample_rate);
-  swap32((unsigned char *)&hdr.bytes_per_sec);
-  swap16((unsigned char *)&hdr.bytes_per_samp);
-  swap16((unsigned char *)&hdr.bits_per_samp);
-}
+  if( !little_endian )
+  {
+    byteswap = true;
+    swap32((unsigned char *)&hdr.file_size);
+    swap32((unsigned char *)&hdr.chunk_size);
+    swap16((unsigned char *)&hdr.format_tag);
+    swap16((unsigned char *)&hdr.num_chans);
+    swap32((unsigned char *)&hdr.sample_rate);
+    swap32((unsigned char *)&hdr.bytes_per_sec);
+    swap16((unsigned char *)&hdr.bytes_per_samp);
+    swap16((unsigned char *)&hdr.bits_per_samp);
+  }
 
   if ( fwrite(&hdr, 4, 11, fd) != 11 ) {
     sprintf(msg, "[chuck](via WvOut): Could not write WAV header for file %s", name);
@@ -17259,37 +17480,49 @@ MY_FLOAT WvOut :: getTime( void ) const
 
 void WvOut :: writeData( unsigned long frames )
 {
+  // make sure we have file descriptor
+  if( !fd ) return;
+
   if ( dataType == STK_SINT8 ) {
     if ( fileType == WVOUT_WAV ) { // 8-bit WAV data is unsigned!
-      unsigned char sample;
       for ( unsigned long k=0; k<frames*channels; k++ ) {
-        sample = (unsigned char) (data[k] * 127.0 + 128.0);
+        float float_sample = data[k] * 127.0 + 128.0;
+        if(float_sample < 0) float_sample = 0;
+        if(float_sample > 255) float_sample = 255;
+        unsigned char sample = (unsigned char) float_sample;
+        
         if ( fwrite(&sample, 1, 1, fd) != 1 ) goto error;
       }
     }
     else {
-      signed char sample;
       for ( unsigned long k=0; k<frames*channels; k++ ) {
-        sample = (signed char) (data[k] * 127.0);
-        //sample = ((signed char) (( data[k] + 1.0 ) * 127.5 + 0.5)) - 128;
+        float float_sample = data[k] * 127.0;
+        if(float_sample < -128) float_sample = -128;
+        if(float_sample > 127) float_sample = 127;
+        signed char sample = (signed char) float_sample;
+        
         if ( fwrite(&sample, 1, 1, fd) != 1 ) goto error;
       }
     }
   }
   else if ( dataType == STK_SINT16 ) {
-    SINT16 sample;
     for ( unsigned long k=0; k<frames*channels; k++ ) {
-      sample = (SINT16) (data[k] * 32767.0);
-      //sample = ((SINT16) (( data[k] + 1.0 ) * 32767.5 + 0.5)) - 32768;
+      float float_sample = data[k] * 32767.0;
+      if(float_sample < -32767) float_sample = -32767;
+      if(float_sample > 32767) float_sample = 32767;
+      SINT16 sample = (SINT16) float_sample;
+      
       if ( byteswap ) swap16( (unsigned char *)&sample );
       if ( fwrite(&sample, 2, 1, fd) != 1 ) goto error;
     }
   }
   else if ( dataType == STK_SINT32 ) {
-    SINT32 sample;
     for ( unsigned long k=0; k<frames*channels; k++ ) {
-      sample = (SINT32) (data[k] * 2147483647.0);
-      //sample = ((SINT32) (( data[k] + 1.0 ) * 2147483647.5 + 0.5)) - 2147483648;
+      float float_sample = data[k] * 32767.0;
+      if(float_sample < -2147483647) float_sample = (float)-2147483647;
+      if(float_sample > 2147483647) float_sample = (float)2147483647;
+      SINT32 sample = (SINT32) float_sample;
+      
       if ( byteswap ) swap32( (unsigned char *)&sample );
       if ( fwrite(&sample, 4, 1, fd) != 1 ) goto error;
     }
@@ -17298,6 +17531,7 @@ void WvOut :: writeData( unsigned long frames )
     FLOAT32 sample;
     for ( unsigned long k=0; k<frames*channels; k++ ) {
       sample = (FLOAT32) (data[k]);
+      
       if ( byteswap ) swap32( (unsigned char *)&sample );
       if ( fwrite(&sample, 4, 1, fd) != 1 ) goto error;
     }
@@ -17306,6 +17540,7 @@ void WvOut :: writeData( unsigned long frames )
     FLOAT64 sample;
     for ( unsigned long k=0; k<frames*channels; k++ ) {
       sample = (FLOAT64) (data[k]);
+      
       if ( byteswap ) swap64( (unsigned char *)&sample );
       if ( fwrite(&sample, 8, 1, fd) != 1 ) goto error;
     }
@@ -17368,6 +17603,363 @@ void WvOut :: tickFrame(const MY_FLOAT *frameVector, unsigned int frames)
   }
 }
 
+
+
+/**********************************************************************/
+/*! \class MidiFileIn
+ \brief A standard MIDI file reading/parsing class.
+ 
+ This class can be used to read events from a standard MIDI file.
+ Event bytes are copied to a C++ vector and must be subsequently
+ interpreted by the user.  The function getNextMidiEvent() skips
+ meta and sysex events, returning only MIDI channel messages.
+ Event delta-times are returned in the form of "ticks" and a
+ function is provided to determine the current "seconds per tick".
+ Tempo changes are internally tracked by the class and reflected in
+ the values returned by the function getTickSeconds().
+ 
+ by Gary P. Scavone, 2003 - 2010.
+ */
+/**********************************************************************/
+
+#include <cstring>
+#include <iostream>
+
+#if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__)
+#define __LITTLE_ENDIAN__
+#endif // !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__)
+
+namespace stk {
+    
+MidiFileIn :: MidiFileIn( std::string fileName )
+{
+    // Attempt to open the file.
+    file_.open( fileName.c_str(), std::ios::in | std::ios::binary );
+    if ( !file_ ) {
+        std::cout << "MidiFileIn: error opening or finding file (" <<  fileName << ").";
+        handleError( "", StkError::FILE_NOT_FOUND );
+    }
+    
+    // Parse header info.
+    char chunkType[4];
+    char buffer[4];
+    SINT32 *length;
+    if ( !file_.read( chunkType, 4 ) ) goto error;
+    if ( !file_.read( buffer, 4 ) ) goto error;
+#ifdef __LITTLE_ENDIAN__
+    swap32((unsigned char *)&buffer);
+#endif
+    length = (SINT32 *) &buffer;
+    if ( strncmp( chunkType, "MThd", 4 ) || ( *length != 6 ) ) {
+        std::cout << "MidiFileIn: file (" <<  fileName << ") does not appear to be a MIDI file!";
+        handleError( "", StkError::FILE_UNKNOWN_FORMAT );
+    }
+    
+    // Read the MIDI file format.
+    SINT16 *data;
+    if ( !file_.read( buffer, 2 ) ) goto error;
+#ifdef __LITTLE_ENDIAN__
+    swap16((unsigned char *)&buffer);
+#endif
+    data = (SINT16 *) &buffer;
+    if ( *data < 0 || *data > 2 ) {
+        std::cout << "MidiFileIn: the file (" <<  fileName << ") format is invalid!";
+        handleError( "", StkError::FILE_ERROR );
+    }
+    format_ = *data;
+    
+    // Read the number of tracks.
+    if ( !file_.read( buffer, 2 ) ) goto error;
+#ifdef __LITTLE_ENDIAN__
+    swap16((unsigned char *)&buffer);
+#endif
+    if ( format_ == 0 && *data != 1 ) {
+        std::cout << "MidiFileIn: invalid number of tracks (>1) for a file format = 0!";
+        handleError( "", StkError::FILE_ERROR );
+    }
+    nTracks_ = *data;
+    
+    // Read the beat division.
+    if ( !file_.read( buffer, 2 ) ) goto error;
+#ifdef __LITTLE_ENDIAN__
+    swap16((unsigned char *)&buffer);
+#endif
+    division_ = (int) *data;
+    double tickrate;
+    usingTimeCode_ = false;
+    if ( *data & 0x8000 ) {
+        // Determine ticks per second from time-code formats.
+        tickrate = (double) -(*data & 0x7F00);
+        // If frames per second value is 29, it really should be 29.97.
+        if ( tickrate == 29.0 ) tickrate = 29.97;
+        tickrate *= (*data & 0x00FF);
+        usingTimeCode_ = true;
+    }
+    else {
+        tickrate = (double) (*data & 0x7FFF); // ticks per quarter note
+    }
+    
+    // Now locate the track offsets and lengths.  If not using time
+    // code, we can initialize the "tick time" using a default tempo of
+    // 120 beats per minute.  We will then check for tempo meta-events
+    // afterward.
+    unsigned int i;
+    for ( i=0; i<nTracks_; i++ ) {
+        if ( !file_.read( chunkType, 4 ) ) goto error;
+        if ( strncmp( chunkType, "MTrk", 4 ) ) goto error;
+        if ( !file_.read( buffer, 4 ) ) goto error;
+#ifdef __LITTLE_ENDIAN__
+        swap32((unsigned char *)&buffer);
+#endif
+        length = (SINT32 *) &buffer;
+        trackLengths_.push_back( *length );
+        trackOffsets_.push_back( (long) file_.tellg() );
+        trackPointers_.push_back( (long) file_.tellg() );
+        trackStatus_.push_back( 0 );
+        file_.seekg( *length, std::ios_base::cur );
+        if ( usingTimeCode_ ) tickSeconds_.push_back( (double) (1.0 / tickrate) );
+        else tickSeconds_.push_back( (double) (0.5 / tickrate) );
+    }
+    
+    // Save the initial tickSeconds parameter.
+    TempoChange tempoEvent;
+    tempoEvent.count = 0;
+    tempoEvent.tickSeconds = tickSeconds_[0];
+    tempoEvents_.push_back( tempoEvent );
+    
+    // If format 1 and not using time code, parse and save the tempo map
+    // on track 0.
+    if ( format_ == 1 && !usingTimeCode_ ) {
+        std::vector<unsigned char> event;
+        unsigned long value, count;
+        
+        // We need to temporarily change the usingTimeCode_ value here so
+        // that the getNextEvent() function doesn't try to check the tempo
+        // map (which we're creating here).
+        usingTimeCode_ = true;
+        count = getNextEvent( &event, 0 );
+        while ( event.size() ) {
+            if ( ( event.size() == 6 ) && ( event[0] == 0xff ) &&
+                ( event[1] == 0x51 ) && ( event[2] == 0x03 ) ) {
+                tempoEvent.count = count;
+                value = ( event[3] << 16 ) + ( event[4] << 8 ) + event[5];
+                tempoEvent.tickSeconds = (double) (0.000001 * value / tickrate);
+                if ( count > tempoEvents_.back().count )
+                    tempoEvents_.push_back( tempoEvent );
+                else
+                    tempoEvents_.back() = tempoEvent;
+            }
+            count += getNextEvent( &event, 0 );
+        }
+        rewindTrack( 0 );
+        for ( unsigned int i=0; i<nTracks_; i++ ) {
+            trackCounters_.push_back( 0 );
+            trackTempoIndex_.push_back( 0 );
+        }
+        // Change the time code flag back!
+        usingTimeCode_ = false;
+    }
+    
+    return;
+    
+error:
+    std::cout << "MidiFileIn: error reading from file (" <<  fileName << ").";
+    handleError( "", StkError::FILE_ERROR );
+}
+
+MidiFileIn :: ~MidiFileIn()
+{
+    // An ifstream object implicitly closes itself during destruction
+    // but we'll make an explicit call to "close" anyway.
+    file_.close();
+}
+
+void MidiFileIn :: rewindTrack( unsigned int track )
+{
+    if ( track >= nTracks_ ) {
+        std::cout << "MidiFileIn::getNextEvent: invalid track argument (" <<  track << ").";
+        handleError( "", StkError::WARNING ); return;
+    }
+    
+    trackPointers_[track] = trackOffsets_[track];
+    trackStatus_[track] = 0;
+    tickSeconds_[track] = tempoEvents_[0].tickSeconds;
+}
+
+double MidiFileIn :: getTickSeconds( unsigned int track )
+{
+    // Return the current tick value in seconds for the given track.
+    if ( track >= nTracks_ ) {
+        std::cout << "MidiFileIn::getTickSeconds: invalid track argument (" <<  track << ").";
+        handleError( "", StkError::WARNING ); return 0.0;
+    }
+    
+    return tickSeconds_[track];
+}
+
+unsigned long MidiFileIn :: getNextEvent( std::vector<unsigned char> *event, unsigned int track )
+{
+    // Fill the user-provided vector with the next event in the
+    // specified track (default = 0) and return the event delta time in
+    // ticks.  This function assumes that the stored track pointer is
+    // positioned at the start of a track event.  If the track has
+    // reached its end, the event vector size will be zero.
+    //
+    // If we have a format 0 or 2 file and we're not using timecode, we
+    // should check every meta-event for tempo changes and make
+    // appropriate updates to the tickSeconds_ parameter if so.
+    //
+    // If we have a format 1 file and we're not using timecode, keep a
+    // running sum of ticks for each track and update the tickSeconds_
+    // parameter as needed based on the stored tempo map.
+    
+    event->clear();
+    if ( track >= nTracks_ ) {
+        std::cout << "MidiFileIn::getNextEvent: invalid track argument (" <<  track << ").";
+        handleError( "", StkError::WARNING ); return 0;
+    }
+    
+    // Check for the end of the track.
+    if ( (trackPointers_[track] - trackOffsets_[track]) >= trackLengths_[track] )
+        return 0;
+    
+    unsigned long ticks = 0, bytes = 0;
+    bool isTempoEvent = false;
+    
+    // Read the event delta time.
+    file_.seekg( trackPointers_[track], std::ios_base::beg );
+    if ( !readVariableLength( &ticks ) ) goto error;
+    
+    // Parse the event stream to determine the event length.
+    unsigned char c;
+    if ( !file_.read( (char *)&c, 1 ) ) goto error;
+    switch ( c ) {
+            
+        case 0xFF: // A Meta-Event
+            unsigned long position;
+            trackStatus_[track] = 0;
+            event->push_back( c );
+            if ( !file_.read( (char *)&c, 1 ) ) goto error;
+            event->push_back( c );
+            if ( format_ != 1 && ( c == 0x51 ) ) isTempoEvent = true;
+            position = file_.tellg();
+            if ( !readVariableLength( &bytes ) ) goto error;
+            bytes += ( (unsigned long)file_.tellg() - position );
+            file_.seekg( position, std::ios_base::beg );
+            break;
+            
+        case 0xF0:
+        case 0xF7: // The start or continuation of a Sysex event
+            trackStatus_[track] = 0;
+            event->push_back( c );
+            position = file_.tellg();
+            if ( !readVariableLength( &bytes ) ) goto error;
+            bytes += ( (unsigned long)file_.tellg() - position );
+            file_.seekg( position, std::ios_base::beg );
+            break;
+            
+        default: // Should be a MIDI channel event
+            if ( c & 0x80 ) { // MIDI status byte
+                if ( c > 0xF0 ) goto error;
+                trackStatus_[track] = c;
+                event->push_back( c );
+                c &= 0xF0;
+                if ( (c == 0xC0) || (c == 0xD0) ) bytes = 1;
+                else bytes = 2;
+            }
+            else if ( trackStatus_[track] & 0x80 ) { // Running status
+                event->push_back( trackStatus_[track] );
+                event->push_back( c );
+                c = trackStatus_[track] & 0xF0;
+                if ( (c != 0xC0) && (c != 0xD0) ) bytes = 1;
+            }
+            else goto error;
+            
+    }
+    
+    // Read the rest of the event into the event vector.
+    unsigned long i;
+    for ( i=0; i<bytes; i++ ) {
+        if ( !file_.read( (char *)&c, 1 ) ) goto error;
+        event->push_back( c );
+    }
+    
+    if ( !usingTimeCode_ ) {
+        if ( isTempoEvent ) {
+            // Parse the tempo event and update tickSeconds_[track].
+            double tickrate = (double) (division_ & 0x7FFF);
+            unsigned long value = ( event->at(3) << 16 ) + ( event->at(4) << 8 ) + event->at(5);
+            tickSeconds_[track] = (double) (0.000001 * value / tickrate);
+        }
+        
+        if ( format_ == 1 ) {
+            // Update track counter and check the tempo map.
+            trackCounters_[track] += ticks;
+            TempoChange tempoEvent = tempoEvents_[ trackTempoIndex_[track] ];
+            if ( trackCounters_[track] >= tempoEvent.count && trackTempoIndex_[track] < tempoEvents_.size() - 1 ) {
+                trackTempoIndex_[track]++;
+                tickSeconds_[track] = tempoEvent.tickSeconds;
+            }
+        }
+    }
+    
+    // Save the current track pointer value.
+    trackPointers_[track] = file_.tellg();
+    
+    return ticks;
+    
+error:
+    std::cout << "MidiFileIn::getNextEvent: file read error!";
+    handleError( "", StkError::FILE_ERROR );
+    return 0;
+}
+
+unsigned long MidiFileIn :: getNextMidiEvent( std::vector<unsigned char> *midiEvent, unsigned int track )
+{
+    // Fill the user-provided vector with the next MIDI event in the
+    // specified track (default = 0) and return the event delta time in
+    // ticks.  Meta-Events preceeding this event are skipped and ignored.
+    if ( track >= nTracks_ ) {
+        std::cout << "MidiFileIn::getNextMidiEvent: invalid track argument (" <<  track << ").";
+        handleError( "", StkError::WARNING ); return 0;
+    }
+    
+    unsigned long ticks = getNextEvent( midiEvent, track );
+    while ( midiEvent->size() && ( midiEvent->at(0) >= 0xF0 ) ) {
+        //for ( unsigned int i=0; i<midiEvent->size(); i++ )
+        //std::cout << "event byte = " << i << ", value = " << (int)midiEvent->at(i) << std::endl;
+        ticks = getNextEvent( midiEvent, track );
+    }
+    
+    //for ( unsigned int i=0; i<midiEvent->size(); i++ )
+    //std::cout << "event byte = " << i << ", value = " << (int)midiEvent->at(i) << std::endl;
+    
+    return ticks;
+}
+
+bool MidiFileIn :: readVariableLength( unsigned long *value )
+{
+    // It is assumed that this function is called with the file read
+    // pointer positioned at the start of a variable-length value.  The
+    // function returns "true" if the value is successfully parsed and
+    // "false" otherwise.
+    *value = 0;
+    char c;
+    
+    if ( !file_.read( &c, 1 ) ) return false;
+    *value = (unsigned long) c;
+    if ( *value & 0x80 ) {
+        *value &= 0x7f;
+        do {
+            if ( !file_.read( &c, 1 ) ) return false;
+            *value = ( *value << 7 ) + ( c & 0x7f );
+        } while ( c & 0x80 );
+    }
+    
+    return true;
+} 
+    
+} // stk namespace
 
 
 // chuck - import
@@ -17499,7 +18091,7 @@ CK_DLL_CTRL( Instrmnt_ctrl_freq )
 CK_DLL_CGET( Instrmnt_cget_freq )
 {
     Instrmnt * i = (Instrmnt *)OBJ_MEMBER_UINT(SELF, Instrmnt_offset_data);
-    t_CKFLOAT f = GET_NEXT_FLOAT(ARGS);
+//    t_CKFLOAT f = GET_NEXT_FLOAT(ARGS);
     RETURN->v_float = (t_CKFLOAT)i->m_frequency;
 }
 
@@ -18072,7 +18664,10 @@ CK_DLL_CTRL( BiQuad_ctrl_eqzs )
 CK_DLL_CTOR( BlowBotl_ctor )
 {
     // initialize member object
-    OBJ_MEMBER_UINT(SELF, Instrmnt_offset_data) = (t_CKUINT) new BlowBotl();
+    BlowBotl * botl = new BlowBotl();
+    OBJ_MEMBER_UINT(SELF, Instrmnt_offset_data) = (t_CKUINT)botl;
+    // default
+    botl->setFrequency( 220 );
 }
 
 
@@ -18261,7 +18856,10 @@ CK_DLL_CGET( BlowBotl_cget_volume )
 CK_DLL_CTOR( BlowHole_ctor )
 {
     // initialize member object
-    OBJ_MEMBER_UINT(SELF, Instrmnt_offset_data) = (t_CKUINT)new BlowHole( 30 );
+    BlowHole * hole = new BlowHole( 20 );
+    OBJ_MEMBER_UINT(SELF, Instrmnt_offset_data) = (t_CKUINT)hole;
+    // default
+    hole->setFrequency( 220 );
 }
 
 
@@ -18687,7 +19285,7 @@ CK_DLL_CGET( Bowed_cget_rate )
 CK_DLL_CTOR( Chorus_ctor )
 {
     // initialize member object
-    OBJ_MEMBER_UINT(SELF, Chorus_offset_data) = (t_CKUINT) new Chorus( 44100 );
+    OBJ_MEMBER_UINT(SELF, Chorus_offset_data) = (t_CKUINT) new Chorus( 3000 );
 }
 
 
@@ -18764,14 +19362,37 @@ CK_DLL_CTRL( Chorus_ctrl_modFreq )
 
 
 //-----------------------------------------------------------------------------
+// name: Chorus_ctrl_baseDelay()
+// desc: CTRL function ...
+//-----------------------------------------------------------------------------
+CK_DLL_CTRL( Chorus_ctrl_baseDelay )
+{
+    Chorus * p = (Chorus *)OBJ_MEMBER_UINT(SELF, Chorus_offset_data);
+    t_CKDUR f = GET_NEXT_DUR(ARGS);
+    p->setDelay( f );
+    RETURN->v_float = (t_CKFLOAT) p->baseLength;
+}
+
+
+//-----------------------------------------------------------------------------
 // name: Chorus_cget_mix()
 // desc: CGET function ...
 //-----------------------------------------------------------------------------
-
 CK_DLL_CGET( Chorus_cget_mix )
 {
     Chorus * p = (Chorus *)OBJ_MEMBER_UINT(SELF, Chorus_offset_data);
     RETURN->v_float = (t_CKFLOAT) p->effectMix;
+}
+
+
+//-----------------------------------------------------------------------------
+// name: Chorus_cget_baseDelay()
+// desc: CGET function ...
+//-----------------------------------------------------------------------------
+CK_DLL_CGET( Chorus_cget_baseDelay )
+{
+    Chorus * p = (Chorus *)OBJ_MEMBER_UINT(SELF, Chorus_offset_data);
+    RETURN->v_dur = (t_CKFLOAT)p->baseLength;
 }
 
 
@@ -18794,6 +19415,19 @@ CK_DLL_CGET( Chorus_cget_modFreq )
 {
     Chorus * p = (Chorus *)OBJ_MEMBER_UINT(SELF, Chorus_offset_data);
     RETURN->v_float = (t_CKFLOAT) p->mods[0]->m_freq;
+}
+
+
+//-----------------------------------------------------------------------------
+// name: Chorus_ctrl_set()
+// desc: set ...
+//-----------------------------------------------------------------------------
+CK_DLL_CTRL( Chorus_ctrl_set )
+{
+    Chorus * p = (Chorus *)OBJ_MEMBER_UINT(SELF, Chorus_offset_data);
+    t_CKDUR d = GET_NEXT_DUR(ARGS);
+    t_CKFLOAT dd = GET_NEXT_FLOAT(ARGS);
+    p->set( d, dd );
 }
 
 
@@ -18828,7 +19462,7 @@ struct Brass_
 //-----------------------------------------------------------------------------
 CK_DLL_CTOR( Brass_ctor )
 {
-    OBJ_MEMBER_UINT(SELF, Instrmnt_offset_data) = (t_CKUINT)new Brass( 30.0 );
+    OBJ_MEMBER_UINT(SELF, Instrmnt_offset_data) = (t_CKUINT)new Brass( 20.0 );
 }
 
 
@@ -19992,7 +20626,10 @@ struct Sitar_ {
 //-----------------------------------------------------------------------------
 CK_DLL_CTOR( Sitar_ctor )
 {
-    OBJ_MEMBER_UINT(SELF, Instrmnt_offset_data) = (t_CKUINT) new Sitar( 30.0 );
+    Sitar * sitar = new Sitar( 20 );
+    OBJ_MEMBER_UINT(SELF, Instrmnt_offset_data) = (t_CKUINT)sitar;
+    // default
+    sitar->setFrequency( 220 );
 }
 
 
@@ -20061,7 +20698,10 @@ CK_DLL_CTRL( Sitar_ctrl_clear )
 //-----------------------------------------------------------------------------
 CK_DLL_CTOR( Saxofony_ctor )
 {
-    OBJ_MEMBER_UINT(SELF, Instrmnt_offset_data) = (t_CKUINT)new Saxofony( 30.0 );
+    Saxofony * fony = new Saxofony( 20 );
+    OBJ_MEMBER_UINT(SELF, Instrmnt_offset_data) = (t_CKUINT)fony;
+    // default
+    fony->setFrequency( 220 );
 }
 
 
@@ -20337,7 +20977,10 @@ CK_DLL_CGET( Saxofony_cget_pressure )
 CK_DLL_CTOR( StifKarp_ctor )
 {
     // initialize member object
-    OBJ_MEMBER_UINT(SELF, Instrmnt_offset_data) = (t_CKUINT)new StifKarp( 30.0 );
+    StifKarp * karp = new StifKarp( 20.0 );
+    OBJ_MEMBER_UINT(SELF, Instrmnt_offset_data) = (t_CKUINT)karp;
+    // default
+    karp->setFrequency( 220.0 );
 }
 
 
@@ -20453,8 +21096,8 @@ CK_DLL_CTRL( StifKarp_ctrl_sustain )
 {
     StifKarp * b = (StifKarp *)OBJ_MEMBER_UINT(SELF, Instrmnt_offset_data);
     t_CKFLOAT f = GET_NEXT_FLOAT(ARGS);
-    b->setStretch( f );
-    RETURN->v_float = (t_CKFLOAT)b->stretching;
+    b->controlChange( __SK_StringDamping_, f * 128 );
+    RETURN->v_float = (t_CKFLOAT)b->m_sustain;
 }
 
 
@@ -20465,7 +21108,7 @@ CK_DLL_CTRL( StifKarp_ctrl_sustain )
 CK_DLL_CGET( StifKarp_cget_sustain )
 {
     StifKarp * b = (StifKarp *)OBJ_MEMBER_UINT(SELF, Instrmnt_offset_data);
-    RETURN->v_float = (t_CKFLOAT)b->stretching;
+    RETURN->v_float = (t_CKFLOAT)b->m_sustain;
 }
 
 
@@ -20947,7 +21590,7 @@ CK_DLL_CTRL( Envelope_ctrl_duration )
 {
     Envelope * d = (Envelope *)OBJ_MEMBER_UINT(SELF, Envelope_offset_data);
     d->setTime( GET_NEXT_FLOAT(ARGS) / Stk::sampleRate() );
-    RETURN->v_float = 1.0 / d->rate;
+    RETURN->v_float = d->m_time * Stk::sampleRate();
 }
 
 
@@ -20958,7 +21601,7 @@ CK_DLL_CTRL( Envelope_ctrl_duration )
 CK_DLL_CGET( Envelope_cget_duration )
 {
     Envelope * d = (Envelope *)OBJ_MEMBER_UINT(SELF, Envelope_offset_data);
-    RETURN->v_float = 1.0 / d->rate;
+    RETURN->v_float = d->m_time * Stk::sampleRate();
 }
 
 
@@ -21166,7 +21809,7 @@ CK_DLL_CTRL( ADSR_ctrl_attackTime )
 CK_DLL_CGET( ADSR_cget_attackTime )
 {
     ADSR * d = (ADSR *)OBJ_MEMBER_UINT(SELF, Envelope_offset_data);
-    RETURN->v_dur = d->getAttackTime();
+    RETURN->v_dur = d->getAttackTime() * Stk::sampleRate();
 }
 
 
@@ -21213,7 +21856,7 @@ CK_DLL_CTRL( ADSR_ctrl_decayTime )
 CK_DLL_CGET( ADSR_cget_decayTime )
 {
     ADSR * d = (ADSR *)OBJ_MEMBER_UINT(SELF, Envelope_offset_data);
-    RETURN->v_dur = d->getDecayTime();
+    RETURN->v_dur = d->getDecayTime() * Stk::sampleRate();
 }
 
 
@@ -21283,7 +21926,7 @@ CK_DLL_CTRL( ADSR_ctrl_releaseTime )
 CK_DLL_CGET( ADSR_cget_releaseTime )
 {
     ADSR * d = (ADSR *)OBJ_MEMBER_UINT(SELF, Envelope_offset_data);
-    RETURN->v_dur = d->getReleaseTime();
+    RETURN->v_dur = d->getReleaseTime() * Stk::sampleRate();
 }
 
 
@@ -22172,7 +22815,7 @@ CK_DLL_CGET( PoleZero_cget_blockZero )
 
 
 
-//FM functions
+// FM functions
 
 //-----------------------------------------------------------------------------
 // name: FM_ctor()
@@ -22181,7 +22824,7 @@ CK_DLL_CGET( PoleZero_cget_blockZero )
 CK_DLL_CTOR( FM_ctor  )
 {
     OBJ_MEMBER_UINT(SELF, FM_offset_data) = 0;
-    // fprintf(stderr,"[chuck](via STK): error : FM is virtual!\n");
+    // fprintf( stderr, "[chuck](via STK): error -- FM is virtual!\n" );
 }
 
 
@@ -22192,7 +22835,7 @@ CK_DLL_CTOR( FM_ctor  )
 CK_DLL_DTOR( FM_dtor  )
 { 
     // delete (FM *)OBJ_MEMBER_UINT(SELF, FM_offset_data);
-    // fprintf(stderr,"error : FM is virtual!\n");
+    // fprintf( stderr, "error -- FM is virtual!\n" );
 }
 
 
@@ -22203,7 +22846,7 @@ CK_DLL_DTOR( FM_dtor  )
 CK_DLL_TICK( FM_tick )
 {
     FM * m = (FM *)OBJ_MEMBER_UINT(SELF, FM_offset_data);
-    fprintf(stderr,"[chuck](via STK): error : FM tick is virtual!\n");
+    fprintf(stderr,"[chuck](via STK): error -- FM tick is virtual!\n");
     *out = m->tick();
     return TRUE;
 }
@@ -22225,7 +22868,7 @@ CK_DLL_PMSG( FM_pmsg )
 //-----------------------------------------------------------------------------
 CK_DLL_CTRL( FM_ctrl_modDepth )
 {
-    FM * fm= (FM *)OBJ_MEMBER_UINT(SELF, FM_offset_data);
+    FM * fm = (FM *)OBJ_MEMBER_UINT(SELF, FM_offset_data);
     t_CKFLOAT f = GET_NEXT_FLOAT(ARGS); 
     fm->setModulationDepth( f );
     RETURN->v_float = f;
@@ -22238,7 +22881,7 @@ CK_DLL_CTRL( FM_ctrl_modDepth )
 //-----------------------------------------------------------------------------
 CK_DLL_CTRL( FM_cget_modDepth )
 {
-    FM * fm= (FM *)OBJ_MEMBER_UINT(SELF, FM_offset_data);
+    FM * fm = (FM *)OBJ_MEMBER_UINT(SELF, FM_offset_data);
     RETURN->v_float = fm->modDepth;
 }
 
@@ -22249,7 +22892,7 @@ CK_DLL_CTRL( FM_cget_modDepth )
 //-----------------------------------------------------------------------------
 CK_DLL_CTRL( FM_ctrl_modSpeed )
 {
-    FM * fm= (FM *)OBJ_MEMBER_UINT(SELF, FM_offset_data);
+    FM * fm = (FM *)OBJ_MEMBER_UINT(SELF, FM_offset_data);
     t_CKFLOAT f = GET_NEXT_FLOAT(ARGS); 
     fm->setModulationSpeed( f );
     RETURN->v_float = fm->vibrato->m_freq;
@@ -22262,7 +22905,7 @@ CK_DLL_CTRL( FM_ctrl_modSpeed )
 //-----------------------------------------------------------------------------
 CK_DLL_CTRL( FM_cget_modSpeed )
 {
-    FM * fm= (FM *)OBJ_MEMBER_UINT(SELF, FM_offset_data);
+    FM * fm = (FM *)OBJ_MEMBER_UINT(SELF, FM_offset_data);
     RETURN->v_float = fm->vibrato->m_freq;
 }
 
@@ -22273,7 +22916,7 @@ CK_DLL_CTRL( FM_cget_modSpeed )
 //-----------------------------------------------------------------------------
 CK_DLL_CTRL( FM_ctrl_control1 )
 {
-    FM * fm= (FM *)OBJ_MEMBER_UINT(SELF, FM_offset_data);
+    FM * fm = (FM *)OBJ_MEMBER_UINT(SELF, FM_offset_data);
     t_CKFLOAT f = GET_NEXT_FLOAT(ARGS); 
     fm->setControl1( f );
     RETURN->v_float = fm->control1 / 2.0;
@@ -22286,7 +22929,7 @@ CK_DLL_CTRL( FM_ctrl_control1 )
 //-----------------------------------------------------------------------------
 CK_DLL_CTRL( FM_cget_control1 )
 {
-    FM * fm= (FM *)OBJ_MEMBER_UINT(SELF, FM_offset_data);
+    FM * fm = (FM *)OBJ_MEMBER_UINT(SELF, FM_offset_data);
     RETURN->v_float = fm->control1 / 2.0;
 }
 
@@ -22297,7 +22940,7 @@ CK_DLL_CTRL( FM_cget_control1 )
 //-----------------------------------------------------------------------------
 CK_DLL_CTRL( FM_ctrl_control2 )
 {
-    FM * fm= (FM *)OBJ_MEMBER_UINT(SELF, FM_offset_data);
+    FM * fm = (FM *)OBJ_MEMBER_UINT(SELF, FM_offset_data);
     t_CKFLOAT f = GET_NEXT_FLOAT(ARGS); 
     fm->setControl2( f );
     RETURN->v_float = fm->control2 / 2.0;
@@ -22310,7 +22953,7 @@ CK_DLL_CTRL( FM_ctrl_control2 )
 //-----------------------------------------------------------------------------
 CK_DLL_CTRL( FM_cget_control2 )
 {
-    FM * fm= (FM *)OBJ_MEMBER_UINT(SELF, FM_offset_data);
+    FM * fm = (FM *)OBJ_MEMBER_UINT(SELF, FM_offset_data);
     RETURN->v_float = fm->control2 / 2.0;
 }
 
@@ -22321,7 +22964,7 @@ CK_DLL_CTRL( FM_cget_control2 )
 //-----------------------------------------------------------------------------
 CK_DLL_CTRL( FM_ctrl_afterTouch )
 {
-    FM * fm= (FM *)OBJ_MEMBER_UINT(SELF, FM_offset_data);
+    FM * fm = (FM *)OBJ_MEMBER_UINT(SELF, FM_offset_data);
     t_CKFLOAT f = GET_NEXT_FLOAT(ARGS); 
     fm->controlChange( __SK_AfterTouch_Cont_, f * 128.0 );
     RETURN->v_float = fm->adsr[1]->target;
@@ -22334,7 +22977,7 @@ CK_DLL_CTRL( FM_ctrl_afterTouch )
 //-----------------------------------------------------------------------------
 CK_DLL_CTRL( FM_cget_afterTouch )
 {
-    FM * fm= (FM *)OBJ_MEMBER_UINT(SELF, FM_offset_data);
+    FM * fm = (FM *)OBJ_MEMBER_UINT(SELF, FM_offset_data);
     RETURN->v_float = fm->adsr[1]->target;
 }
 
@@ -22552,7 +23195,10 @@ CK_DLL_PMSG( HevyMetl_pmsg )
 CK_DLL_CTOR( PercFlut_ctor  )
 {
     // initialize member object
-    OBJ_MEMBER_UINT(SELF, FM_offset_data) = (t_CKUINT) new PercFlut();
+    PercFlut * flut = new PercFlut();
+    OBJ_MEMBER_UINT(SELF, FM_offset_data) = (t_CKUINT)flut;
+    // default
+    flut->setFrequency( 220 );
 }
 
 
@@ -22644,7 +23290,10 @@ CK_DLL_PMSG( Rhodey_pmsg )
 CK_DLL_CTOR( TubeBell_ctor  )
 {
     // initialize member object
-    OBJ_MEMBER_UINT(SELF, FM_offset_data) = (t_CKUINT) new TubeBell();
+    TubeBell * bell = new TubeBell();
+    OBJ_MEMBER_UINT(SELF, FM_offset_data) = (t_CKUINT)bell;
+    // default
+    bell->setFrequency( 220 );
 }
 
 
@@ -22852,7 +23501,10 @@ CK_DLL_CGET( JCRev_cget_mix )
 CK_DLL_CTOR( Mandolin_ctor  )
 {
     // initialize member object
-    OBJ_MEMBER_UINT(SELF, Instrmnt_offset_data) = (t_CKUINT) new Mandolin( 50.0f );
+    Mandolin * m = new Mandolin( 20 );
+    OBJ_MEMBER_UINT(SELF, Instrmnt_offset_data) = (t_CKUINT)m;
+    // default
+    m->setFrequency( 220 );
 }
 
 
@@ -24386,6 +25038,7 @@ CK_DLL_CTOR( WvOut_ctor )
 {
     WvOut * yo = new WvOut;
     yo->autoPrefix.str = "chuck-session";
+    yo->asyncIO = SHRED->vm_ref->m_audio;
     OBJ_MEMBER_UINT(SELF, WvOut_offset_data) = (t_CKUINT)yo;
 }
 
@@ -24400,7 +25053,8 @@ CK_DLL_DTOR( WvOut_dtor )
     w->closeFile();
     std::map<WvOut *, WvOut *>::iterator iter;
     iter = g_wv.find( w );
-    g_wv.erase( iter );
+    if(iter != g_wv.end())
+        g_wv.erase( iter );
     delete (WvOut *)OBJ_MEMBER_UINT(SELF, WvOut_offset_data);
     OBJ_MEMBER_UINT(SELF, WvOut_offset_data) = 0;
 }
@@ -24413,8 +25067,33 @@ CK_DLL_DTOR( WvOut_dtor )
 CK_DLL_TICK( WvOut_tick )
 {
     WvOut * w = (WvOut *)OBJ_MEMBER_UINT(SELF, WvOut_offset_data);
-    if( w->start ) w->tick( in );
+    // added 1.3.0.0: apply fileGain
+    if( w->start ) w->tick( w->fileGain * in );
     *out = in; // pass samples downstream
+    return TRUE;
+}
+
+
+
+//-----------------------------------------------------------------------------
+// name: WvOut_tick()
+// desc: TICK function ...
+//-----------------------------------------------------------------------------
+CK_DLL_TICKF( WvOut2_tickf )
+{
+    // assumption: stereo (2-channel) operation
+    WvOut * w = (WvOut *)OBJ_MEMBER_UINT(SELF, WvOut_offset_data);
+    MY_FLOAT frame[2];
+    for(int i = 0; i < nframes; i++)
+    {
+        frame[0] = in[i*2] * w->fileGain;
+        frame[1] = in[i*2+1] * w->fileGain;
+        
+        if( w->start ) w->tickFrame( frame, 1 );
+        
+        out[i*2] = in[i*2]; // pass samples downstream
+        out[i*2+1] = in[i*2+1]; // pass samples downstream
+    }
     return TRUE;
 }
 
@@ -24452,8 +25131,42 @@ CK_DLL_CTRL( WvOut_ctrl_matFilename )
         strcat( buffer, ").mat" );
         filename = buffer;
     }
-    w->openFile( filename, 1, WvOut::WVOUT_MAT, Stk::STK_SINT16 );
+    try { w->openFile( filename, 1, WvOut::WVOUT_MAT, Stk::STK_SINT16 ); }
+    catch( StkError & e ) { goto done; }
     g_wv[w] = w;
+    
+done:
+    RETURN->v_string = &(w->str_filename);
+}
+
+
+//-----------------------------------------------------------------------------
+// name: WvOut2_ctrl_matFilename()
+// desc: CTRL function ...
+//-----------------------------------------------------------------------------
+CK_DLL_CTRL( WvOut2_ctrl_matFilename )
+{
+    WvOut * w = (WvOut *)OBJ_MEMBER_UINT(SELF, WvOut_offset_data);
+    const char * filename = GET_CK_STRING(ARGS)->str.c_str();
+    char buffer[1024];
+    
+    // special
+    if( strstr( filename, "special:auto" ) )
+    {
+        time_t t; time(&t);
+        strcpy( buffer, w->autoPrefix.str.c_str() );
+        strcat( buffer, "(" );
+        strncat( buffer, ctime(&t), 24 );
+        buffer[strlen(w->autoPrefix.str.c_str())+14] = 'h';
+        buffer[strlen(w->autoPrefix.str.c_str())+17] = 'm';
+        strcat( buffer, ").mat" );
+        filename = buffer;
+    }
+    try { w->openFile( filename, 2, WvOut::WVOUT_MAT, Stk::STK_SINT16 ); }
+    catch( StkError & e ) { goto done; }
+    g_wv[w] = w;
+    
+done:
     RETURN->v_string = &(w->str_filename);
 }
 
@@ -24467,7 +25180,7 @@ CK_DLL_CTRL( WvOut_ctrl_sndFilename )
     WvOut * w = (WvOut *)OBJ_MEMBER_UINT(SELF, WvOut_offset_data);
     const char * filename = GET_CK_STRING(ARGS)->str.c_str();
     char buffer[1024];
-
+    
     // special
     if( strstr( filename, "special:auto" ) )
     {
@@ -24480,8 +25193,42 @@ CK_DLL_CTRL( WvOut_ctrl_sndFilename )
         strcat( buffer, ").snd" );
         filename = buffer;
     }
-    w->openFile( filename, 1, WvOut::WVOUT_SND, Stk::STK_SINT16 );
+    try { w->openFile( filename, 1, WvOut::WVOUT_SND, Stk::STK_SINT16 ); }
+    catch( StkError & e ) { goto done; }
     g_wv[w] = w;
+    
+done:
+    RETURN->v_string = &(w->str_filename);
+}
+
+
+//-----------------------------------------------------------------------------
+// name: WvOut2_ctrl_sndFilename()
+// desc: CTRL function ...
+//-----------------------------------------------------------------------------
+CK_DLL_CTRL( WvOut2_ctrl_sndFilename )
+{
+    WvOut * w = (WvOut *)OBJ_MEMBER_UINT(SELF, WvOut_offset_data);
+    const char * filename = GET_CK_STRING(ARGS)->str.c_str();
+    char buffer[1024];
+    
+    // special
+    if( strstr( filename, "special:auto" ) )
+    {
+        time_t t; time(&t);
+        strcpy( buffer, w->autoPrefix.str.c_str() );
+        strcat( buffer, "(" );
+        strncat( buffer, ctime(&t), 24 );
+        buffer[strlen(w->autoPrefix.str.c_str())+14] = 'h';
+        buffer[strlen(w->autoPrefix.str.c_str())+17] = 'm';
+        strcat( buffer, ").snd" );
+        filename = buffer;
+    }
+    try { w->openFile( filename, 2, WvOut::WVOUT_SND, Stk::STK_SINT16 ); }
+    catch( StkError & e ) { goto done; }
+    g_wv[w] = w;
+    
+done:
     RETURN->v_string = &(w->str_filename);
 }
 
@@ -24495,7 +25242,7 @@ CK_DLL_CTRL( WvOut_ctrl_wavFilename )
     WvOut * w = (WvOut *)OBJ_MEMBER_UINT(SELF, WvOut_offset_data);
     const char * filename = GET_CK_STRING(ARGS)->str.c_str();
     char buffer[1024];
-
+    
     // special
     if( strstr( filename, "special:auto" ) )
     {
@@ -24508,8 +25255,50 @@ CK_DLL_CTRL( WvOut_ctrl_wavFilename )
         strcat( buffer, ").wav" );
         filename = buffer;
     }
-    w->openFile( filename, 1, WvOut::WVOUT_WAV, Stk::STK_SINT16 );
+    try { w->openFile( filename, 1, WvOut::WVOUT_WAV, Stk::STK_SINT16 ); }
+    catch( StkError & e )
+    {
+        // fprintf( stderr, "%s\n", e.getMessage() );
+        goto done;
+    }
     g_wv[w] = w;
+    
+done:
+    RETURN->v_string = &(w->str_filename);
+}
+
+
+//-----------------------------------------------------------------------------
+// name: WvOut2_ctrl_wavFilename()
+// desc: CTRL function ...
+//-----------------------------------------------------------------------------
+CK_DLL_CTRL( WvOut2_ctrl_wavFilename )
+{
+    WvOut * w = (WvOut *)OBJ_MEMBER_UINT(SELF, WvOut_offset_data);
+    const char * filename = GET_CK_STRING(ARGS)->str.c_str();
+    char buffer[1024];
+    
+    // special
+    if( strstr( filename, "special:auto" ) )
+    {
+        time_t t; time(&t);
+        strcpy( buffer, w->autoPrefix.str.c_str() );
+        strcat( buffer, "(" );
+        strncat( buffer, ctime(&t), 24 );
+        buffer[strlen(w->autoPrefix.str.c_str())+14] = 'h';
+        buffer[strlen(w->autoPrefix.str.c_str())+17] = 'm';
+        strcat( buffer, ").wav" );
+        filename = buffer;
+    }
+    try { w->openFile( filename, 2, WvOut::WVOUT_WAV, Stk::STK_SINT16 ); }
+    catch( StkError & e )
+    {
+        // fprintf( stderr, "%s\n", e.getMessage() );
+        goto done;
+    }
+    g_wv[w] = w;
+    
+done:
     RETURN->v_string = &(w->str_filename);
 }
 
@@ -24523,7 +25312,7 @@ CK_DLL_CTRL( WvOut_ctrl_rawFilename )
     WvOut * w = (WvOut *)OBJ_MEMBER_UINT(SELF, WvOut_offset_data);
     const char * filename = GET_CK_STRING(ARGS)->str.c_str();
     char buffer[1024];
-
+    
     // special
     if( strstr( filename, "special:auto" ) )
     {
@@ -24536,8 +25325,42 @@ CK_DLL_CTRL( WvOut_ctrl_rawFilename )
         strcat( buffer, ").raw" );
         filename = buffer;
     }
-    w->openFile( filename, 1, WvOut::WVOUT_RAW, Stk::STK_SINT16 );
+    try { w->openFile( filename, 1, WvOut::WVOUT_RAW, Stk::STK_SINT16 ); }
+    catch( StkError & e ) { goto done; }
     g_wv[w] = w;
+    
+done:
+    RETURN->v_string = &(w->str_filename);
+}
+
+
+//-----------------------------------------------------------------------------
+// name: WvOut2_ctrl_rawFilename()
+// desc: CTRL function ...
+//-----------------------------------------------------------------------------
+CK_DLL_CTRL( WvOut2_ctrl_rawFilename )
+{
+    WvOut * w = (WvOut *)OBJ_MEMBER_UINT(SELF, WvOut_offset_data);
+    const char * filename = GET_CK_STRING(ARGS)->str.c_str();
+    char buffer[1024];
+    
+    // special
+    if( strstr( filename, "special:auto" ) )
+    {
+        time_t t; time(&t);
+        strcpy( buffer, w->autoPrefix.str.c_str() );
+        strcat( buffer, "(" );
+        strncat( buffer, ctime(&t), 24 );
+        buffer[strlen(w->autoPrefix.str.c_str())+14] = 'h';
+        buffer[strlen(w->autoPrefix.str.c_str())+17] = 'm';
+        strcat( buffer, ").raw" );
+        filename = buffer;
+    }
+    try { w->openFile( filename, 2, WvOut::WVOUT_RAW, Stk::STK_SINT16 ); }
+    catch( StkError & e ) { goto done; }
+    g_wv[w] = w;
+    
+done:
     RETURN->v_string = &(w->str_filename);
 }
 
@@ -24551,7 +25374,7 @@ CK_DLL_CTRL( WvOut_ctrl_aifFilename )
     WvOut * w = (WvOut *)OBJ_MEMBER_UINT(SELF, WvOut_offset_data);
     const char * filename = GET_CK_STRING(ARGS)->str.c_str();
     char buffer[1024];
-
+    
     // special
     if( strstr( filename, "special:auto" ) )
     {
@@ -24564,8 +25387,42 @@ CK_DLL_CTRL( WvOut_ctrl_aifFilename )
         strcat( buffer, ").aiff" );
         filename = buffer;
     }
-    w->openFile( filename, 1, WvOut::WVOUT_AIF, Stk::STK_SINT16 );
+    try { w->openFile( filename, 1, WvOut::WVOUT_AIF, Stk::STK_SINT16 ); }
+    catch( StkError & e ) { goto done; }
     g_wv[w] = w;
+    
+done:
+    RETURN->v_string = &(w->str_filename);
+}
+
+
+//-----------------------------------------------------------------------------
+// name: WvOut2_ctrl_aifFilename()
+// desc: CTRL function ...
+//-----------------------------------------------------------------------------
+CK_DLL_CTRL( WvOut2_ctrl_aifFilename )
+{
+    WvOut * w = (WvOut *)OBJ_MEMBER_UINT(SELF, WvOut_offset_data);
+    const char * filename = GET_CK_STRING(ARGS)->str.c_str();
+    char buffer[1024];
+    
+    // special
+    if( strstr( filename, "special:auto" ) )
+    {
+        time_t t; time(&t);
+        strcpy( buffer, w->autoPrefix.str.c_str() );
+        strcat( buffer, "(" );
+        strncat( buffer, ctime(&t), 24 );
+        buffer[strlen(w->autoPrefix.str.c_str())+14] = 'h';
+        buffer[strlen(w->autoPrefix.str.c_str())+17] = 'm';
+        strcat( buffer, ").aiff" );
+        filename = buffer;
+    }
+    try { w->openFile( filename, 2, WvOut::WVOUT_AIF, Stk::STK_SINT16 ); }
+    catch( StkError & e ) { goto done; }
+    g_wv[w] = w;
+    
+done:
     RETURN->v_string = &(w->str_filename);
 }
 
@@ -24592,7 +25449,8 @@ CK_DLL_CTRL( WvOut_ctrl_closeFile )
     
     std::map<WvOut *, WvOut *>::iterator iter;
     iter = g_wv.find( w );
-    g_wv.erase( iter );
+    if(iter != g_wv.end())
+        g_wv.erase( iter );
 }
 
 
@@ -24640,6 +25498,29 @@ CK_DLL_CGET( WvOut_cget_autoPrefix )
 {
     WvOut * w = (WvOut *)OBJ_MEMBER_UINT(SELF, WvOut_offset_data);
     RETURN->v_string = &w->autoPrefix;
+}
+
+
+//-----------------------------------------------------------------------------
+// name: WvOut_ctrl_fileGain()
+// desc: CTRL function ...
+//-----------------------------------------------------------------------------
+CK_DLL_CTRL( WvOut_ctrl_fileGain )
+{
+    WvOut * w = (WvOut *)OBJ_MEMBER_UINT(SELF, WvOut_offset_data);
+    w->fileGain = GET_NEXT_FLOAT(ARGS);
+    RETURN->v_float = w->fileGain;
+}
+
+
+//-----------------------------------------------------------------------------
+// name: WvOut_cget_fileGain()
+// desc: CGET function ...
+//-----------------------------------------------------------------------------
+CK_DLL_CGET( WvOut_cget_fileGain )
+{
+    WvOut * w = (WvOut *)OBJ_MEMBER_UINT(SELF, WvOut_offset_data);
+    RETURN->v_float = w->fileGain;
 }
 
 
@@ -24923,6 +25804,117 @@ CK_DLL_CTRL ( Mesh2D_ctrl_control_change ) {
     
 }
 
+// MidiFileIn
+CK_DLL_CTOR( MidiFileIn_ctor )
+{
+    OBJ_MEMBER_UINT(SELF, MidiFileIn_offset_data) = 0;
+}
+
+CK_DLL_DTOR( MidiFileIn_dtor )
+{
+    stk::MidiFileIn *f = (stk::MidiFileIn *) OBJ_MEMBER_UINT(SELF, MidiFileIn_offset_data);
+    SAFE_DELETE(f);
+    OBJ_MEMBER_UINT(SELF, MidiFileIn_offset_data) = 0;
+}
+
+CK_DLL_MFUN( MidiFileIn_open )
+{
+    stk::MidiFileIn *f = (stk::MidiFileIn *) OBJ_MEMBER_UINT(SELF, MidiFileIn_offset_data);
+    SAFE_DELETE(f);
+
+    Chuck_String * str = GET_NEXT_STRING(ARGS);
+    
+    try
+    {
+        f = new stk::MidiFileIn(str->str);
+        OBJ_MEMBER_UINT(SELF, MidiFileIn_offset_data) = (t_CKUINT) f;
+        RETURN->v_int = 1;
+    }
+    catch (StkError)
+    {
+        RETURN->v_int = 0;
+    }
+}
+
+CK_DLL_MFUN( MidiFileIn_close )
+{
+    stk::MidiFileIn *f = (stk::MidiFileIn *) OBJ_MEMBER_UINT(SELF, MidiFileIn_offset_data);
+    SAFE_DELETE(f);
+    OBJ_MEMBER_UINT(SELF, MidiFileIn_offset_data) = 0;
+}
+
+CK_DLL_MFUN( MidiFileIn_numTracks )
+{
+    stk::MidiFileIn *f = (stk::MidiFileIn *) OBJ_MEMBER_UINT(SELF, MidiFileIn_offset_data);
+    
+    if(f)
+        RETURN->v_int = f->getNumberOfTracks();
+    else
+        RETURN->v_int = 0;
+}
+
+CK_DLL_MFUN( MidiFileIn_read )
+{
+    stk::MidiFileIn *f = (stk::MidiFileIn *) OBJ_MEMBER_UINT(SELF, MidiFileIn_offset_data);
+    
+    RETURN->v_int = 0;
+    
+    if(f)
+    {
+        Chuck_Object * msg = GET_NEXT_OBJECT(ARGS);
+
+        std::vector<unsigned char> event;
+        t_CKDUR dur = f->getNextMidiEvent(&event) * f->getTickSeconds() * Stk::sampleRate();
+        
+        if(event.size())
+        {
+            OBJ_MEMBER_INT(msg, MidiMsg_offset_data1) = event[0];
+            OBJ_MEMBER_INT(msg, MidiMsg_offset_data2) = event.size() >= 2 ? event[1] : 0;
+            OBJ_MEMBER_INT(msg, MidiMsg_offset_data3) = event.size() >= 3 ? event[2] : 0;
+            OBJ_MEMBER_DUR(msg, MidiMsg_offset_when) = dur;
+            
+            RETURN->v_int = 1;
+        }
+    }
+}
+
+CK_DLL_MFUN( MidiFileIn_readTrack )
+{
+    stk::MidiFileIn *f = (stk::MidiFileIn *) OBJ_MEMBER_UINT(SELF, MidiFileIn_offset_data);
+    
+    RETURN->v_int = 0;
+    
+    if(f)
+    {
+        Chuck_Object * msg = GET_NEXT_OBJECT(ARGS);
+        t_CKINT track = GET_NEXT_INT(ARGS);
+        
+        if(track >= 0 && track < f->getNumberOfTracks())
+        {
+            std::vector<unsigned char> event;
+            t_CKDUR dur = f->getNextMidiEvent(&event, track) * f->getTickSeconds() * Stk::sampleRate();
+            
+            if(event.size())
+            {
+                OBJ_MEMBER_INT(msg, MidiMsg_offset_data1) = event[0];
+                OBJ_MEMBER_INT(msg, MidiMsg_offset_data2) = event.size() >= 2 ? event[1] : 0;
+                OBJ_MEMBER_INT(msg, MidiMsg_offset_data3) = event.size() >= 3 ? event[2] : 0;
+                OBJ_MEMBER_DUR(msg, MidiMsg_offset_when) = dur;
+                
+                RETURN->v_int = 1;
+            }
+        }
+    }
+}
+
+CK_DLL_MFUN( MidiFileIn_rewind )
+{
+    stk::MidiFileIn *f = (stk::MidiFileIn *) OBJ_MEMBER_UINT(SELF, MidiFileIn_offset_data);
+    
+    if(f)
+        f->rewindTrack();
+}
+
 //-----------------------------------------------------------------------------
 // name: ck_detach()
 // desc: ...
@@ -24941,6 +25933,8 @@ t_CKBOOL stk_detach( t_CKUINT type, void * data )
     
     // TODO: release the WvOut
     g_wv.clear();
+    
+    WvOut::shutdown();
     
     return TRUE;
 }

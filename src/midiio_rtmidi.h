@@ -1,33 +1,32 @@
 /*----------------------------------------------------------------------------
-    ChucK Concurrent, On-the-fly Audio Programming Language
-      Compiler and Virtual Machine
+  ChucK Concurrent, On-the-fly Audio Programming Language
+    Compiler and Virtual Machine
 
-    Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
-      http://chuck.cs.princeton.edu/
-      http://soundlab.cs.princeton.edu/
+  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+    http://chuck.stanford.edu/
+    http://chuck.cs.princeton.edu/
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-    U.S.A.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+  U.S.A.
 -----------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
 // file: midiio_rtmidi.h
 // desc: midi io header
 //
-// author: Ge Wang (gewang@cs.princeton.edu)
-//         Perry R. Cook (prc@cs.princeton.edu)
+// author: Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
 //         Ananya Misra (amisra@cs.princeton.edu)
 // date: Summer 2005
 //-----------------------------------------------------------------------------
@@ -35,7 +34,9 @@
 #define __MIDI_IO_H__
 
 #include "chuck_def.h"
+#ifndef __DISABLE_MIDI__
 #include "rtmidi.h"
+#endif
 #include "util_buffers.h"
 
 
@@ -68,6 +69,13 @@ union MidiMsg
 
 
 
+// forward reference
+class RtMidiOut;
+class RtMidiIn;
+
+
+
+
 //-----------------------------------------------------------------------------
 // name: class MidiOut
 // desc: midi out
@@ -80,6 +88,7 @@ public:
 
 public:
     t_CKBOOL open( t_CKUINT device_num = 0 );
+    t_CKBOOL open( const std::string & name );
     t_CKBOOL close();
     t_CKBOOL good() { return m_valid; }
     t_CKINT  num() { return m_valid ? (t_CKINT)m_device_num : -1; }
@@ -129,6 +138,7 @@ public:
 
 public:
     t_CKBOOL open( t_CKUINT device_num = 0 );
+    t_CKBOOL open( const std::string & name );
     t_CKBOOL close();
     t_CKBOOL good() { return m_valid; }
     t_CKINT  num() { return m_valid ? (t_CKINT)m_device_num : -1; }
@@ -162,6 +172,7 @@ class MidiInManager
 {
 public:
     static t_CKBOOL open( MidiIn * min, t_CKINT device_num );
+    static t_CKBOOL open( MidiIn * min, const std::string & name );
     static t_CKBOOL close( MidiIn * min );
 
     static void cb_midi_input( double deltatime, std::vector<unsigned char> * msg,
@@ -172,6 +183,8 @@ protected:
 
     static std::vector<RtMidiIn *> the_mins;
     static std::vector<CBufferAdvance *> the_bufs;
+    
+    static CBufferSimple * m_event_buffer;
 };
 
 
@@ -179,6 +192,7 @@ class MidiOutManager
 {
 public:
     static t_CKBOOL open( MidiOut * mout, t_CKINT device_num );
+    static t_CKBOOL open( MidiOut * mout, const std::string & name );
     static t_CKBOOL close( MidiOut * mout );
 
 protected:
