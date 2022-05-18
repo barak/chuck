@@ -1,11 +1,21 @@
+From: Christoph Biedl <debian.axhn@manchmal.in-ulm.de>
+Date: Sat, 11 Nov 2017 00:00:00 +0000
 Subject: Fix typos
-Author: Christoph Biedl <debian.axhn@manchmal.in-ulm.de>
-Date: 2017-11-15
-Forwarded: not-yet
 
+Forwarded: not-yet
+---
+ src/chuck_lang.cpp     | 16 ++++++++--------
+ src/chuck_otf.cpp      |  6 +++---
+ src/chuck_type.cpp     |  4 ++--
+ src/chuck_vm.cpp       |  2 +-
+ src/digiio_rtaudio.cpp |  2 +-
+ 5 files changed, 15 insertions(+), 15 deletions(-)
+
+diff --git a/src/chuck_lang.cpp b/src/chuck_lang.cpp
+index 8a0460d..f36b583 100644
 --- a/src/chuck_lang.cpp
 +++ b/src/chuck_lang.cpp
-@@ -1120,53 +1120,53 @@
+@@ -1120,53 +1120,53 @@ t_CKBOOL init_class_string( Chuck_Env * env, Chuck_Type * type )
      // add find()
      func = make_new_mfun( "int", "find", string_find );
      func->add_arg( "int", "theChar" );
@@ -67,29 +77,11 @@ Forwarded: not-yet
      if( !type_engine_import_mfun( env, func ) ) goto error;
      
      // add erase()
---- a/src/chuck_type.cpp
-+++ b/src/chuck_type.cpp
-@@ -3554,7 +3554,7 @@
-                     "cannot extend incomplete type '%s'",
-                     t_parent->c_name() );
-                 EM_error2( class_def->ext->linepos,
--                    "...(note: the parent's declaration must preceed child's)" );
-+                    "...(note: the parent's declaration must precede child's)" );
-                 return FALSE;
-             }
-         }
-@@ -6100,7 +6100,7 @@
-             // make sure next char
-             if( *str_lit == '\0' )
-             {
--                EM_error2( linepos, "invalid: string ends with escape charactor '\\'" );
-+                EM_error2( linepos, "invalid: string ends with escape character '\\'" );
-                 return FALSE;
-             }
-             
+diff --git a/src/chuck_otf.cpp b/src/chuck_otf.cpp
+index 4e97006..2cc8d81 100644
 --- a/src/chuck_otf.cpp
 +++ b/src/chuck_otf.cpp
-@@ -713,9 +713,9 @@
+@@ -713,9 +713,9 @@ const char * poop[] = {
      "[chuck]: lack of destructors have led to the unrecoverable mass build-up of trash\n"
      "         the chuck garbage collector will now run, deleting all files (bye.)",
      "[chuck]: calling machine.crash()...",
@@ -102,9 +94,33 @@ Forwarded: not-yet
      "[chuck]: internal error: unknown error",
      "[chuck]: page fault!!!",
      "[chuck]: error printing error message.  cannot continue 2#%%HGAFf9a0x"
+diff --git a/src/chuck_type.cpp b/src/chuck_type.cpp
+index 23c1355..4f3dd16 100644
+--- a/src/chuck_type.cpp
++++ b/src/chuck_type.cpp
+@@ -3554,7 +3554,7 @@ t_CKBOOL type_engine_check_class_def( Chuck_Env * env, a_Class_Def class_def )
+                     "cannot extend incomplete type '%s'",
+                     t_parent->c_name() );
+                 EM_error2( class_def->ext->linepos,
+-                    "...(note: the parent's declaration must preceed child's)" );
++                    "...(note: the parent's declaration must precede child's)" );
+                 return FALSE;
+             }
+         }
+@@ -6100,7 +6100,7 @@ t_CKBOOL escape_str( char * str_lit, int linepos )
+             // make sure next char
+             if( *str_lit == '\0' )
+             {
+-                EM_error2( linepos, "invalid: string ends with escape charactor '\\'" );
++                EM_error2( linepos, "invalid: string ends with escape character '\\'" );
+                 return FALSE;
+             }
+             
+diff --git a/src/chuck_vm.cpp b/src/chuck_vm.cpp
+index 4423987..a82f895 100644
 --- a/src/chuck_vm.cpp
 +++ b/src/chuck_vm.cpp
-@@ -1120,7 +1120,7 @@
+@@ -1120,7 +1120,7 @@ t_CKUINT Chuck_VM::process_msg( Chuck_Msg * msg )
      {
          t_CKUINT n = m_shreduler->highest();
          m_shred_id = n;
@@ -113,9 +129,11 @@ Forwarded: not-yet
      }
  
  done:
+diff --git a/src/digiio_rtaudio.cpp b/src/digiio_rtaudio.cpp
+index 5511f9f..00c6e6f 100644
 --- a/src/digiio_rtaudio.cpp
 +++ b/src/digiio_rtaudio.cpp
-@@ -361,7 +361,7 @@
+@@ -361,7 +361,7 @@ static unsigned int __stdcall watch_dog( void * )
      t_CKUINT priority = Chuck_VM::our_priority;
  
      // log
