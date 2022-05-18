@@ -1,0 +1,8 @@
+*.d
+*.o
+/build/
+/src/chuck
+/src/chuck.output
+/src/chuck.tab.c
+/src/chuck.tab.h
+/src/chuck.yy.c

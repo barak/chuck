@@ -1,0 +1,8 @@
+/*.log
+/*.substvars
+/.debhelper/
+/chuck-data/
+/chuck/
+/debhelper-build-stamp
+/files
+/tmp/
