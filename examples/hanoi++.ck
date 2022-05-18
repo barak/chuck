@@ -1,12 +1,13 @@
 // towers of annoy
-// demonstrates: recursion, arrays, stereo, sndbuf, lame sonification
+// demonstrates: recursion, arrays, stereo, sndbuf,
+//               questionable sonification
 
 // number of disks
 10 => int disks;
 // min duration for each move
 200::ms => dur wait => dur the_wait;
-// max factor
-8 => int factor;
+// step number
+0 => int STEPS;
 
 // gain to pan to dac
 Gain g => Pan2 pan;
@@ -27,7 +28,7 @@ me.dir() + "/data/kick.wav" => pegs[2].read;
 me.dir() + "/data/snare-hop.wav" => pegs[3].read;
 
 // connect to gain
-for( 1 => int i; i < pegs.cap(); i++ )
+for( 1 => int i; i < pegs.size(); i++ )
     pegs[i] => g;
 
 // the hanoi
@@ -36,8 +37,10 @@ fun void hanoi( int num, int src, int dest, int other )
     // move all except the biggest
     if( num > 1 ) hanoi( num - 1, src, other, dest );
 
+    // increment steps
+    STEPS++;
     // move the biggest
-    <<< "move disk from peg", src, " -> ", "peg", dest >>>;
+    <<< "step", STEPS, " | move disk from peg", src, " -> ", "peg", dest >>>;
     // sonify
     0 => pegs[dest].pos;
     // gain

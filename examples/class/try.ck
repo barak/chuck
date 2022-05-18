@@ -7,6 +7,8 @@
 //       1. we will have better dependency/include system
 //       2. we can extend Dinky from UGen, so we don't have 
 //          to use a 'connect( UGen )' function in Dinky
+// NOTE: the above (#2) is now possible using Chugraphs!
+//       check out: extend/chugraph.ck
 
 // instantiate a Dinky (not connected yet)
 Dinky imp;
@@ -39,7 +41,7 @@ while( true )
 {
     // trigger
     45 + Math.random2(0,3) * 12 + 
-         hi[Math.random2(0,hi.cap()-1)] => imp.t;
+         hi[Math.random2(0,hi.size()-1)] => imp.t;
     // let time pass
     195::ms => now;
     // close the envelope

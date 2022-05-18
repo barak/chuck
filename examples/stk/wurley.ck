@@ -16,7 +16,7 @@ Wurley voc=> JCRev r => dac;
 while( true )
 {
     // scale
-    scale[Math.random2(0,scale.cap()-1)] => int freq;
+    scale[Math.random2(0,scale.size()-1)] => int freq;
     Std.mtof( ( 45 + Math.random2(0,1) * 12 + freq ) ) => voc.freq;
     Math.random2f( 0.6, 0.8 ) => voc.noteOn;
 
@@ -51,7 +51,7 @@ while( true )
         0 => int pick_dir;
         0.0 => float pluck;
 
-	for( ; i < pick; i++ )
+        for( ; i < pick; i++ )
         {
             Math.random2f(.4,.6) + i*.035 => pluck;
             pluck + 0.03 * (i * pick_dir) => voc.noteOn;

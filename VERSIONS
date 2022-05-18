@@ -1,4 +1,327 @@
-1.3.5.2
+1.4.1.1 (May 2022)
+---
+  - (added) native support for Apple Silicon (e.g., M1) as intel/apple 
+    universal binary; *significant* performance throughput observed
+    running chuck natively on Apple Silicon
+  - (modified) building from source, on MacOS command line:
+        > make mac (compile for current architecture: arm64/x86_64)
+        > make mac-ub (compile universal binary: arm64+x86_64)
+        > lipo -archs ./chuck (checks architectures)
+        > ./chuck --about (prints out compiled platform...
+          ...and if compiled as universal binary):
+          ---
+          chuck version: 1.4.1.1 (numchucks)
+          macOS : 64-bit [universal binary]
+          ---
+        > make osx (deprecated; use 'make mac' or 'make mac-ub')
+  - (updated, pre-built executables, MacOS) both command line chuck and
+    miniAudicle are now built as universal binaries to support both
+    intel(x86_64) and Apple silicion/M1(arm64) architectures
+  - (updated, pre-built executables, MacOS) all packaged chugins are
+    now also built as universal binaries
+  - (added) Math.equal( float x, float y )
+    returns whether two floats are considered equivalent
+  - (added) array.popOut( int index )
+    removes an array element by index [thanks chamington and nshaheed]
+  - (added) OscOut.send() error reporting now includes the intended
+    recipient (hostname:port)
+  - (added) examples/hid/gametra.ck
+    boilerplate gametrak code
+  - (moved) examples/osc/1-send-recv/
+    moved s.ck and r.ck (sender and receiver) examples here
+  - (added) examples/osc/2-multi-msg/
+    examples for interleaving two OSC message types at different rates
+  - (added) examples/osc/3-one2many/
+    examples showing one sender to many receivers
+  - (added) examples/osc/4-multicast/
+    examples showing one sender using multicast to broadcast
+  - (added) examples/stk/hevymetl-dance-now.ck
+    example of power chords in sequence
+  - (fixed) fixed Lisa-load.ck to correct load sound file [thanks nshaheed]
+  - (fixed) CK_STDCERR now flushes on all output
+  - (fixed) error message display for MidiFileIn (STK)
+  - (fixed) array literal assignment now works as expected when
+    common ancestor type is child type of the RHS type; [thanks nshaheed]
+    --- for example ---
+    [ new SinOsc ] @=> Osc arr[]; // previously this results in a
+                                  // incompatible type error, although
+                                  // Osc is a superclass SinOsc
+    -------------------
+  - (continuous integration) --  updated to use 'make mac'
+  - (test) -- modified 01-Basic/86.ck; disabled 87.ck due to 
+    Math.isnan() behaving differently on Apple Silicon;
+    modified 03-Modules/std01.ck to handled floating point equivalence
+    differently; also prompted adding Math.equal(); modified
+    05-Global/86.ck to disable Math.isnan()
+  - (updated, internal) integer types update for smoother Windows 64 bit
+  - (noted) synchronization point for Chunity version x.x.x
+  - (added) added to VERSIONS (this file) release dates since initial
+    release in 2004
+
+
+1.4.1.0 (June 2021)
+---
+(NOTE) chuck-1.4.1.0 is the first significant release resulting from a 
+coordinated team effort to update and improve ChucK for teaching and 
+research.  In April 2021, Perry and Ge led a ChucK "Global 
+Repair-a-thon", which identified issues and put forth a new Development 
+Roadmap. The ChucK dev team will follow this roadmap for updates, new 
+features, and new ChucK mediums (e.g., Chunity, WebChucK, FaucK, 
+ChucKTrip, and more). Many people were involved in this significant 
+release, including Jack Atherton, Mike Mulshine, Matt Wright, Rebecca 
+Fiebrink, Dan Trueman, Lloyd May, Mark Cerqueira, Mario Buoninfante, 
+Perry Cook, Spencer Salazar, and Ge Wang.  Many thanks to everyone who 
+contributed. Happy ChucKing!
+---
+  - (added) static Object.help();
+    All ChucK objects (i.e., all non-primitive types) can now invoke 
+    .help(), which will dynamically generate and print to console
+    the description and inheritance hierarchy of the underlying type,
+    as well as the available functions at runtime.  This can be called
+    on any object instance or on any class (without an instance):
+        // any object instance
+        SinOsc foo;
+        // print to console info about its underlying type
+        foo.help();
+        (OR)
+        // call help() from any class (identical output as above)
+        SinOsc.help();
+    Intended to be a quick runtime reference / learning tool!
+  - (added) examples/help.ck -- show .help() in action
+  - (added) examples/deep/chant.ck (by Perry Cook, 2006) -- a chant singing
+    synthesizer that makes use of ChucK's strongly-time and concurrent
+    programming features.
+  - (added) new Multi-channel LiSa UGens! (LiSa10 was already present)
+        LiSa2 (stereo)
+        LiSa4 (quad),
+        LiSa6 (6-channel; laptop orchestra edition!)
+        LiSa8 (8-channel),
+        LiSa16 (16-channel)
+  - (fixed) LiSa playback bug; voice panning now handles the mono case;
+    previously was silencing voice playback
+  - (added) new STK set/get access functions in FM:
+        float op4Feedback( float value );
+            Set operator 4 feedback.
+        float op4Feedback();
+            Get operator 4 feedback.
+        float opADSR( int opNum, float a, float d, float s, float r );
+            Set operator ADSR: attack, decay, sustain, release.
+        float opAM( int opNum, float value );
+            Set operator amplitude modulation.
+        float opAM( int opNum );
+            Get operator amplitude modulation.
+        float opGain( int opNum, float value );
+            Set operator gain.
+        float opGain( int opNum );
+            Get gperator gain.
+        float opRatio( int opNum, float ratio );
+            Set operator frequency ratio.
+        float opRatio( int opNum );
+            Get operator frequency ratio.
+        float opWave( int opNum, int wave );
+            Set operator waveform [1-8].
+  - (added) new Synthesis Toolkit (STK) FM instruments from Perry!
+        HnkyTonk: STK-style Honkey Tonk Piano FM synthesis instrument.
+            (aka, Algorithm 1 of the Yamaha TX81Z DX11 FM synthesizer)
+        FrencHrn: STK-style French Horn FM synthesis instrument.
+            (aka, Algorithm 2 of the Yamaha TX81Z DX11 FM synthesizer)
+        KrstlChr: STK-style "Crystal Choir" FM synthesis instrument.
+            (aka, Algorithm 7 of the Yamaha TX81Z DX11 FM synthesizer)
+    *** for each of these, try using the new .help() to examine its
+    documentation and interface; e.g., HnkyTonk.help(); ***
+  - (added) new Moog function:
+        float filterStartFreq( float freq );
+            Set filter starting frequency.
+        float filterStartFreq();
+            Get filter starting frequency.
+  - (added) new STK examples:
+        examples/stk/frenchrn-algo2.ck -- FM French Horn demo
+        examples/stk/honkeytonk-algo1.ck -- fun with FM Honkey Tonk
+        examples/stk/krstlchr-algo7.ck -- heavenly FM Kristal Choir
+        examples/stk/hevymetl-acoustic-algo3.ck -- FM HevyMetl => Nylon Guitar
+        examples/stk/hevymetl-trumpet-algo3.ck -- FM HevyMetl => Trumpet
+        examples/stk/rhodey-song.ck -- a lovely little number
+  - (updated) tweaks to a number of STK UGens, which may result in audio
+    changes; the affected UGens are:
+        BandedWG, BeeThree, FMVoices, HevyMetl, PercFlut, Rhodey,
+        TubeBell, Wurley
+  - (fixed) issue in PluckTwo in computing delay length; this affects
+    the tuning of various plucked string models, including Mandolin.
+  - (added) .frames() for SndBuf and SndBuf2; returns the number of sample
+    frames in the loaded sound file. This is identical in behavior to
+    .samples() -- but for stereo+, .frames() is semanitically more 
+    accurate than .samples().
+  - (added) "global" declarations for int, float, string, Object, UGen, Event;
+    this can be used in-language across ChucK files (each file must first 
+    "declare" the global value before using it). This also support usage from
+    external hosts such as Chunity. (thanks to Jack Atherton for this work!)
+  - (added) constant power panning (as controlled by the .pan parameter)
+    for all UGen_Stereo--including Pan2, stereo dac, stereo adc; this is
+    controllable using the new .panType parameter.  By default, constant
+    power panning is NOT enabled for dac and adc, whose panning behavior 
+    is unchanged (panType==0) and favors a kind of unity-gain-preserving
+    but perceptually suspect panning scheme. By contrast, Pan2 will default
+    to use constant power panning (panType==1).  This change will alter the
+    effect of any existing code that uses Pan2.  Specifically, it will
+    introduce a ~3 dB reduction in the output Pan2 (it is possible to
+    restore the previous behavior by explicitly setting .panType to 0). 
+    This ~3 dB reduction corresponds to the equal-powered amplitude value
+    when pan is at center (pan=0). Mathematically, the reduction amount 
+    can be calculated using Std.lintodb(Math.cos(pi/4))
+    [To hear this new behavior, check out examples/stereo/stereo_noise.ck]
+  - (BEHAVIOR CHANGED) clearly separated array.size() and array.capacity();
+    for historical/compatibility reasons, array.cap() is the same as
+    array.size() and generally should be avoided in favor of either .size()
+    or .capacity()
+  - (BEHAVIOR CHANGED): internally, all ChucK static functions are now
+    passed an extra parameter (Chuck_Type * TYPE) as a pointer to the
+    base type/class. This will affect Chugins, which should be updated/
+    rebuilt with the latest headers.
+  - (BEHAVIOR CHANGED): when connecting two multi-channel UGen's (both
+    are at least stereo), say LHS => RHS, if LHS channels < RHS channels,
+    the channels will be connected one-by-one up to the LHS channel count;
+    previously, the LHS channels will be automatically repeated to connect
+    to the RHS channels that have no corresponding LHS channels.  This
+    behavior can still be achieved by manually connecting the individual
+    channels of LHS and and RHS through LHS.chan(n) and RHS.chan(n).
+  - (fixed) resolved a bug with SndBuf not playing when .rate < 0 and while
+    .pos beyond the end
+  - (fixed) resolved a bug with SndBuf where it could output DC when .rate < 0
+    after it reaches the beginning of the file (e.g., if the first sample is
+    non-zero)
+  - (fixed) resolved a bug in ADSR when sustain is set to 0 and audio stops,
+    .releaseTime return NaN and basically the world ends (thanks to
+    mariobuoninfante for help in addressing this)
+  - (fixed) reset Gen10 table to allow add/remove partials; thanks to 
+    mariobuoninfant
+  - (fixed) updated MidiOut and removed check in order to allow messages
+    of size less than or greater than 3 bytes; thanks to mariobuoninfante
+    for this issue report on Ubuntu Studio 64-bit; this fix addresses
+    the sending of MIDI clock, stop, continue, and SysEx -- also thank 
+    you mariobuoninfante for the fix.
+  - (fixed) ChucK shell can now be exited either by the "exit" command
+    or through ctrl-c.  Previously. ctrl-c sometimes failed to end the
+    the program due to logic in the global cleanup function; this has
+    been addressed.
+  - (fixed) addressed an issue where Chugins were being loaded twice.
+  - (fixed) the --chugin-load:off option is now correclty taken into
+    account and will appropriately result in no Chugins being loaded.
+  - (deprecated) Chubgraph => (new) Chugraph;
+    Chubgraph will continue to function, with a deprecation warning.
+  - (documentation) updated embedded documentation text for all statically
+    linked UGens and libraries.
+  - (documentation) brought examples in alignment between distribution
+    and the online examples collection; many examples updated for clarity
+    and utility
+        http://chuck.stanford.edu/doc/examples
+        http://chuck.cs.princeton.edu/doc/examples
+  - (internal/refactor) the "Mega Merge 2021" integrates a long-standing
+    branch since REFACTOR-2017 that includes support for globals and was
+    the basis for Chunity.  Future Chunity releases will align with mainline
+    ChucK language features. (thanks to Jack Atherton for several years of
+    laying the groundwork and for ChucK in Chunity!)
+  - (internal/developement) added m_started flag to the ChucK class to avoid
+    a strange (but mostly harmless) condition when the virtual machine is
+    shutting down and ChucK::run() attempt to call ChucK::start()
+  - (internal/development) Thanks to Mark Cerqueira -- migrated from old
+    Travis CI (continuous integration testing) to GHA (GitHub Actions).
+
+
+1.4.0.1 (May 2020)
+---
+  - (fixed) when opening audio input devices where the default
+    device has insufficient chanels (e.g., MacOS input is mono
+    by default), logic has been added to also match sample rates
+    when searching for alternate audio input devices;  additional
+    logic added in the specific case of mono input devices to
+    simulate stereo, to fulfill the standard request for stereo
+    input.
+  - (fixed) added check to prevent crash in rare situations involving
+    self-join when deleting XThread in background. (git PR #103)
+  - (fixed) by stuntgoat@github -- right-recursion in chuck parser
+    can exhaust memory in larger chuck files; this has been updated
+    to use left recursion.  (git PR #32, (finally) merged by hand by 
+    Spencer and Ge)  Also thanks to Tom Lieber for the initial analysis
+    and solution:
+    https://lists.cs.princeton.edu/pipermail/chuck-users/2009-April/004029.html
+  - (added) by Nathan Tindall -- Q and freq bounding for filters (LPF,
+    HPF, BPF, BRF) to avoid LOUD FILTER EXPLOSIONS; now negative values
+    will throw an exception on the offending shred.
+  - (restored, macOS) MAUI Chugin now (re)supported, post 1.4.0.0
+  - (added; developer) ChucK.h API to set a main thread hook (e.g., for 
+    graphical functionalitie from Chugins)
+  - (updated, developer) Chugin API now support main thread callback
+    for graphical-/GUI purposes
+  - (developer) refactored code to move I/O-related code out of
+    chuck_lang and into chuck_io.
+
+
+1.4.0.0 (February 2018)
+---
+  ********************************************************
+  * NOTE: 1.4.0.0 is a simultaneous release with 1.3.6.0;*
+  * the two are identical except 1.3.6.0 also supports   *
+  * earlier version of OS X before 10.9 (back to 10.5).  *
+  ********************************************************
+  * MAJOR SOURCE REFACTOR!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!*
+  * (Thanks Jack Atherton for months of groundwork!)     *
+  ********************************************************
+  - (added) support for 64-bit on windows
+  - (added) Chuck_External API for including and running ChucK from 
+    elsewhere in C++
+            - specify the sample rate
+            - optionally specify the directory that me.dir() should 
+              evaluate to; this dir will also be scanned for chugins
+            - optionally use custom callbacks for out and err messages
+              from ChucK
+  - (added) external keyword - for communicating variable values to and from
+            C++ code using Chuck_External API
+  - (developer) ChucK "core" as library, independent of external
+    system audio I/O; now much easier to embed ChucK as a
+    component in other hosts (e.g., command line, plugins, Unity, etc.)
+  - (developer) ChucK "host" (command line app)
+  - (developer) SOURCE: code support for multiple ChucK/VM instances
+  - (developer) SOURCE: one file to include them all (chuck.h)
+  - (developer) c_str() method for Chuck_Strings, so that chugins with a different
+            definition of std::string can still construct their own string
+  - (developer) API for chugin API calls
+              - now API variable must be passed
+              - SHRED variable must also occasionally be passed
+  - (internal) refactored Chuck_String representation to be immutable
+  - (internal) refactored to eliminate global VM, compiler, and env variables
+              - compiler stores a reference to env
+              - compiler stores a reference to vm
+              - vm stores a reference to env
+              - env stores its own top-level types; no more global type variables
+              - DL_Query stores a reference to compiler
+  - (internal) refactored all print statements to use new macros
+
+
+1.3.6.0 (February 2018)
+---
+  - (see 1.4.0.0)
+
+
+1.3.5.3 (unreleased; rolled into 1.4.0.0)
+---
+  - (added) support for primitive type 'vec3' for 3D vector
+            - access .x .y .z OR .r .g .b OR .value .goal .slew
+  - (added) support for primitive type 'vec4' for 4D vector
+            - access .x .y .z .w OR .r .g .b .a
+  - (added) VM exceptions (e.g., ArrayOutOfBounds) now print line number
+            where possible (thanks Jack Atherton!)
+  - (added) Math.gauss( x, mu, sigma )
+  - (added) .clear() for Delay, DelayA, DelayL
+  - (fixed) - == and != for polar and complex types
+  - (fixed) repeat statement now worked correctly for shreds
+  - (fixed) crash with --adaptive:N and ugens that used tickf e.g. WvOut2
+  - (fixed) SndBuf occasional crash at end of file
+  - (fixed) (windows) install issue where chugins and/or example files were missing
+  - (removed) --blocking functionality; callback only for real-time audio
+  - (internal) refactored VM to be more friendly for integration
+
+
+1.3.5.2 (October 2015)
 ---
   - (added) default root path changed from /usr to /usr/local
             (fixes issues in Mac OS X 10.11 "El Capitan")
@@ -19,7 +342,8 @@
   - (fixed) crash fix for array => ugen
   - (fixed) fix OscOut send failure for programs that also use OscIn
 
-1.3.5.1
+
+1.3.5.1 (April 2015)
 ---
   - (added) new ChuGins
             - PowerADSR
@@ -35,7 +359,8 @@
             - full-duplex IO
             - general lag issues
 
-1.3.5.0
+
+1.3.5.0 (December 2014)
 ---
   - (added) new functions in Std
             - int Std.clamp(int v, int min, int max)
@@ -70,7 +395,8 @@
   - (fixed) better error messages for OscIn/OscOut
   - (fixed) rare threading bug for OTF commands
 
-1.3.4.0
+
+1.3.4.0 (April 2014)
 ---
   - (added) chuck operator connects between arrays of ugens, multi-channel 
             ugens, and mono unit ugens
@@ -139,14 +465,16 @@
               harmonic ripples
   - (fixed) ChucK Shell fixes
 
-1.3.3.0
+
+1.3.3.0 (November 2013)
 ---
   - (added) PulseAudio support (via RtAudio)  
   - (fixed) relative path resolution for me.path() and me.dir()
   - (fixed) C:/ style pathnames do not trigger spurious argument processing
   - (fixed) MidiFileIn on Windows/Linux
 
-1.3.2.0
+
+1.3.2.0 (September 2013)
 ---
   - (added) --clear.vm flag
             instructs remote VM to remove all shreds and clear public user types
@@ -288,12 +616,14 @@
   - (fixed) crash in Mandolin destructor
   - (fixed) ADSR correctly initialized in "DONE" state
 
-1.3.1.3
+
+1.3.1.3 (September 2012)
 ---
   - (fixed) number in --dac:<N> flag is no longer off by one (this bug
             was introduced in 1.3.1.2)
 
-1.3.1.2
+
+1.3.1.2 (September 2012)
 ---
   - (added) chuck now automatically detects and uses next highest
             or closest (in that order) system sample rate in   
@@ -312,7 +642,8 @@
   - (fixed) opening real-time audio with 0 input channels should
             now work, once again.
 
-1.3.1.1
+
+1.3.1.1 (September 2012)
 ---
   - (fixed) critical bug since 1.3 where member function calls in
             loop conditionals caused crashes when the loop body
@@ -329,8 +660,9 @@
             and '/' in aboslute paths (previously only '\\').
             (thanks to Graham Coleman for finding this!)
 
+
+1.3.1.0 (September 2012)
 ---
-1.3.1.0
   - (added) 64-bit support for all platforms (OS X, Linux, Windows)
             many thanks to Paul Brossier, Stephen Sinclair, 
             Robin Haberkorn, Michael Wilson, Kassen, and 
@@ -370,18 +702,21 @@
             (see 'added' above; Std.rand*() still there, but to be 
             deprecated; please use Math.random*() moving forward)
 
+
+1.3.0.2 (August 2012)
 ---
-1.3.0.2
   - (fixed) string literal reference counting
   - (fixed) chuck to function call reference counting
 
+
+1.3.0.1 (August 2012)
 ---
-1.3.0.1
   - (fixed) WvOut no longer only record silence
   - (fixed) WvOut.closeFile() does not cause the VM to hang
 
+
+1.3.0.0 (August 2012)
 ---
-1.3.0.0
   - (added) Chugins: dynamically loaded compiled classes/ugens
             see http://chuck.stanford.edu/extend/ for examples. 
   - (added) new command line options
@@ -423,8 +758,9 @@
   - (fixed) crash when HID events are sent to an exited shred
   - (fixed) destructors for built-in objects are executed
 
+
+1.2.1.3 (October 2009)
 ---
-1.2.1.3
   - (added) initial/experimental support for file I/O (finally)
             (thanks to Andrew Schran, Martin Robinson)
   - (added) new class: IO, FileIO
@@ -464,8 +800,8 @@
   - (fixed) complilation on OS X Snow Leopard
 
 
+1.2.1.2 (July 2008)
 ---
-1.2.1.2
   - (added) dynamic, resizable arrays
                 .size( int ) resizes array; .size() returns current size()
                 << operator appends new elements into array
@@ -522,8 +858,8 @@
   - (fixed) typos in ugen_xxx.cpp and chuck-specific rtaudio.cpp (/moudi)
 
 
+1.2.1.1 (October 2007)
 ---
-1.2.1.1
   - (fixed) ctrl-c no longer causes crash on shutdown
             (was due to memory deallocation bug)
   - (fixed) incorrect code generation for multiple expressions in 3rd clause 
@@ -532,8 +868,8 @@
             kijjaz, and others on electro-music!)
             
 
+1.2.1.0 (codename: spectral, August 2007)
 ---
-1.2.1.0 : codename spectral
   - (added) Unit Analyzers (UAna: prounced U-Wanna, plural UAnae)
               (primary creators: Rebecca and Ge)
             provides support for spectral processing, 
@@ -609,11 +945,13 @@
   - (changed) default frequencies (220/440) added for various STK instruments
 
 
+---
 (there is no version 1.2.0.9!)
 ---
 
+
+1.2.0.8 (March 2007)
 ---
-1.2.0.8
   - (added) command line argument support
             e.g. %> chuck foo.ck:1:hello bar:2.5:"with space"
                  also works with OTF commands
@@ -724,8 +1062,8 @@
   - (fixed) variables must be declared before being used
 
 
+1.2.0.7b (October 2006)
 ---
-1.2.0.7b
   - added: (all) HidIn.name() now returns meaningful device name
   - fixed: (all) fixed STK Envelope bug
   - fixed: (osx) mouse motion now correctly returns delta Y
@@ -736,8 +1074,8 @@
            string message specification
 
 
+1.2.0.7 (October 2006)
 ---
-1.2.0.7
   - (api) deprecated --> new classes
     --------------------------
        sinosc  -->  SinOsc
@@ -807,8 +1145,8 @@
   - (fixed) ADSR now correctly inherits Envelope
 
 
+1.2.0.6 (more, August 2006))
 ---
-1.2.0.6 (more)
   - (added) support for Mac OS X universal binary
   - (added) executable now reports targets:
 
@@ -818,8 +1156,8 @@
        exe target: mac os x : universal binary
        http://chuck.cs.princeton.edu/
 
+1.2.0.6 (August 2006)
 ---
-1.2.0.6
   - (added) support for Mac OS X on Intel: (make osx-intel)
   - (added) win32 - boost thread priority default from 0 to 5
   - (added) Mandolin.bodyIR( string path ): set body impulse response
@@ -846,14 +1184,14 @@
   - (fixed) STK Mandolin.damping( float f ) changed
 
 
+1.2.0.5b (April 2006)
 ---
-1.2.0.5b
   - (fixed) adc bug
   - (fixed) %=> bug
 
 
+1.2.0.5 (April 2006)
 ---
-1.2.0.5
   - (added) multi-channel audio
             - use --channels<N> or -c<N> set number of channels
               for both input and output
@@ -961,8 +1299,8 @@
   - (fixed) syntax error causing syntax errors
 
 
+1.2.0.4 (December 2005)
 ---
-1.2.0.4
   - (added) The ChucK Manual (pdf)
             fantastic work by Adam Tindale and other documentors
             see doc/Chuck_manual.pdf
@@ -998,8 +1336,8 @@
   - (fixed) CK_LOG_SYSTEM_ERROR now CK_LOG_CORE
 
 
+1.2.0.3 (October 2005)
 ---
-1.2.0.3
   (API changes again)
   (syntax change - 'loop' -> 'repeat')
   - loop( ... ) construct (see 1.2.0.2) changed to repeat( ... )
@@ -1023,8 +1361,8 @@
   - (changed) examples/stk/wurley.ck (wacky version)
 
 
+1.2.0.2 (2005.10.17)
 ---
-1.2.0.2 - 2005.10.17
   (sorry for the API changes)
   - (API change) OSC_Send class name changed to 'OscSend'
       (also): .startMesg(...) name changed to startMsg(...)
@@ -1081,8 +1419,8 @@
   - (fixed) examples/stk/*-o-matic.ck now uses array
 
 
+1.2.0.1 (2005.9.27)
 ---
-1.2.0.1 - 2005.9.27
   - (added) full callback capability for real-time audio
     - blocking functionality still available
     - select via flags: --blocking and --callback
@@ -1104,9 +1442,8 @@
   - (added) string operations <, <=, >, >=
 
 
+1.2.0.0 (August 2005)
 ---
-1.2.0.0
-
   SYNTAX and OPERATORS:
   - (added) +=>, operator : 2 +=> i; (also) -=>, *=>, /=>, %=>
   - (added) @=> for explicit assignment
@@ -1209,20 +1546,20 @@
   - (added) stereo ugen: mix2 mix stereo input into mono
 
 
+1.1.5.6 (2005.4.11)
 ---
-1.1.5.6 - 2005.4.11
   - last 1.1 release : contains all 1.1 changes
 
 
+1.1.5.5 (2005.2.10)
 ---
-1.1.5.5 - 2005.2.10
   - FIFO to RR for audio and synthesis - improves stability on OS X
   - fixed stack underflow emitter bug with declarations
   - fixed cpu sleep bug on win32
 
 
+1.1.5.4 (2004.11.18)
 ---
-1.1.5.4 - 2004.11.18
   - fixed clicks when using adc unit generator
     (thanks to paul botelho for testing)
   - added 'maybe' keyword
@@ -1238,8 +1575,8 @@ adc examples work better:
   - i-robot.ck
 
 
+1.1.5.3 (2004.11.4)
 ---
-1.1.5.3 - 2004.11.4
   - when a shred is removed from VM, all children shreds are 
     also recursively removed
     (this fix crash due to removing shreds with active children shreds)
@@ -1252,14 +1589,14 @@ updated examples:
   - spork.ck : added infinite time loop to keep children active
 
 
+1.1.5.2 (2004.10.17)
 ---
-1.1.5.2 - 2004.10.17
   - crtical patch shreduler time precision
   - same as 1.1.5.1 - see below
 
 
+1.1.5.1 (2004.10.15)
 ---
-1.1.5.1 - 2004.10.15
   - on-the-fly chuck files to remote hosts!
     > chuck @hostname + foo.ck
     > chuck @hostname -p<N> + foo.ck
@@ -1289,8 +1626,8 @@ new examples:
       (remove, replace and add your own)
 
 
+1.1.5.0 (2004.9.29)
 ---
-1.1.5.0 - 2004.9.29
   - now able to write audio files (wav, aiff, raw)
     (try rec.ck and rec2.ck concurrently with any other shreds
      to record to disk)
@@ -1315,8 +1652,8 @@ new examples:
     for sessions
 
 
+1.1.4.9 (2004.9.18)
 ---
-1.1.4.9 - 2004.9.18
   - all of STK is now in ChucK!
   - new examples (see below)
   - add '--bufnum<N>' to chuck command line (number of buffers)
@@ -1346,8 +1683,8 @@ new examples:
   stifkarp.ck - stifkarp, chaos
 
 
+1.1.4.8 (2004.9.8)
 ---
-1.1.4.8 - 2004.9.8
   - added win32 visual studio support (chuck_win32.*)
   - new oscillators (see below, thanks to Phil)
   - corrected more issues on some 64-bit systems
@@ -1369,16 +1706,17 @@ new examples:
   (you can still do FM "by hand" - see fmsynth.ck)
 
 
+1.1.4.7 (2004.9.4)
 ---
-1.1.4.7 - 2004.9.4
   - improved performance (reduce cpu overhead)
   - fixed bug that caused crash on ctrl-c
   - added sndbuf.play (same as rate)
   - corrected issues on some 64-bit systems
   - sndbuf.ck now works
 
+
+1.1.4.6 (2004.8.26)
 ---
-1.1.4.6 - 2004.8.26
   - added netin/netout unit generators (alpha version)
   - added a lot of STK unit generators (thanks to philipd)
     (over 80% of STK is now imported)
@@ -1416,8 +1754,8 @@ new examples:
   - net_bounce.ck - redirect
 
 
+1.1.4.5 (2004.8.14)
 ---
-1.1.4.5 - 2004.8.14
   - fixed bug for multiple declarations
   - made functions local to shred by default
   - shadowing now works
@@ -1445,8 +1783,9 @@ new examples:
   - voic-o-form.ck (music for replicants)
   - rhodey/wurley.ck (more stk-o-matics)
 
+
+1.1.4.4 (2004.8.2)
 ---
-1.1.4.4 - 2004.8.2
   - added sndfile patch for jack/sndfile (Martin Rumori)
   - added special raw wav for WaveLoop (philipd, gewang)
 
@@ -1488,8 +1827,8 @@ new examples:
   - wind2.ck (2 shreds control parameters)
 
 
+1.1.4.3 (2004.7.4)
 ---
-1.1.4.3 - 2004.7.4
   - add sndfile support (Ari Lazier)
   - add sndbuf file reading/writing (Ari Lazier)
   - add sinosc.sfreq and phase (Phil Davidson)
@@ -1518,47 +1857,47 @@ new Unit Generators
   WaveLoop (updated)
 
 
+1.1.4.2 (2004.6.14)
 ---
-1.1.4.2 - 2004.6.14
   - added support for arbitrary audio in/out (via command line)
 
 
+1.1.4.1 (2004.6.13)
 ---
-1.1.4.1 - 2004.6.13
   - double lt gt fix
   - added demo[0-5].ck to examples
   - PROGRAMMER updated
   - big/little endian issue fixed
 
 
+1.1.4.0 (2004.6.12)
 ---
-1.1.4.0 - 2004.6.12
   - major update to use double float for time, dur, and float
     (this fixes the millisecond bug)
 
 
+1.1.3.6 (2004.6.9)
 ---
-1.1.3.6 - 2004.6.9
   - fixed win32 build problem (thanks to Adam Wendt)
   - fixed midi stack problem (thanks to Thomas Charbonnel)
 
 
+1.1.3.5 (2004.6.8)
 ---
-1.1.3.5 - 2004.6.8
   - fixed mem stack bug (report Alex Chapman)
   - added jack support (thanks to Thomas Charbonnel)
 
 
+1.1.3.4 (2004.6.7)
 ---
-1.1.3.4 - 2004.6.7
   - fixed spork bug
   - bad midiin now returns 0
   - supports sound card with no input
   - add spork.ck
 
 
+1.1.3.3 (2004.6.7)
 ---
-1.1.3.3 - 2004.6.7
   - added ability to spork shreds from code
   - casting float/int
   - 0-127 MIDI devices support
@@ -1569,15 +1908,10 @@ new Unit Generators
   - fixed linux makefile (thanks to n++k)
   - added STK ugen: WaveLoop, Shakers, JCRev, ADSR
   - added shred-time synch by T - (now % T ) => now;
-
-
 ---
 1.1.3.2
-
-
 ---
 1.1.3.1
 
 
----
-1.1.3.0 - initial release
+1.1.3.0 (Spring 2004) --- initial release ---
