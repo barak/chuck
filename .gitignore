@@ -2,7 +2,7 @@
 *.o
 /build/
 /src/chuck
-/src/chuck.output
-/src/chuck.tab.c
-/src/chuck.tab.h
-/src/chuck.yy.c
+/src/core/chuck.output
+/src/core/chuck.tab.c
+/src/core/chuck.tab.h
+/src/core/chuck.yy.c
