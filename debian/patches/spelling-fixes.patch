@@ -1,13 +1,28 @@
-From: Christoph Biedl <debian.axhn@manchmal.in-ulm.de>
-Date: Sat, 11 Nov 2017 00:00:00 +0000
+From: "Barak A. Pearlmutter" <bap@debian.org>
+Date: Thu, 19 May 2022 11:30:00 +0000
 Subject: Fix typos
 
-Forwarded: not-yet
 ---
+ src/core/chuck_lang.cpp | 2 +-
  src/core/chuck_type.cpp | 4 ++--
  src/core/chuck_vm.cpp   | 2 +-
- 2 files changed, 3 insertions(+), 3 deletions(-)
+ src/core/uana_xform.cpp | 8 ++++----
+ src/core/ulib_math.cpp  | 2 +-
+ 5 files changed, 9 insertions(+), 9 deletions(-)
 
+diff --git a/src/core/chuck_lang.cpp b/src/core/chuck_lang.cpp
+index 56855f6..7b9bee8 100644
+--- a/src/core/chuck_lang.cpp
++++ b/src/core/chuck_lang.cpp
+@@ -860,7 +860,7 @@ t_CKBOOL init_class_string( Chuck_Env * env, Chuck_Type * type )
+ 
+     // add toInt()
+     func = make_new_mfun( "int", "toInt", string_toInt );
+-    func->doc = "attemp to convert the contents of the string to an integer and return the result, or 0 if conversion failed.";
++    func->doc = "attempt to convert the contents of the string to an integer and return the result, or 0 if conversion failed.";
+     if( !type_engine_import_mfun( env, func ) ) goto error;
+ 
+     // add toFloat()
 diff --git a/src/core/chuck_type.cpp b/src/core/chuck_type.cpp
 index 711f877..e044368 100644
 --- a/src/core/chuck_type.cpp
@@ -43,3 +58,56 @@ index ad0247d..dee9791 100644
      }
  
  done:
+diff --git a/src/core/uana_xform.cpp b/src/core/uana_xform.cpp
+index 1a24a3a..8d76058 100644
+--- a/src/core/uana_xform.cpp
++++ b/src/core/uana_xform.cpp
+@@ -171,7 +171,7 @@ DLL_QUERY xform_query( Chuck_DL_Query * QUERY )
+     // init as base class: FFT
+     //---------------------------------------------------------------------
+ 
+-    doc = "computes the Fast Fourier Transform on incoming audio samples, and outputs the result via its UAnaBlob as both the complex spectrum and the magnitude spectrum. A buffering mechanism maintains the previous FFTsize # of samples, allowing FFT's to be taken at any point in time, on demand (via .upchuck() or by upchucking a downstream UAna. The window size (along with an arbitry window shape) is controlled via the .window method. The hop size is complete dynamic, and is throttled by how time is advanced.";
++    doc = "computes the Fast Fourier Transform on incoming audio samples, and outputs the result via its UAnaBlob as both the complex spectrum and the magnitude spectrum. A buffering mechanism maintains the previous FFTsize # of samples, allowing FFT's to be taken at any point in time, on demand (via .upchuck() or by upchucking a downstream UAna. The window size (along with an arbitrary window shape) is controlled via the .window method. The hop size is complete dynamic, and is throttled by how time is advanced.";
+     
+     if( !type_engine_import_uana_begin( env, "FFT", "UAna", env->global(),
+                                         FFT_ctor, FFT_dtor,
+@@ -224,7 +224,7 @@ DLL_QUERY xform_query( Chuck_DL_Query * QUERY )
+     // init as base class: IFFT
+     //---------------------------------------------------------------------
+     
+-    doc = "computes the inverse Fast Fourier Transform on incoming spectral frames (on demand), and overlap-adds the results into its internal buffer, ready to be sent to other UGen's connected via =>. The window size (along with an arbitry window shape) is controlled via the .window method.";
++    doc = "computes the inverse Fast Fourier Transform on incoming spectral frames (on demand), and overlap-adds the results into its internal buffer, ready to be sent to other UGen's connected via =>. The window size (along with an arbitrary window shape) is controlled via the .window method.";
+     
+     if( !type_engine_import_uana_begin( env, "IFFT", "UAna", env->global(), 
+                                         IFFT_ctor, IFFT_dtor,
+@@ -420,7 +420,7 @@ DLL_QUERY xform_query( Chuck_DL_Query * QUERY )
+     // init as base class: DCT
+     //---------------------------------------------------------------------
+     
+-    doc = "computes the Discrete Cosine Transform on incoming audio samples, and outputs the result via its UAnaBlob as real values in the D.C. spectrum. A buffering mechanism maintains the previous DCT size # of samples, allowing DCT to be taken at any point in time, on demand (via .upchuck() or by upchucking a downstream UAna; see UAna documentation). The window size (along with an arbitry window shape) is controlled via the .window method. The hop size is complete dynamic, and is throttled by how time is advanced.";
++    doc = "computes the Discrete Cosine Transform on incoming audio samples, and outputs the result via its UAnaBlob as real values in the D.C. spectrum. A buffering mechanism maintains the previous DCT size # of samples, allowing DCT to be taken at any point in time, on demand (via .upchuck() or by upchucking a downstream UAna; see UAna documentation). The window size (along with an arbitrary window shape) is controlled via the .window method. The hop size is complete dynamic, and is throttled by how time is advanced.";
+     
+     if( !type_engine_import_uana_begin( env, "DCT", "UAna", env->global(), 
+                                         DCT_ctor, DCT_dtor,
+@@ -473,7 +473,7 @@ DLL_QUERY xform_query( Chuck_DL_Query * QUERY )
+     // init as base class: IDCT
+     //---------------------------------------------------------------------
+     
+-    doc = "computes the inverse Discrete Cosine Transform on incoming spectral frames (on demand), and overlap-adds the results into its internal buffer, ready to be sent to other UGen's connected via =>. The window size (along with an arbitry window shape) is controlled via the .window method.";
++    doc = "computes the inverse Discrete Cosine Transform on incoming spectral frames (on demand), and overlap-adds the results into its internal buffer, ready to be sent to other UGen's connected via =>. The window size (along with an arbitrary window shape) is controlled via the .window method.";
+     
+     if( !type_engine_import_uana_begin( env, "IDCT", "UAna", env->global(), 
+                                         IDCT_ctor, IDCT_dtor,
+diff --git a/src/core/ulib_math.cpp b/src/core/ulib_math.cpp
+index 5ccb392..77d00f9 100644
+--- a/src/core/ulib_math.cpp
++++ b/src/core/ulib_math.cpp
+@@ -365,7 +365,7 @@ DLL_QUERY libmath_query( Chuck_DL_Query * QUERY )
+     // add srandom (1.3.1.0)
+     QUERY->add_sfun( QUERY, srandom_impl, "void", "srandom" );
+     QUERY->add_arg( QUERY, "int", "seed" );
+-    QUERY->doc_func( QUERY, "seed the random nubmer generator." );
++    QUERY->doc_func( QUERY, "seed the random number generator." );
+     
+     // go ahead and seed (the code can seed again for repeatability; 1.3.1.0)
+     srandom( time( NULL ) );
