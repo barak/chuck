@@ -5,8 +5,9 @@ chuck (1.4.1.1-1) unstable; urgency=medium
   * Fail to fail if examples not found (as in CI test-build-any)
   * Add metadata with pointer to upstream development repo
   * Patch to remove "register" storage qualifier, which is not in ISO C++17
+  * Enable warning by setting CHUCK_STRICT
 
- -- Barak A. Pearlmutter <bap@debian.org>  Thu, 19 May 2022 10:31:31 +0100
+ -- Barak A. Pearlmutter <bap@debian.org>  Thu, 19 May 2022 11:13:47 +0100
 
 chuck (1.3.5.2-1) unstable; urgency=medium
 
