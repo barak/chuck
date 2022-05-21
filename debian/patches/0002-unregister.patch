@@ -12,7 +12,7 @@ ISO C++17 does not allow ‘register’ storage class specifier
  2 files changed, 20 insertions(+), 20 deletions(-)
 
 diff --git a/src/core/ugen_stk.cpp b/src/core/ugen_stk.cpp
-index 2815722..82e8842 100644
+index f7075df..953b844 100644
 --- a/src/core/ugen_stk.cpp
 +++ b/src/core/ugen_stk.cpp
 @@ -5926,7 +5926,7 @@ void BeeThree :: noteOn(MY_FLOAT frequency, MY_FLOAT amplitude)
