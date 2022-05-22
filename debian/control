@@ -34,8 +34,9 @@ Description: Concurrent, On-the-fly Audio Programming Language
 
 Package: chuck-data
 Architecture: all
+Multi-Arch: foreign
 Depends: ${misc:Depends},
-Description: examples and data files for chuck
+Description: Examples and data files for ChucK
  This package provides the examples, documentation and other
- architecture-independent files for chuk, the concurrent, on-the-fly
+ architecture-independent files for ChucK, the concurrent, on-the-fly
  audio programming language.
