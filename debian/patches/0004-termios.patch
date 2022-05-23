@@ -1,0 +1,44 @@
+From: "Barak A. Pearlmutter" <barak+git@pearlmutter.net>
+Date: Sun, 22 May 2022 22:08:17 +0100
+Subject: termios
+
+Do not #include <termio.h> as it is deprecated in favor of termios.h
+---
+ src/core/util_console.cpp | 14 +-------------
+ 1 file changed, 1 insertion(+), 13 deletions(-)
+
+diff --git a/src/core/util_console.cpp b/src/core/util_console.cpp
+index 6f8336f..52ec625 100644
+--- a/src/core/util_console.cpp
++++ b/src/core/util_console.cpp
+@@ -92,14 +92,8 @@ void io_addhistory( const char * addme )
+ // kb hit
+ #ifndef __PLATFORM_WIN32__
+   #include <string.h>
+-#ifdef __PLATFORM_MACOSX__
+   #include <termios.h>
+   static struct termios g_save;
+-#else
+-  #include <termio.h>
+-  static struct termio g_save;
+-#endif
+-
+   #include <unistd.h>
+   #include <sys/ioctl.h>
+ #else
+@@ -118,14 +112,8 @@ t_CKBOOL kb_initscr()
+     if( g_init ) return FALSE;
+ 
+ #ifndef __PLATFORM_WIN32__
+-
+-#ifdef __PLATFORM_MACOSX__
+     struct termios term;
+-    if( ioctl( 0, TIOCGETA, &term ) == -1 )
+-#else
+-    struct termio term;
+-    if( ioctl( 0, TCGETA, &term ) == -1 )
+-#endif
++    if( tcgetattr(0, &term) == -1 )
+     { 
+         EM_log( CK_LOG_SEVERE, "(kbhit disabled): standard input not a tty!");
+         return FALSE;
