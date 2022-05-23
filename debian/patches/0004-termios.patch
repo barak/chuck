@@ -3,12 +3,13 @@ Date: Sun, 22 May 2022 22:08:17 +0100
 Subject: termios
 
 Do not #include <termio.h> as it is deprecated in favor of termios.h
+and avoid non-portable ioctl calls in favour of tcgetattr and tcsetattr.
 ---
- src/core/util_console.cpp | 14 +-------------
- 1 file changed, 1 insertion(+), 13 deletions(-)
+ src/core/util_console.cpp | 27 +++------------------------
+ 1 file changed, 3 insertions(+), 24 deletions(-)
 
 diff --git a/src/core/util_console.cpp b/src/core/util_console.cpp
-index 6f8336f..52ec625 100644
+index 6f8336f..4ef6ee3 100644
 --- a/src/core/util_console.cpp
 +++ b/src/core/util_console.cpp
 @@ -92,14 +92,8 @@ void io_addhistory( const char * addme )
@@ -42,3 +43,30 @@ index 6f8336f..52ec625 100644
      { 
          EM_log( CK_LOG_SEVERE, "(kbhit disabled): standard input not a tty!");
          return FALSE;
+@@ -142,12 +130,7 @@ t_CKBOOL kb_initscr()
+     term.c_cc[VMIN] = 0;
+     term.c_cc[VTIME]=0;  
+ 
+-#ifdef __PLATFORM_MACOSX__
+-    ioctl( 0, TIOCSETA, &term );
+-#else
+-    ioctl( 0, TCSETA, &term );
+-#endif
+-
++    tcsetattr( 0, TCSADRAIN, &term );
+ #endif
+ 
+     g_init = TRUE;
+@@ -161,11 +144,7 @@ void kb_endwin()
+     if( !g_init ) return;
+ 
+ #ifndef __PLATFORM_WIN32__
+-#ifdef __PLATFORM_MACOSX__
+-    ioctl( 0, TIOCSETA, &g_save );
+-#else
+-    ioctl( 0, TCSETA, &g_save );
+-#endif
++    tcsetattr( 0, TCSADRAIN, &g_save );
+ #endif
+ 
+     g_init = FALSE;
