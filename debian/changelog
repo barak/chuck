@@ -1,3 +1,9 @@
+chuck (1.4.1.1-5) UNRELEASED; urgency=medium
+
+  * Patch to #include <limits.h> instead of <linux/limits.h>
+
+ -- Barak A. Pearlmutter <bap@debian.org>  Sat, 28 May 2022 09:53:36 +0100
+
 chuck (1.4.1.1-4) unstable; urgency=medium
 
   * Patch termios harder for extra portability
