@@ -1,0 +1,21 @@
+From: "Barak A. Pearlmutter" <barak+git@pearlmutter.net>
+Date: Mon, 23 Jan 2023 21:12:41 +0000
+Subject: parallel make fix
+
+---
+ src/makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/makefile b/src/makefile
+index bb3f3b8..ecf7630 100644
+--- a/src/makefile
++++ b/src/makefile
+@@ -205,7 +205,7 @@ CK_SVN=https://chuck-dev.stanford.edu/svn/chuck/
+ chuck-core:
+ 	@echo -------------
+ 	@echo [chuck-core]: compiling...
+-	make $(MAKECMDGOALS) -C $(COREDIR) $(ARCH_ARGS)
++	$(MAKE) $(MAKECMDGOALS) -C $(COREDIR) $(ARCH_ARGS)
+ 	@echo -------------
+ 
+ chuck: chuck-core $(COBJS_HOST) $(CXXOBJS_HOST)

@@ -4,6 +4,7 @@ chuck (1.4.2.0-1) unstable; urgency=medium
   * Update standards version to 4.6.2, no changes needed.
   * New upstream version
   * Forward port quilt patches
+  * Patch to allow parallel recursive make
 
  -- Barak A. Pearlmutter <bap@debian.org>  Mon, 23 Jan 2023 22:06:26 +0000
 
