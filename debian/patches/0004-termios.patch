@@ -5,11 +5,11 @@ Subject: termios
 Do not #include <termio.h> as it is deprecated in favor of termios.h
 and avoid non-portable ioctl calls in favour of tcgetattr and tcsetattr.
 ---
- src/core/util_console.cpp | 27 +++------------------------
- 1 file changed, 3 insertions(+), 24 deletions(-)
+ src/core/util_console.cpp | 29 ++++-------------------------
+ 1 file changed, 4 insertions(+), 25 deletions(-)
 
 diff --git a/src/core/util_console.cpp b/src/core/util_console.cpp
-index 6f8336f..4ef6ee3 100644
+index 0917562..bf5fd5b 100644
 --- a/src/core/util_console.cpp
 +++ b/src/core/util_console.cpp
 @@ -92,14 +92,8 @@ void io_addhistory( const char * addme )
@@ -27,7 +27,7 @@ index 6f8336f..4ef6ee3 100644
    #include <unistd.h>
    #include <sys/ioctl.h>
  #else
-@@ -118,14 +112,8 @@ t_CKBOOL kb_initscr()
+@@ -118,15 +112,9 @@ t_CKBOOL kb_initscr()
      if( g_init ) return FALSE;
  
  #ifndef __PLATFORM_WIN32__
@@ -39,13 +39,15 @@ index 6f8336f..4ef6ee3 100644
 -    struct termio term;
 -    if( ioctl( 0, TCGETA, &term ) == -1 )
 -#endif
+-    {
 +    if( tcgetattr(0, &term) == -1 )
-     { 
++    { 
          EM_log( CK_LOG_SEVERE, "(kbhit disabled): standard input not a tty!");
          return FALSE;
+     }
 @@ -142,12 +130,7 @@ t_CKBOOL kb_initscr()
      term.c_cc[VMIN] = 0;
-     term.c_cc[VTIME]=0;  
+     term.c_cc[VTIME]=0;
  
 -#ifdef __PLATFORM_MACOSX__
 -    ioctl( 0, TIOCSETA, &term );

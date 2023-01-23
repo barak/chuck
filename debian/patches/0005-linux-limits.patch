@@ -13,7 +13,7 @@ $ g++ -E /tmp/l.c | egrep linux/limits
  1 file changed, 1 insertion(+), 3 deletions(-)
 
 diff --git a/src/core/util_string.cpp b/src/core/util_string.cpp
-index aa4c2d1..f175ed6 100644
+index a61b09b..d15bc3b 100644
 --- a/src/core/util_string.cpp
 +++ b/src/core/util_string.cpp
 @@ -37,9 +37,7 @@

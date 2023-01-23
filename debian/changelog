@@ -3,8 +3,9 @@ chuck (1.4.2.0-1) unstable; urgency=medium
   * Patch to #include <limits.h> instead of <linux/limits.h>
   * Update standards version to 4.6.2, no changes needed.
   * New upstream version
+  * Forward port quilt patches
 
- -- Barak A. Pearlmutter <bap@debian.org>  Mon, 23 Jan 2023 22:05:12 +0000
+ -- Barak A. Pearlmutter <bap@debian.org>  Mon, 23 Jan 2023 22:06:26 +0000
 
 chuck (1.4.1.1-4) unstable; urgency=medium
 
