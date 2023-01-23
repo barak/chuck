@@ -321,7 +321,7 @@ Chuck_Object::~Chuck_Object()
     Chuck_Type * type = this->type_ref;
     while( type != NULL )
     {
-        // SPENCERTODO: HACK! is there a better way to call the dtor?
+        // SPENCER TODO: HACK! is there a better way to call the dtor?
         if( type->has_destructor )
         {
             // sanity check
@@ -382,7 +382,7 @@ void Chuck_Object::help() // 1.4.1.0 (ge)
 Chuck_Array::~Chuck_Array()
 {
     // decrement reference count; added (ge): 1.4.1.0
-    SAFE_RELEASE(m_array_type);
+    SAFE_RELEASE( m_array_type );
 }
 
 
@@ -414,7 +414,8 @@ Chuck_Array4::Chuck_Array4( t_CKBOOL is_obj, t_CKINT capacity )
 //-----------------------------------------------------------------------------
 Chuck_Array4::~Chuck_Array4()
 {
-    // do nothing
+    // 1.4.2.0 (ge) | added, which should cascade to nested array objects
+    clear();
 }
 
 
@@ -625,28 +626,53 @@ t_CKINT Chuck_Array4::pop_back( )
     return 1;
 }
 
+
+
+
 //-----------------------------------------------------------------------------
 // name: pop_out()
 // desc: ...
 //-----------------------------------------------------------------------------
-t_CKINT Chuck_Array4::pop_out( t_CKUINT pos )
+t_CKINT Chuck_Array4::pop_out( t_CKINT pos )
 {
-	// check
-	if ( m_vector.size() == 0 || pos<0 || pos>=m_vector.size())
-		return 0;
+    // check
+    if ( m_vector.size() == 0 || pos<0 || pos>=m_vector.size())
+        return 0;
 
-	if( m_is_obj )
-	{
-		// get pointer
-		Chuck_Object * v = (Chuck_Object *)m_vector[pos];
-		// if not null, release
-		if( v ) v->release();
-	}
+    if( m_is_obj )
+    {
+        // get pointer
+        Chuck_Object * v = (Chuck_Object *)m_vector[pos];
+        // if not null, release
+        if( v ) v->release();
+    }
 
-	// add to vector
-	m_vector.erase(m_vector.begin()+pos);
-	return 1;
+    // add to vector
+    m_vector.erase(m_vector.begin()+pos);
+    return 1;
 }
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: get_keys() | 1.4.1.1 nshaheed (added)
+// desc: return vector of keys from associative array
+//-----------------------------------------------------------------------------
+void Chuck_Array4::get_keys( std::vector<std::string> & keys )
+{
+    // clear the return array
+    keys.clear();
+    // iterator
+    for( std::map<std::string, t_CKUINT>::iterator iter = m_map.begin(); iter !=m_map.end(); iter++ )
+    {
+        // add to list
+        keys.push_back((*iter).first);
+    }
+}
+
+
+
 
 //-----------------------------------------------------------------------------
 // name: back()
@@ -816,6 +842,7 @@ Chuck_Array8::Chuck_Array8( t_CKINT capacity )
 Chuck_Array8::~Chuck_Array8()
 {
     // do nothing
+    clear();
 }
 
 
@@ -996,11 +1023,13 @@ t_CKINT Chuck_Array8::pop_back( )
 }
 
 
+
+
 //-----------------------------------------------------------------------------
 // name: pop_out()
 // desc: ...
 //-----------------------------------------------------------------------------
-t_CKINT Chuck_Array8::pop_out( t_CKUINT pos )
+t_CKINT Chuck_Array8::pop_out( t_CKINT pos )
 {
         // check
         if ( m_vector.size() == 0 || pos<0 || pos>=m_vector.size())
@@ -1009,6 +1038,25 @@ t_CKINT Chuck_Array8::pop_out( t_CKUINT pos )
         // add to vector
         m_vector.erase(m_vector.begin()+pos);
         return 1;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: get_keys() | 1.4.1.1 nshaheed (added)
+// desc: return vector of keys from associative array
+//-----------------------------------------------------------------------------
+void Chuck_Array8::get_keys( std::vector<std::string> & keys )
+{
+    // clear the return array
+    keys.clear();
+    // iterator
+    for( std::map<std::string,t_CKFLOAT>::iterator iter = m_map.begin(); iter !=m_map.end(); iter++ )
+    {
+        // add to list
+        keys.push_back((*iter).first);
+    }
 }
 
 
@@ -1330,7 +1378,7 @@ t_CKINT Chuck_Array16::pop_back( )
 // name: pop_out()
 // desc: ...
 //-----------------------------------------------------------------------------
-t_CKINT Chuck_Array16::pop_out( t_CKUINT pos )
+t_CKINT Chuck_Array16::pop_out( t_CKINT pos )
 {
         // check
         if ( m_vector.size() == 0 || pos<0 || pos>=m_vector.size())
@@ -1339,6 +1387,25 @@ t_CKINT Chuck_Array16::pop_out( t_CKUINT pos )
         // add to vector
         m_vector.erase(m_vector.begin()+pos);
         return 1;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: get_keys() | 1.4.1.1 nshaheed (added)
+// desc: return vector of keys from associative array
+//-----------------------------------------------------------------------------
+void Chuck_Array16::get_keys( std::vector<std::string> & keys )
+{
+    // clear the return array
+    keys.clear();
+    // iterator
+    for( std::map<std::string,t_CKCOMPLEX>::iterator iter = m_map.begin(); iter !=m_map.end(); iter++ )
+    {
+        // add to list
+        keys.push_back((*iter).first);
+    }
 }
 
 
@@ -1765,6 +1832,25 @@ void Chuck_Array24::zero( t_CKUINT start, t_CKUINT end )
 
 
 //-----------------------------------------------------------------------------
+// name: get_keys() | 1.4.1.1 nshaheed (added)
+// desc: return vector of keys from associative array
+//-----------------------------------------------------------------------------
+void Chuck_Array24::get_keys( std::vector<std::string> & keys )
+{
+    // clear the return array
+    keys.clear();
+    // iterator
+    for( std::map<std::string, t_CKVEC3>::iterator iter = m_map.begin(); iter !=m_map.end(); iter++ )
+    {
+        // add to list
+        keys.push_back((*iter).first);
+    }
+}
+
+
+
+
+//-----------------------------------------------------------------------------
 // name: Chuck_Array32()
 // desc: constructor
 //-----------------------------------------------------------------------------
@@ -2076,6 +2162,25 @@ void Chuck_Array32::zero( t_CKUINT start, t_CKUINT end )
         m_vector[i].y = 0;
         m_vector[i].z = 0;
         m_vector[i].w = 0;
+    }
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: get_keys() | 1.4.1.1 nshaheed (added)
+// desc: return vector of keys from associative array
+//-----------------------------------------------------------------------------
+void Chuck_Array32::get_keys( std::vector<std::string> & keys )
+{
+    // clear the return array
+    keys.clear();
+    // iterator
+    for( std::map<std::string, t_CKVEC4>::iterator iter = m_map.begin(); iter !=m_map.end(); iter++ )
+    {
+        // add to list
+        keys.push_back((*iter).first);
     }
 }
 
@@ -2965,7 +3070,7 @@ t_CKINT Chuck_IO_File::size()
     // have to seek to end, report position
     FILE * stream = fopen( m_path.c_str(), "r" );
     fseek( stream, 0L, SEEK_END );
-    int endPos = ftell( stream );
+    long endPos = ftell( stream );
     fclose( stream );
     return endPos;
 }
