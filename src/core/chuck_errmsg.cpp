@@ -51,7 +51,8 @@ t_CKBOOL anyErrors= FALSE;
 // local global
 static const char * fileName = "";
 static int lineNum = 1;
-static char g_buffer[1024] = "";
+#define CK_ERR_BUF_LENGTH 1024
+static char g_buffer[CK_ERR_BUF_LENGTH] = "";
 static const size_t LASTERROR_SIZE = 1024;
 static char g_lasterror[LASTERROR_SIZE] = "[chuck]: (no error)";
 static size_t g_lasterrorIndex = strlen(g_lasterror);
@@ -79,10 +80,10 @@ void ck_fprintf_stdout( const char * format, ... )
     va_start( args, format );
     vsnprintf( g_buffer2, g_buffer2_size, format, args );
     va_end( args );
-    
+
     // send the formatted string to the buffer
     g_stdout_stream << g_buffer2;
-    
+
     // try flushing
     ck_fflush_stdout();
 }
@@ -95,10 +96,10 @@ void ck_fprintf_stderr( const char * format, ... )
     va_start( args, format );
     vsnprintf( g_buffer2, g_buffer2_size, format, args );
     va_end( args );
-    
+
     // send the formatted string to the buffer
     g_stderr_stream << g_buffer2;
-    
+
     // try flushing
     ck_fflush_stderr();
 }
@@ -112,7 +113,7 @@ void ck_fflush_stdout()
         // send to stdout
         fprintf( stdout, "%s", g_stdout_stream.str().c_str() );
         fflush( stdout );
-        
+
         // and clear buffer
         g_stdout_stream.str( std::string() );
     }
@@ -124,7 +125,7 @@ void ck_fflush_stdout()
         {
             // if so, emit to callback
             g_stdout_callback( g_stdout_stream.str().c_str() );
-            
+
             // and clear buffer
             g_stdout_stream.str( std::string() );
         }
@@ -140,7 +141,7 @@ void ck_fflush_stderr()
         // send to stderr
         fprintf( stderr, "%s", g_stderr_stream.str().c_str() );
         fflush( stderr );
-        
+
         // and clear buffer
         g_stderr_stream.str( std::string() );
     }
@@ -152,7 +153,7 @@ void ck_fflush_stderr()
         {
             // if so, emit to callback
             g_stderr_callback( g_stderr_stream.str().c_str() );
-            
+
             // and clear buffer
             g_stderr_stream.str( std::string() );
         }
@@ -164,10 +165,10 @@ void ck_vfprintf_stdout( const char * format, va_list args )
 {
     // evaluate the format string
     vsnprintf( g_buffer2, g_buffer2_size, format, args );
-    
+
     // send the formatted string to the buffer
     g_stdout_stream << g_buffer2;
-    
+
     // try flushing
     ck_fflush_stdout();
 }
@@ -177,10 +178,10 @@ void ck_vfprintf_stderr( const char * format, va_list args )
 {
     // evaluate the format string
     vsnprintf( g_buffer2, g_buffer2_size, format, args );
-    
+
     // send the formatted string to the buffer
     g_stderr_stream << g_buffer2;
-    
+
     // try flushing
     ck_fflush_stderr();
 }
@@ -367,27 +368,27 @@ static const char * g_str[] = {
 
 
 // intList
-typedef struct intList {int i; struct intList *rest;} *IntList;
+typedef struct intList {t_CKINT i; struct intList *rest;} *IntList;
 static IntList linePos=NULL;
 
 
 static int lastErrorCat(const char * str)
 {
     assert(g_lasterrorIndex <= LASTERROR_SIZE-1);
-    
+
     size_t len = strlen(str);
-    
+
     strncat(g_lasterror, str, LASTERROR_SIZE-g_lasterrorIndex-1);
-    
+
     size_t appendCount = ck_min(LASTERROR_SIZE-g_lasterrorIndex-1, len);
     g_lasterrorIndex += appendCount;
-    
+
     return appendCount > 0;
 }
 
 
 // constructor
-static IntList intList( int i, IntList rest )
+static IntList intList( t_CKINT i, IntList rest )
 {
     IntList l = (IntList)checked_malloc(sizeof *l);
     l->i=i; l->rest=rest;
@@ -430,43 +431,43 @@ void EM_reset_msg()
     g_lasterrorIndex = 0;
 }
 
-// [%s]:line(%d).char(%d): 
-void EM_error( int pos, const char * message, ... )
+// [%s]:line(%d).char(%d):
+void EM_error( t_CKINT pos, const char * message, ... )
 {
     va_list ap;
     IntList lines = linePos;
     int num = lineNum;
 
     anyErrors = TRUE;
-    while( lines && lines->i >= pos ) 
+    while( lines && lines->i >= pos )
     {
         lines = lines->rest;
         num--;
     }
-    
+
     // separate errmsgs with newlines
     if( g_lasterror[0] != '\0' ) lastErrorCat( "\n" );
-    
+
     CK_FPRINTF_STDERR( "[%s]:", *fileName ? mini(fileName) : "chuck" );
-    sprintf( g_buffer, "[%s]:", *fileName ? mini(fileName) : "chuck" );
+    snprintf( g_buffer, CK_ERR_BUF_LENGTH, "[%s]:", *fileName ? mini(fileName) : "chuck" );
     lastErrorCat( g_buffer );
     if(lines)
     {
         CK_FPRINTF_STDERR( "line(%d).char(%d):", num, pos-lines->i );
-        sprintf( g_buffer, "line(%d).char(%d):", num, pos-lines->i );
+        snprintf( g_buffer, CK_ERR_BUF_LENGTH, "line(%d).char(%d):", num, (int)(pos-lines->i) );
         lastErrorCat( g_buffer );
     }
     CK_FPRINTF_STDERR( " " );
     lastErrorCat( " " );
-    
+
     va_start(ap, message);
     CK_VFPRINTF_STDERR( message, ap);
     va_end(ap);
 
     va_start(ap, message);
-    vsprintf( g_buffer, message, ap );
+    vsnprintf( g_buffer, CK_ERR_BUF_LENGTH, message, ap );
     va_end(ap);
-    
+
     CK_FPRINTF_STDERR( "\n");
     CK_FFLUSH_STDERR();
     lastErrorCat( g_buffer );
@@ -474,7 +475,7 @@ void EM_error( int pos, const char * message, ... )
 
 
 // [%s]:line(%d):
-void EM_error2( int line, const char * message, ... )
+void EM_error2( t_CKINT line, const char * message, ... )
 {
     va_list ap;
 
@@ -482,14 +483,14 @@ void EM_error2( int line, const char * message, ... )
 
     // separate errmsgs with newlines
     if( g_lasterror[0] != '\0' ) lastErrorCat( "\n" );
-    
+
     CK_FPRINTF_STDERR( "[%s]:", *fileName ? mini(fileName) : "chuck" );
-    sprintf( g_buffer, "[%s]:", *fileName ? mini(fileName) : "chuck" );
+    snprintf( g_buffer, CK_ERR_BUF_LENGTH, "[%s]:", *fileName ? mini(fileName) : "chuck" );
     lastErrorCat( g_buffer );
     if(line)
     {
-        CK_FPRINTF_STDERR( "line(%d):", line );
-        sprintf( g_buffer, "line(%d):", line );
+        CK_FPRINTF_STDERR( "line(%d):", (int)line );
+        snprintf( g_buffer, CK_ERR_BUF_LENGTH, "line(%d):", (int)line );
         lastErrorCat( g_buffer );
     }
     CK_FPRINTF_STDERR( " " );
@@ -500,7 +501,7 @@ void EM_error2( int line, const char * message, ... )
     va_end( ap );
 
     va_start( ap, message );
-    vsprintf( g_buffer, message, ap );
+    vsnprintf( g_buffer, CK_ERR_BUF_LENGTH, message, ap );
     va_end( ap );
 
     lastErrorCat( g_buffer );
@@ -510,22 +511,22 @@ void EM_error2( int line, const char * message, ... )
 
 
 // [%s]:line(%d):
-void EM_error2b( int line, const char * message, ... )
+void EM_error2b( t_CKINT line, const char * message, ... )
 {
     va_list ap;
-    
+
     EM_extLineNum = line;
 
     // separate errmsgs with newlines
     if( g_lasterror[0] != '\0' ) lastErrorCat( "\n" );
-    
+
     CK_FPRINTF_STDERR( "[%s]:", *fileName ? mini(fileName) : "chuck" );
-    sprintf( g_buffer, "[%s]:", *fileName ? mini(fileName) : "chuck" );
+    snprintf( g_buffer, CK_ERR_BUF_LENGTH, "[%s]:", *fileName ? mini(fileName) : "chuck" );
     lastErrorCat( g_buffer );
     if(line)
     {
-        CK_FPRINTF_STDERR( "line(%d):", line );
-        sprintf( g_buffer, "line(%d):", line );
+        CK_FPRINTF_STDERR( "line(%d):", (int)line );
+        snprintf( g_buffer, CK_ERR_BUF_LENGTH, "line(%d):", (int)line );
         lastErrorCat( g_buffer );
     }
     CK_FPRINTF_STDERR( " " );
@@ -536,7 +537,7 @@ void EM_error2b( int line, const char * message, ... )
     va_end( ap );
 
     va_start( ap, message );
-    vsprintf( g_buffer, message, ap );
+    vsnprintf( g_buffer, CK_ERR_BUF_LENGTH, message, ap );
     va_end( ap );
 
     lastErrorCat( g_buffer );
@@ -545,14 +546,14 @@ void EM_error2b( int line, const char * message, ... )
 }
 
 
-// 
+//
 void EM_error3( const char * message, ... )
 {
     va_list ap;
-    
+
     // separate errmsgs with newlines
     if( g_lasterror[0] != '\0' ) lastErrorCat( "\n" );
-    
+
 //    g_lasterror[0] = '\0';
     g_buffer[0] = '\0';
 
@@ -561,7 +562,7 @@ void EM_error3( const char * message, ... )
     va_end( ap );
 
     va_start( ap, message );
-    vsprintf( g_buffer, message, ap );
+    vsnprintf( g_buffer, CK_ERR_BUF_LENGTH, message, ap );
     va_end( ap );
 
     lastErrorCat( g_buffer );

@@ -51,11 +51,11 @@ DLL_QUERY machine_query( Chuck_DL_Query * QUERY )
     QUERY->setname( QUERY, "Machine" );
 
     /*! \nameinfo
-      ChucK runtime interface to the virtual machine.  
-      this interface can be used to manage shreds.  
+      ChucK runtime interface to the virtual machine.
+      this interface can be used to manage shreds.
       They are similar to the <a href="otfp.html">
-      On-the-fly Programming Commands</a>, except these are 
-      invoked from within a ChucK program, and are accessible 
+      On-the-fly Programming Commands</a>, except these are
+      invoked from within a ChucK program, and are accessible
       to the timing mechanism.
     */
 
@@ -74,12 +74,12 @@ DLL_QUERY machine_query( Chuck_DL_Query * QUERY )
     QUERY->add_sfun( QUERY, machine_add_impl, "int", "add" );
     QUERY->doc_func( QUERY, "add/run a new shred from file at 'path'." );
     QUERY->add_arg( QUERY, "string", "path" );
-    
+
     // add spork
     //! same as add
     // QUERY->add_sfun( QUERY, machine_add_impl, "int", "spork" );
     // QUERY->add_arg( QUERY, "string", "path" );
-    
+
     // add remove
     //! remove shred from VM by shred ID (returned by add/spork)
     QUERY->add_sfun( QUERY, machine_remove_impl, "int", "remove" );
@@ -88,7 +88,7 @@ DLL_QUERY machine_query( Chuck_DL_Query * QUERY )
 
     // add replace
     //! replace shred with new shred from file
-    //! returns shred ID , or 0 on error 
+    //! returns shred ID , or 0 on error
     QUERY->add_sfun( QUERY, machine_replace_impl, "int", "replace" );
     QUERY->doc_func( QUERY, "replace running shred by 'id' with new shred at 'path'." );
     QUERY->add_arg( QUERY, "int", "id" );
@@ -105,15 +105,23 @@ DLL_QUERY machine_query( Chuck_DL_Query * QUERY )
     QUERY->add_sfun( QUERY, machine_status_impl, "int", "status" );
     QUERY->doc_func( QUERY, "display current status of virtual machine." );
 
-    // add get intsize (width)
-    //! get the intsize in bits (e.g., 32 or 64)
-    QUERY->add_sfun( QUERY, machine_intsize_impl, "int", "intsize" );
-    QUERY->doc_func( QUERY, "get size of int in bits (e.g., 32 or 64)." );
-    
     // add shreds
     //! get list of active shreds by id
     QUERY->add_sfun( QUERY, machine_shreds_impl, "int[]", "shreds" );
     QUERY->doc_func( QUERY, "get list of active shred ids." );
+
+    // add get intsize (width)
+    //! get the intsize in bits (e.g., 32 or 64)
+    QUERY->add_sfun( QUERY, machine_intsize_impl, "int", "intsize" );
+    QUERY->doc_func( QUERY, "get size of int in bits (e.g., 32 or 64)." );
+
+    // add check for silent (or realtime audio) | adapted from nshaheed PR #230
+    QUERY->add_sfun( QUERY, machine_silent_impl, "int", "silent" );
+    QUERY->doc_func( QUERY, "return false if the shred is in realtime mode, true if it's in silent mode (i.e. --silent is enabled)" );
+
+    // add check for realtime (always opposite of silent()) | adapted from nshaheed PR #230
+    QUERY->add_sfun( QUERY, machine_realtime_impl, "int", "realtime" );
+    QUERY->doc_func( QUERY, "return true if the shred is in realtime mode, false if it's in silent mode (i.e. --silent is enabled)" );
 
     // end class
     QUERY->end_class( QUERY );
@@ -153,6 +161,18 @@ t_CKUINT machine_intsize()
 
 
 
+//-----------------------------------------------------------------------------
+// name: machine_realtime()
+// desc: return whether chuck is in realtime mode, or silent mode (--silent is enabled)
+//-----------------------------------------------------------------------------
+t_CKUINT machine_realtime( Chuck_VM * vm )
+{
+    return vm->carrier()->hintIsRealtimeAudio();
+}
+
+
+
+
 // add
 CK_DLL_SFUN( machine_crash_impl )
 {
@@ -176,7 +196,7 @@ CK_DLL_SFUN( machine_remove_impl )
 {
     t_CKINT v = GET_CK_INT(ARGS);
     Net_Msg msg;
-    
+
     msg.type = MSG_REMOVE;
     msg.param = v;
     RETURN->v_int = (int)the_func( SHRED->vm_ref, the_compiler, &msg, TRUE, NULL );
@@ -188,7 +208,7 @@ CK_DLL_SFUN( machine_replace_impl )
     t_CKINT v = GET_NEXT_INT(ARGS);
     const char * v2 = GET_NEXT_STRING(ARGS)->str().c_str();
     Net_Msg msg;
-    
+
     msg.type = MSG_REPLACE;
     msg.param = v;
     strcpy( msg.buffer, v2 );
@@ -199,7 +219,7 @@ CK_DLL_SFUN( machine_replace_impl )
 CK_DLL_SFUN( machine_status_impl )
 {
     Net_Msg msg;
-    
+
     msg.type = MSG_STATUS;
     RETURN->v_int = (int)the_func( SHRED->vm_ref, the_compiler, &msg, TRUE, NULL );
 }
@@ -210,19 +230,31 @@ CK_DLL_SFUN( machine_intsize_impl )
     RETURN->v_int = machine_intsize();
 }
 
+// realtime
+CK_DLL_SFUN( machine_realtime_impl )
+{
+    RETURN->v_int = machine_realtime( SHRED->vm_ref );
+}
+
+// silent
+CK_DLL_SFUN( machine_silent_impl )
+{
+    RETURN->v_int = !machine_realtime( SHRED->vm_ref );
+}
+
 CK_DLL_SFUN( machine_shreds_impl )
 {
     Chuck_Array4 *array = new Chuck_Array4(FALSE);
     initialize_object(array, SHRED->vm_ref->env()->t_array);
     array->clear();
-    
+
     Chuck_VM_Status status;
     SHRED->vm_ref->shreduler()->status(&status);
-    
+
     for(int i = 0; i < status.list.size(); i++)
         array->push_back(status.list[i]->xid);
-    
+
     status.clear();
-    
+
     RETURN->v_object = array;
 }
