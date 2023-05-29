@@ -2,6 +2,7 @@
 /*.substvars
 /.debhelper/
 /chuck-data/
+/chuck.1
 /chuck/
 /debhelper-build-stamp
 /files

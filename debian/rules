@@ -10,20 +10,14 @@ export CHUCK_STRICT=1
 %:
 	dh $@
 
+# Giving the three build targets linux-{alsa,pulse,jack} generates a
+# single chuck executable with support for all three sound systems.
 override_dh_auto_build:
-	mkdir build
-	$(MAKE) -C src linux-alsa
-	mv src/chuck build/chuck.alsa
-	$(MAKE) -C src clean
-	$(MAKE) -C src linux-pulse
-	mv src/chuck build/chuck.pulse
-	$(MAKE) -C src clean
-	$(MAKE) -C src linux-jack CHUCK_DEBUG=y
-	docbook-to-man debian/chuck.sgml > build/chuck.1
+	$(MAKE) -C src CHUCK_DEBUG=y linux-alsa linux-pulse linux-jack
+	docbook-to-man debian/chuck.sgml > debian/chuck.1
 
 execute_after_dh_auto_clean:
 	$(MAKE) -C src clean
-	rm -rf build/
 
 override_dh_auto_install:
 	$(MAKE) -C src install DESTDIR=$(CURDIR)/debian/tmp
