@@ -1,6 +1,7 @@
-DESTDIR?=/usr/local/bin
 COREDIR=core
 HOSTDIR=host
+RTAUDIODIR=RtAudio
+DESTDIR?=/usr/local/bin
 CK_PLATFORM=
 
 
@@ -9,7 +10,7 @@ CK_PLATFORM=
 current:
 	@echo "[chuck build]: please use one of the following configurations:"
 	@echo "   make linux-alsa, make linux-jack, make linux-pulse,"
-	@echo "   make mac, make mac-ub, make cygwin, make win32, or make emscripten"
+	@echo "   make mac, make mac-ub, make cygwin, make win32, or make web"
 
 
 ############################## MAKE INSTALL ####################################
@@ -38,41 +39,46 @@ EMSCRIPTENSRCS=host_web/chuck_emscripten.cpp \
     core/chuck_ugen.cpp core/chuck_utils.cpp core/chuck_vm.cpp \
     core/uana_extract.cpp core/uana_xform.cpp core/ugen_filter.cpp \
     core/ugen_osc.cpp core/ugen_stk.cpp core/ugen_xxx.cpp \
-    core/ulib_ai.cpp core/ulib_math.cpp core/ulib_regex.cpp \
-    core/ulib_std.cpp core/util_buffers.cpp core/util_math.c core/util_raw.c \
+    core/ulib_ai.cpp core/ulib_doc.cpp core/ulib_machine.cpp \
+    core/ulib_math.cpp core/ulib_regex.cpp core/ulib_std.cpp \
+    core/util_buffers.cpp core/util_math.c core/util_raw.c \
     core/util_string.cpp core/util_xforms.c core/chuck_win32.c \
     core/util_sndfile.c
 
 
-.PHONY: emscripten
+.PHONY: emscripten web
 emscripten: host_web/webchuck/js/webchuck.js
+web: host_web/webchuck/js/webchuck.js
 
 host_web/webchuck/js/webchuck.js: $(EMSCRIPTENSRCS)
 	emcc -O3 -s DISABLE_EXCEPTION_CATCHING=0 \
-        -Icore -D__DISABLE_MIDI__ -D__DISABLE_WATCHDOG__ \
-        -D__DISABLE_KBHIT__ -D__DISABLE_PROMPTER__ -D__DISABLE_RTAUDIO__ \
-        -D__DISABLE_OTF_SERVER__ -D__ALTER_HID__ -D__DISABLE_HID__ \
-        -D__DISABLE_SERIAL__ -D__DISABLE_FILEIO__ -D__DISABLE_THREADS__ \
-        -D__DISABLE_NETWORK__ -D__DISABLE_SHELL__ \
-        -D__CHUCK_USE_PLANAR_BUFFERS__ \
+	-Icore -D__DISABLE_MIDI__ -D__DISABLE_WATCHDOG__ \
+	-D__DISABLE_KBHIT__ -D__DISABLE_PROMPTER__ -D__DISABLE_RTAUDIO__ \
+	-D__DISABLE_OTF_SERVER__ -D__ALTER_HID__ -D__DISABLE_HID__ \
+	-D__DISABLE_SERIAL__ -D__DISABLE_FILEIO__ -D__DISABLE_THREADS__ \
+	-D__DISABLE_NETWORK__ -D__DISABLE_SHELL__ -D__DISABLE_WORDEXP__ \
+	-D__CHUCK_USE_PLANAR_BUFFERS__ \
 	-Wformat=0 \
-        $(EMSCRIPTENSRCS) -o host_web/webchuck/js/webchuck.js \
-        -s EXTRA_EXPORTED_RUNTIME_METHODS='["ccall", "cwrap", "getValue", "setValue", "addFunction", "removeFunction", "UTF8ToString", "stringToUTF8"]' \
-        -s LINKABLE=1 -s MODULARIZE=1 -s 'EXPORT_NAME="ChucK"' \
-        -s ALLOW_MEMORY_GROWTH=1 \
-        -s --extern-post-js host_web/chucknode-postjs.js \
-        -s RESERVED_FUNCTION_POINTERS=50 -s FORCE_FILESYSTEM=1
+	$(EMSCRIPTENSRCS) -o host_web/webchuck/js/webchuck.js \
+	-s EXPORTED_RUNTIME_METHODS='["ccall", "cwrap", "getValue", "setValue", "addFunction", "removeFunction", "UTF8ToString", "stringToUTF8"]' \
+	-s LINKABLE=1 -s MODULARIZE=1 -s 'EXPORT_NAME="ChucK"' \
+	-s ALLOW_MEMORY_GROWTH=1 \
+	-s --extern-post-js host_web/chucknode-postjs.js \
+	-s RESERVED_FUNCTION_POINTERS=50 -s FORCE_FILESYSTEM=1
 
 
 
 ############################## MAKE INSTALL ####################################
+## note: If you want to build ChucK on linux with multiple audio drivers,
+## call multiple build rules, e.g.:
+## > make linux-pulse linux-alsa linux-jack
 .PHONY: mac mac-ub osx linux-pulse linux-jack linux-alsa cygwin osx-rl test
 mac mac-ub osx linux-pulse linux-jack linux-alsa cygwin osx-rl: chuck
 
 win32:
 	make -f $(COREDIR)/makefile.x/makefile.win32
 
-CK_VERSION=1.4.1.1
+CK_VERSION=1.5.0.0
 
 
 ########################### COMPILATION TOOLS ##################################
@@ -84,6 +90,7 @@ LD=g++
 
 
 ############################# COMPILER FLAGS ###################################
+# note: to compile with a specific c++ version (e.g., c++11) add: -std=c++11
 CFLAGS+=-I. -I$(COREDIR) -I$(COREDIR)/lo
 
 ifneq ($(CHUCK_STAT),)
@@ -104,10 +111,13 @@ ifneq ($(CHUCK_STRICT),)
 CFLAGS+= -Wall
 endif
 
-ifneq ($(findstring arm,$(shell uname -m)),)
+# ifneq ($(findstring arm,$(shell uname -m)),)
 # some sort of arm platform- enable aggressive optimizations
-CFLAGS+= -ffast-math
-endif
+# CFLAGS+= -ffast-math
+# endif
+# ge: commenting out; breaks Math.isinf() since it assumes all finite
+# https://stackoverflow.com/questions/7420665/what-does-gccs-ffast-math-actually-do
+# https://simonbyrne.github.io/notes/fastmath/
 
 
 ######################### PLATFORM-SPECIFIC THINGS #############################
@@ -146,17 +156,20 @@ CXXOBJS_CORE+= chuck.o chuck_absyn.o chuck_parse.o chuck_errmsg.o \
 	chuck_otf.o chuck_stats.o chuck_shell.o chuck_io.o \
 	chuck_carrier.o chuck_globals.o \
 	hidio_sdl.o midiio_rtmidi.o rtmidi.o ugen_osc.o ugen_filter.o \
-	ugen_stk.o ugen_xxx.o ulib_ai.o ulib_machine.o ulib_math.o \
-	ulib_std.o ulib_opsc.o ulib_regex.o util_buffers.o util_console.o \
-	util_string.o util_thread.o util_opsc.o util_serial.o \
-	util_hid.o uana_xform.o uana_extract.o
+	ugen_stk.o ugen_xxx.o ulib_ai.o ulib_doc.o ulib_machine.o \
+	ulib_math.o ulib_std.o ulib_opsc.o ulib_regex.o util_buffers.o \
+	util_console.o util_string.o util_thread.o util_opsc.o \
+	util_serial.o util_hid.o uana_xform.o uana_extract.o
 LO_COBJS_CORE+= lo/address.o lo/blob.o lo/bundle.o lo/message.o lo/method.o \
 	lo/pattern_match.o lo/send.o lo/server.o lo/server_thread.o lo/timetag.o
 
 
 ############################ CHUCK HOST TARGETS ################################
-CXXSRCS_HOST+= RtAudio/RtAudio.cpp chuck_audio.cpp chuck_console.cpp \
-	chuck_main.cpp
+CXXINC_HOST+= -I${RTAUDIODIR} -I${RTAUDIODIR}/include
+CXXSRCS_HOST+= chuck_main.cpp chuck_audio.cpp chuck_console.cpp \
+	${RTAUDIODIR}/RtAudio.cpp
+# NB: on some windows builds, the ASIO src in RTAUDIODIR/include
+#     should be added.
 
 
 ############################ OBJECT FILE TARGETS ###############################
@@ -205,19 +218,21 @@ CK_SVN=https://chuck-dev.stanford.edu/svn/chuck/
 chuck-core:
 	@echo -------------
 	@echo [chuck-core]: compiling...
-	make $(MAKECMDGOALS) -C $(COREDIR) $(ARCH_ARGS)
+	$(MAKE) $(MAKECMDGOALS) -C $(COREDIR) $(ARCH_ARGS)
 	@echo -------------
 
+CFLAGS_HOST=${CFLAGS} -I${RTAUDIODIR}
+CFLAGSDEPEND_HOST=${CFLAGSDEPEND} ${CFLAGS_HOST}
 chuck: chuck-core $(COBJS_HOST) $(CXXOBJS_HOST)
 	$(LD) -o chuck $(OBJS) $(LDFLAGS) $(ARCHOPTS)
 
 $(COBJS_HOST): %.o: %.c
-	$(CC) $(CFLAGS) $(ARCHOPTS) -c $< -o $@
-	@$(CC) -MM -MQ "$@" $(CFLAGSDEPEND) $< > $*.d
+	$(CC) $(CFLAGS_HOST) $(ARCHOPTS) -c $< -o $@
+	@$(CC) -MM -MQ "$@" $(CFLAGSDEPEND_HOST) $< > $*.d
 
 $(CXXOBJS_HOST): %.o: %.cpp
-	$(CXX) $(CFLAGS) $(ARCHOPTS) -c $< -o $@
-	@$(CXX) -MM -MQ "$@" $(CFLAGSDEPEND) $< > $*.d
+	$(CXX) $(CFLAGS_HOST) $(ARCHOPTS) -c $< -o $@
+	@$(CXX) -MM -MQ "$@" $(CFLAGSDEPEND_HOST) $< > $*.d
 
 clean:
 	@rm -rf $(wildcard chuck chuck.exe) *.o *.d */*.{o,d} */*/*.{o,d} $(OBJS) \

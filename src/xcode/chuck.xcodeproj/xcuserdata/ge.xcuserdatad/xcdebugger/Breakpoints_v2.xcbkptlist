@@ -16,40 +16,120 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "3976"
             endingLineNumber = "3976"
-            landmarkName = "emit_engine_pre_constructor_array(emit, type)"
+            landmarkName = "emit_engine_emit_exp_if(emit, exp_if)"
             landmarkType = "9">
          </BreakpointContent>
       </BreakpointProxy>
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "C55F47E3-73DC-4A0D-A226-ED51205F0237"
+            uuid = "4C873F9F-4469-4CD0-85FA-E3DF00F46C11"
             shouldBeEnabled = "Yes"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
-            filePath = "../core/chuck_oo.cpp"
+            filePath = "../core/chuck_ugen.cpp"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "844"
-            endingLineNumber = "844"
-            landmarkName = "Chuck_Array8::~Chuck_Array8()"
+            startingLineNumber = "931"
+            endingLineNumber = "931"
+            landmarkName = "Chuck_UGen::system_tick(now)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "5D5D24EA-D7FA-4938-889B-F8E63BAEACC5"
+            uuid = "0F5E60D0-1D08-4942-B3D8-ED774F208509"
             shouldBeEnabled = "Yes"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
-            filePath = "../core/chuck_scan.cpp"
+            filePath = "../core/ugen_stk.cpp"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "1865"
-            endingLineNumber = "1865"
-            landmarkName = "type_engine_scan2_exp(env, exp)"
+            startingLineNumber = "25923"
+            endingLineNumber = "25923"
+            landmarkName = "CK_DLL_PMSG()"
             landmarkType = "9">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "A3B55ADC-AE83-493F-B43C-352767384FEA"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "../core/ugen_stk.cpp"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "25933"
+            endingLineNumber = "25933"
+            landmarkName = "CK_DLL_CTOR()"
+            landmarkType = "9">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "975BBDF7-0583-4C1C-9ED4-B6143C375EF6"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "../core/ugen_stk.cpp"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "25945"
+            endingLineNumber = "25945"
+            landmarkName = "CK_DLL_DTOR()"
+            landmarkType = "9">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "FF54DF4F-8CB3-49D9-ABF8-68B3E065E611"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "../core/ugen_stk.cpp"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "25956"
+            endingLineNumber = "25956"
+            landmarkName = "CK_DLL_TICK()"
+            landmarkType = "9">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "DFDEC0CD-B8CC-4BA6-81A0-78FD837C1EC5"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "../core/ugen_stk.cpp"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "8637"
+            endingLineNumber = "8637"
+            landmarkName = "Envelope :: tick()"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "91C4A5DB-FBAD-413A-8047-8E1BFDB30304"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "../core/ugen_stk.cpp"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "8659"
+            endingLineNumber = "8659"
+            landmarkName = "unknown"
+            landmarkType = "0">
          </BreakpointContent>
       </BreakpointProxy>
    </Breakpoints>

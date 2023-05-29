@@ -39,8 +39,10 @@
 #include <stdlib.h>
 
 
-static t_CKUINT g_srate = 0;
+// local globals
+static t_CKUINT g_srateFilter = 0;
 static t_CKFLOAT g_radians_per_sample = 0;
+
 // filter member data offset
 static t_CKUINT FilterBasic_offset_data = 0;
 static t_CKUINT Teabox_offset_data = 0;
@@ -56,9 +58,9 @@ static t_CKUINT biquad_offset_data = 0;
 DLL_QUERY filter_query( Chuck_DL_Query * QUERY )
 {
     // set srate
-    g_srate = QUERY->srate;
+    g_srateFilter = QUERY->srate;
     // set radians per sample
-    g_radians_per_sample = TWO_PI / (t_CKFLOAT)g_srate;
+    g_radians_per_sample = TWO_PI / (t_CKFLOAT)g_srateFilter;
 
     std::string doc;
 
@@ -166,7 +168,7 @@ DLL_QUERY filter_query( Chuck_DL_Query * QUERY )
                                         BPF_ctor, NULL, BPF_tick, BPF_pmsg, doc.c_str() ) )
         return FALSE;
 
-    type_engine_import_add_ex(env, "filter/bp.ck");
+    type_engine_import_add_ex(env, "filter/bpf.ck");
 
     // freq
     func = make_new_mfun( "float", "freq", BPF_ctrl_freq );
@@ -205,7 +207,7 @@ DLL_QUERY filter_query( Chuck_DL_Query * QUERY )
                                         BRF_ctor, NULL, BRF_tick, BRF_pmsg, doc.c_str() ) )
         return FALSE;
 
-    type_engine_import_add_ex(env, "filter/br.ck");
+    type_engine_import_add_ex(env, "filter/brf.ck");
 
     // freq
     func = make_new_mfun( "float", "freq", BRF_ctrl_freq );
@@ -244,7 +246,9 @@ DLL_QUERY filter_query( Chuck_DL_Query * QUERY )
                                         RLPF_ctor, NULL, RLPF_tick, RLPF_pmsg, doc.c_str() ) )
         return FALSE;
 
-    type_engine_import_add_ex(env, "filter/lp.ck");
+    // add examples
+    type_engine_import_add_ex(env, "filter/lpf.ck");
+    type_engine_import_add_ex(env, "filter/rlpf.ck");
 
     // freq
     func = make_new_mfun( "float", "freq", RLPF_ctrl_freq );
@@ -283,7 +287,9 @@ DLL_QUERY filter_query( Chuck_DL_Query * QUERY )
                                         RHPF_ctor, NULL, RHPF_tick, RHPF_pmsg, doc.c_str() ) )
         return FALSE;
 
-    type_engine_import_add_ex(env, "filter/hp.ck");
+    // add examples
+    type_engine_import_add_ex(env, "filter/hpf.ck");
+    type_engine_import_add_ex(env, "filter/rhpf.ck");
 
     // freq
     func = make_new_mfun( "float", "freq", RHPF_ctrl_freq );
@@ -322,8 +328,6 @@ DLL_QUERY filter_query( Chuck_DL_Query * QUERY )
                                         ResonZ_ctor, NULL, ResonZ_tick, ResonZ_pmsg, doc.c_str() ) )
         return FALSE;
 
-    type_engine_import_add_ex(env, "filter/resonz.ck");
-
     // freq
     func = make_new_mfun( "float", "freq", ResonZ_ctrl_freq );
     func->add_arg( "float", "val" );
@@ -349,6 +353,9 @@ DLL_QUERY filter_query( Chuck_DL_Query * QUERY )
     func->doc = "set filter frequency and resonance at the same time.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
+    // add examples | 1.5.0.0 (ge)
+    if( !type_engine_import_add_ex( env, "filter/resonz.ck" ) ) goto error;
+
     // end the class import
     type_engine_import_class_end( env );
 
@@ -364,6 +371,10 @@ DLL_QUERY filter_query( Chuck_DL_Query * QUERY )
     // member variable
     biquad_offset_data = type_engine_import_mvar ( env, "int", "@biquad_data", FALSE );
     if ( biquad_offset_data == CK_INVALID_OFFSET ) goto error;
+
+    // add examples
+    type_engine_import_add_ex(env, "basic/wind.ck");
+    type_engine_import_add_ex(env, "basic/moe.ck");
 
     // pfreq
     func = make_new_mfun ( "float", "pfreq", biquad_ctrl_pfreq );
@@ -722,6 +733,21 @@ struct FilterBasic_data
     t_CKFLOAT m_Q;
     t_CKFLOAT m_db;
 
+    // desperation debug tools
+    /*
+    bool blowup;
+    t_CKFLOAT XQ;
+    t_CKFLOAT Xpbw;
+    t_CKFLOAT Xqres;
+    t_CKFLOAT Xpfreq;
+    t_CKFLOAT XD;
+    t_CKFLOAT XC;
+    t_CKFLOAT Xcosf;
+    t_CKFLOAT Xnext_b1;
+    t_CKFLOAT Xnext_b2;
+    t_CKFLOAT Xnext_a0;
+    */
+
     // tick_lpf
     inline SAMPLE tick_lpf( SAMPLE in )
     {
@@ -836,6 +862,11 @@ struct FilterBasic_data
     // set_rlpf
     inline void set_rlpf( t_CKFLOAT freq, t_CKFLOAT Q )
     {
+        // 1.5.0.0 (ge) | added bounds to hopefully prevent any more blow-ups
+        freq = ck_max( 1, freq );
+        freq = ck_min(g_srateFilter /2, freq );
+        Q = ck_max( 1, Q );
+
         t_CKFLOAT qres = ck_max( .001, 1.0/Q );
         t_CKFLOAT pfreq = freq * g_radians_per_sample;
 
@@ -851,6 +882,19 @@ struct FilterBasic_data
         m_a0 = (SAMPLE)next_a0;
         m_b1 = (SAMPLE)next_b1;
         m_b2 = (SAMPLE)next_b2;
+
+        // desperation debug measure part 1
+        /*
+        XQ = Q;
+        Xqres = qres;
+        Xpfreq = pfreq;
+        XD = D;
+        XC = C;
+        Xcosf = cosf;
+        Xnext_b1 = next_b1;
+        Xnext_b2 = next_b2;
+        Xnext_a0 = next_a0;
+        */
     }
 
     // tick_rlpf
@@ -868,12 +912,38 @@ struct FilterBasic_data
         CK_DDN(m_y1);
         CK_DDN(m_y2);
 
+        // desperation debug measure part 2
+        // --> finding: LPF and HPF seen to be blow up when freq < 1
+        /*
+        if( fabs(result) > 1 )
+        {
+            std::cerr << "blow up: " << result << " " << m_freq << " " << m_Q << std::endl;
+            blowup = true;
+
+            std::cerr
+            << " Q: " << XQ
+            << " qres: " << Xqres
+            << " pfreq: " << Xpfreq
+            << " D: " << XD
+            << " C: " << XC
+            << " cosf: " << Xcosf
+            << " next_b1: " << Xnext_b1
+            << " next_b2: " << Xnext_b2
+            << " next_a0: " << Xnext_a0 << std::endl;
+        }
+        */
+
         return result;
     }
 
     // set_rhpf
     inline void set_rhpf( t_CKFLOAT freq, t_CKFLOAT Q )
     {
+        // 1.5.0.0 (ge) | added bounds to hopefully prevent any more blow-ups
+        freq = ck_max( 1, freq );
+        freq = ck_min(g_srateFilter /2, freq );
+        Q = ck_max( 1, Q );
+
         t_CKFLOAT qres = ck_max( .001, 1.0/Q );
         t_CKFLOAT pfreq = freq * g_radians_per_sample;
 
@@ -1025,7 +1095,19 @@ CK_DLL_DTOR( FilterBasic_dtor )
 //-----------------------------------------------------------------------------
 CK_DLL_TICK( FilterBasic_tick )
 {
-    CK_FPRINTF_STDERR( "FilterBasic.tick() --> FitlerBasic is virtual!\n" );
+    // 1.5.0.0 (ge) | changed CK_FPRINTF_STDERR to EM_log; allow program to proceed
+    EM_log( CK_LOG_WARNING, "warning -- FilterBasic is an abstract class!" );
+    EM_log( CK_LOG_WARNING, "  |- likely FilterBasic declared/used directly," );
+    EM_log( CK_LOG_WARNING, "  | instead of a subclass of FilterBasic" );
+
+    // TODO: type system should not allow direct declaration of abstract classes
+    // TODO: should detect, give a compiler error, with a short explanation and
+    // TODO: suggestion on what to do: e.g.,
+    // TODO: "XXX cannot be instantiated directly (use '@' to declare a reference)"
+
+    // silence
+    *out = 0.0;
+
     return TRUE;
 }
 
@@ -1517,10 +1599,13 @@ CK_DLL_PMSG( BRF_pmsg )
 //-----------------------------------------------------------------------------
 CK_DLL_CTOR( RLPF_ctor )
 {
+    // instantiate
     FilterBasic_data * f =  new FilterBasic_data;
+    // zero out data
     memset( f, 0, sizeof(FilterBasic_data) );
-    // default
-    f->m_Q = 1.0;
+    // default | 1.5.0.0.(ge) added
+    f->set_rlpf( 1000, 1 );
+    // set in chuck object
     OBJ_MEMBER_UINT(SELF, FilterBasic_offset_data) = (t_CKUINT)f;
 }
 
@@ -1799,10 +1884,13 @@ CK_DLL_PMSG( ResonZ_pmsg )
 //-----------------------------------------------------------------------------
 CK_DLL_CTOR( RHPF_ctor )
 {
+    // instantiate
     FilterBasic_data * f =  new FilterBasic_data;
+    // zero out the data
     memset( f, 0, sizeof(FilterBasic_data) );
-    // default
-    f->m_Q = 1.0;
+    // default | 1.5.0.0.(ge) added
+    f->set_rhpf( 1000, 1 );
+    // set in chuck object
     OBJ_MEMBER_UINT(SELF, FilterBasic_offset_data) = (t_CKUINT)f;
 }
 
@@ -2034,7 +2122,7 @@ struct biquad_data
         pfreq = zfreq = 0.0f;
         prad = zrad = 0.0f;
         norm = FALSE;
-        srate = g_srate;
+        srate = g_srateFilter;
     }
 };
 

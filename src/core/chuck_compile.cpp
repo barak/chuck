@@ -32,6 +32,7 @@
 #include "chuck_compile.h"
 #include "chuck_lang.h"
 #include "chuck_errmsg.h"
+#include "chuck_io.h"
 #ifndef  __DISABLE_OTF_SERVER__
 #include "chuck_otf.h"
 #endif
@@ -43,11 +44,9 @@
 #include "uana_xform.h"
 #include "uana_extract.h"
 
-#ifndef __DISABLE_OTF_SERVER__
-#include "ulib_machine.h"
-#endif
-
 #include "ulib_ai.h"
+#include "ulib_doc.h"
+#include "ulib_machine.h"
 #include "ulib_math.h"
 #include "ulib_std.h"
 
@@ -55,12 +54,19 @@
 #include "ulib_opsc.h"
 #endif
 
+// 1.5.0.0 (ge) | chunreal
+#ifndef __DISABLE_REGEX__
 #include "ulib_regex.h"
-#include "chuck_io.h"
+#endif
 
 #if defined(__PLATFORM_WIN32__)
-#include "dirent_win32.h"
+  #include "dirent_win32.h"
+#else
+  #ifndef __DISABLE_WORDEXP__
+  #include <wordexp.h> // 1.5.0.0 (ge) added
+  #endif
 #endif
+
 //#if defined(__WINDOWS_PTHREAD__)
 #include <sys/stat.h>
 //#endif
@@ -93,6 +99,9 @@ Chuck_Compiler::Chuck_Compiler()
 
     // REFACTOR-2017: add carrier
     m_carrier = NULL;
+
+    // origin hint | 1.5.0.0 (ge) added
+    m_originHint = te_originUnknown;
 }
 
 
@@ -117,10 +126,8 @@ Chuck_Compiler::~Chuck_Compiler()
 //-----------------------------------------------------------------------------
 t_CKBOOL Chuck_Compiler::initialize()
 {
-    // log
-    EM_log( CK_LOG_SYSTEM, "initializing compiler..." );
-    // push indent level
-    EM_pushlog();
+    // set origin hint
+    m_originHint = te_originBuiltin;
 
     // allocate the type checker
     Chuck_Env * env = type_engine_init( m_carrier );
@@ -138,8 +145,8 @@ t_CKBOOL Chuck_Compiler::initialize()
     if( !load_internal_modules( this ) )
         goto error;
 
-    // pop indent
-    EM_poplog();
+    // unset origin hint
+    m_originHint = te_originUnknown;
 
     return TRUE;
 
@@ -389,8 +396,8 @@ t_CKBOOL Chuck_Compiler::do_only_classes( Chuck_Context * context )
         return FALSE;
 
     // emit (pass 4)
-    if( !(code = emit_engine_emit_prog( emitter, g_program , te_do_classes_only )) )
-        return FALSE;
+    code = emit_engine_emit_prog( emitter, g_program , te_do_classes_only );
+    if( !code ) return FALSE;
 
     // set the state of the context to done
     context->progress = Chuck_Context::P_ALL_DONE;
@@ -422,8 +429,8 @@ t_CKBOOL Chuck_Compiler::do_all_except_classes( Chuck_Context * context )
         return FALSE;
 
     // emit (pass 4)
-    if( !(code = emit_engine_emit_prog( emitter, g_program, te_do_no_classes )) )
-        return FALSE;
+    code = emit_engine_emit_prog( emitter, g_program, te_do_no_classes );
+    if( !code ) return FALSE;
 
     // set the state of the context to done
     context->progress = Chuck_Context::P_ALL_DONE;
@@ -479,8 +486,8 @@ t_CKBOOL Chuck_Compiler::do_normal_depend( const string & filename, FILE * fd,
     { ret = FALSE; goto cleanup; }
 
     // emit (pass 4)
-    if( !(code = emit_engine_emit_prog( emitter, g_program, te_do_all )) )
-    { ret = FALSE; goto cleanup; }
+    code = emit_engine_emit_prog( emitter, g_program, te_do_all );
+    if( !code ) { ret = FALSE; goto cleanup; }
 
 cleanup:
 
@@ -532,7 +539,8 @@ t_CKBOOL Chuck_Compiler::do_auto_depend( const string & filename, FILE * fd,
     { ret = FALSE; goto cleanup; }
 
     // get the code
-    if( !(code = context->code()) )
+    code = context->code();
+    if( !code )
     {
         ret = FALSE;
         EM_error2( 0, "internal error: context->code() NULL!" );
@@ -622,8 +630,8 @@ t_CKBOOL load_module( Chuck_Compiler * compiler, Chuck_Env * env, f_ck_query que
     // load osc
     dll = new Chuck_DLL( compiler->carrier(), name );
     // (fixed: 1.3.0.0) query_failed now catches either failure of load or query
-    if( (query_failed = !(dll->load( query ) && dll->query())) ||
-        !type_engine_add_dll( env, dll, nspc ) )
+    query_failed = !(dll->load( query ) && dll->query());
+    if( query_failed || !type_engine_add_dll( env, dll, nspc ) )
     {
         CK_FPRINTF_STDERR(
                  "[chuck]: internal error loading module '%s.%s'...\n",
@@ -687,9 +695,9 @@ t_CKBOOL load_internal_modules( Chuck_Compiler * compiler )
     if( !load_module( compiler, env, libstd_query, "Std", "global" ) ) goto error;
 
     // load
-    #ifndef __DISABLE_OTF_SERVER__
     EM_log( CK_LOG_SEVERE, "module 'machine'" );
     if( !load_module( compiler, env, machine_query, "Machine", "global" ) ) goto error;
+    #ifndef __DISABLE_OTF_SERVER__
     machine_init( compiler, otf_process_msg );
     #endif
 
@@ -698,10 +706,12 @@ t_CKBOOL load_internal_modules( Chuck_Compiler * compiler )
     if( !load_module( compiler, env, opensoundcontrol_query, "opsc", "global" ) ) goto error;
     #endif
 
+    #ifndef __DISABLE_REGEX__
     EM_log( CK_LOG_SEVERE, "module 'RegEx'" );
     if( !load_module( compiler, env, regex_query, "RegEx", "global" ) ) goto error;
+    #endif
 
-    // Deprecated:
+    // deprecated:
     // if( !load_module( compiler, env, net_query, "net", "global" ) ) goto error;
 
     #ifndef __DISABLE_HID__
@@ -710,10 +720,12 @@ t_CKBOOL load_internal_modules( Chuck_Compiler * compiler )
     #endif
 
     #ifndef __DISABLE_SERIAL__
-    // log
     EM_log( CK_LOG_SEVERE, "module 'SerialIO'" );
     if( !init_class_serialio( env ) ) goto error;
     #endif
+
+    EM_log( CK_LOG_SEVERE, "module 'CKDoc'" );
+    if( !load_module( compiler, env, ckdoc_query, "CKDoc", "global" ) ) goto error;
 
     // clear context
     type_engine_unload_context( env );
@@ -757,8 +769,9 @@ t_CKBOOL load_external_module_at_path( Chuck_Compiler * compiler,
     Chuck_DLL * dll = new Chuck_DLL( compiler->carrier(), name );
     t_CKBOOL query_failed = FALSE;
 
-    if((query_failed = !(dll->load(dl_path) && dll->query())) ||
-       !type_engine_add_dll2(env, dll, "global"))
+    // try to load and query
+    query_failed = !(dll->load(dl_path) && dll->query());
+    if( query_failed || !type_engine_add_dll2(env, dll, "global"))
     {
         EM_pushlog();
         EM_log(CK_LOG_SEVERE, "cannot load chugin '%s', skipping...", name);
@@ -809,16 +822,37 @@ t_CKBOOL load_external_modules_in_directory( Chuck_Compiler * compiler,
 {
     static const t_CKBOOL RECURSIVE_SEARCH = false;
 
-    DIR * dir = opendir(directory);
+    // directory path
+    string path = directory, exp = "";
 
+#ifndef __PLATFORM_WIN32__
+#ifndef __DISABLE_WORDEXP__
+    // 1.5.0.0 (ge) added (for ~)
+    wordexp_t exp_result;
+    // "perform shell-style word expansions"
+    wordexp( directory, &exp_result, 0 );
+    // concatenate in case there are spaces in the path
+    for( t_CKINT i = 0; i < exp_result.we_wordc; i++ )
+        exp += string(i > 0 ? " " : "") + exp_result.we_wordv[i];
+    // replace
+    path = exp;
+#endif
+#endif
+
+    // open the directory
+    DIR * dir = opendir( path.c_str() );
+
+    // if successful
     if( dir )
     {
         // log
         EM_log( CK_LOG_INFO, "examining directory '%s' for chugins", directory );
 
-        struct dirent *de = NULL;
+        // do first read | 1.5.0.0 (ge + eito) #chunreal
+        struct dirent * de = readdir(dir);
 
-        while( (de = readdir(dir)) )
+        // while( (de = readdir(dir)) ) <- in ge's opinion clearer than what UE5 forces us to do
+        while( de != NULL )
         {
             t_CKBOOL is_regular = false;
             t_CKBOOL is_directory = false;
@@ -877,6 +911,9 @@ t_CKBOOL load_external_modules_in_directory( Chuck_Compiler * compiler,
                                                        extension);
                 }
             }
+
+            // read next | 1.5.0.0 (ge) moved here due to #chunreal
+            de = readdir( dir );
         }
 
         // close
@@ -891,6 +928,13 @@ t_CKBOOL load_external_modules_in_directory( Chuck_Compiler * compiler,
         EM_log( CK_LOG_INFO, "ignoring for chugins..." );
         EM_poplog();
     }
+
+#ifndef __PLATFORM_WIN32__
+#ifndef __DISABLE_WORDEXP__
+    // free | 1.5.0.0 (ge) added
+    wordfree( &exp_result );
+#endif
+#endif
 
     return TRUE;
 }
