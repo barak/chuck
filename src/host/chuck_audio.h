@@ -87,15 +87,18 @@ extern t_CKFLOAT g_watchdog_timeout;
 class ChuckAudio
 {
 public:
-    static t_CKBOOL initialize( t_CKUINT num_dac_channels,
+    static t_CKBOOL initialize( t_CKUINT dac_device,
+                                t_CKUINT adc_device,
+                                t_CKUINT num_dac_channels,
                                 t_CKUINT num_adc_channels,
                                 t_CKUINT sample_rate,
                                 t_CKUINT buffer_size,
                                 t_CKUINT num_buffers,
                                 f_audio_cb callback,
                                 void * data,
-                                // force_srate added 1.3.1.2
-                                t_CKBOOL force_srate );
+                                t_CKBOOL force_srate, // force_srate | 1.3.1.2 (added)
+                                char const * driver // NULL means default for build | 1.5.0.0 (added)
+                                );
     static void shutdown();
     static t_CKBOOL start();
     static t_CKBOOL stop();
@@ -106,10 +109,11 @@ public: // watchdog stuff
 
 public: // device info
     // probe audio devices
-    static void probe();
+    static void probe(char const *driver); // NULL means default for build
     // get device number by name?
     // 1.4.2.0: changed return type from t_CKUINT to t_CKINT
-    static t_CKINT device_named( const std::string & name,
+    static t_CKINT device_named( char const *driver,
+                                 const std::string & name,
                                  t_CKBOOL needs_dac = FALSE,
                                  t_CKBOOL needs_adc = FALSE );
 
@@ -150,6 +154,8 @@ public: // data
     static RtAudio * m_rtaudio;
     static t_CKUINT m_dac_n;
     static t_CKUINT m_adc_n;
+    static std::string m_dac_name;
+    static std::string m_adc_name;
     static f_audio_cb m_audio_cb;
     static void * m_cb_user_data;
 };

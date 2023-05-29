@@ -29,12 +29,14 @@
 // author: Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
 // date: Summer 2005 - original
 //-----------------------------------------------------------------------------
-#include "chuck_type.h"
 #include "chuck_scan.h"
 #include "chuck_errmsg.h"
+#include "chuck_instr.h"
+#include "chuck_type.h"
 #include "chuck_vm.h"
 #include "util_string.h"
 
+#include <string>
 using namespace std;
 
 
@@ -310,7 +312,6 @@ t_CKBOOL type_engine_scan0_class_def( Chuck_Env * env, a_Class_Def class_def )
         body = body->next;
     }
 
-
     // pop the class
     env->class_def = env->class_stack.back();
     env->class_stack.pop_back();
@@ -352,6 +353,9 @@ t_CKBOOL type_engine_scan0_class_def( Chuck_Env * env, a_Class_Def class_def )
         // set curr as home
         class_def->home = env->curr;
     }
+
+    // initialize the Type info object | 1.5.0.0 (ge) added
+    initialize_object( the_class, env->t_class );
 
 done:
 
@@ -2470,6 +2474,7 @@ t_CKBOOL type_engine_scan2_func_def( Chuck_Env * env, a_Func_Def f )
     vector<Chuck_Value *> values;
     vector<a_Arg_List> symbols;
     t_CKUINT count = 0;
+    Chuck_Func * overfunc = NULL;
     // t_CKBOOL has_code = FALSE;  // use this for both user and imported
 
     // see if we are already in a function definition
@@ -2484,7 +2489,8 @@ t_CKBOOL type_engine_scan2_func_def( Chuck_Env * env, a_Func_Def f )
     assert( !f->code || f->code->s_type == ae_stmt_code );
 
     // look up the value in the current class (can shadow?)
-    if(( overload = env->curr->lookup_value( f->name, FALSE ) ))
+    overload = env->curr->lookup_value( f->name, FALSE );
+    if( overload )
     {
         // if value
         if( !isa( overload->type, env->t_function ) )
@@ -2565,7 +2571,7 @@ t_CKBOOL type_engine_scan2_func_def( Chuck_Env * env, a_Func_Def f )
     value->owner = env->curr;
     value->owner_class = env->class_def;
     value->is_member = func->is_member;
-    // is global context
+       // is global context
     value->is_context_global = env->class_def == NULL;
     // remember the func
     value->func_ref = func; func->add_ref(); // add reference TODO: break cycle?
@@ -2715,6 +2721,71 @@ t_CKBOOL type_engine_scan2_func_def( Chuck_Env * env, a_Func_Def f )
         arg_list = arg_list->next;
     }
 
+    // if overloading
+    if( overload != NULL )
+    {
+        // -----------------------
+        // make sure return types match
+        // 1.5.0.0 (ge) more precise error reporting
+        // -----------------------
+        if( *(f->ret_type) != *(overload->func_ref->def->ret_type) )
+        {
+            EM_error2( f->linepos, "overloaded functions require matching return types..." );
+            // check if in class definition
+            if( env->class_def )
+            {
+                EM_error3( "    |- function in question: %s %s.%s(...)",
+                           func->def->ret_type->name.c_str(), env->class_def->c_name(), S_name(f->name) );
+                EM_error3( "    |- previous defined as: %s %s.%s(...)",
+                           overload->func_ref->def->ret_type->name.c_str(), env->class_def->c_name(), S_name(f->name) );
+            }
+            else
+            {
+                EM_error3( "    |- function in question: %s %s(...)",
+                           func->def->ret_type->name.c_str(), S_name(f->name) );
+                EM_error3( "    |- previous defined as: %s %s(...)",
+                           overload->func_ref->def->ret_type->name.c_str(), S_name(f->name) );
+            }
+            goto error;
+        }
+
+        // -----------------------
+        // make sure not duplicate
+        // 1.5.0.0 (ge) added
+        // -----------------------
+        overfunc = overload->func_ref;
+        // loop over overloaded functions
+        while( overfunc != NULL )
+        {
+            // one of these could this newly defined function
+            if( func != overfunc )
+            {
+                // compare argument lists
+                a_Arg_List lhs = func->def->arg_list;
+                a_Arg_List rhs = overfunc->def->arg_list;
+                // check
+                if( same_arg_lists(lhs, rhs) )
+                {
+                    EM_error2( f->linepos, "cannot overload functions with identical arguments..." );
+                    if( env->class_def )
+                    {
+                        EM_error3( "    |- '%s %s.%s( %s )' already defined elsewhere",
+                                   func->def->ret_type->name.c_str(), env->class_def->c_name(),
+                                   orig_name.c_str(), arglist2string(func->def->arg_list).c_str() );
+                    }
+                    else
+                    {
+                        EM_error3( "    |- '%s %s( %s )' already defined elsewhere",
+                                   func->def->ret_type->name.c_str(), orig_name.c_str(), arglist2string(func->def->arg_list).c_str() );
+                    }
+                    goto error;
+                }
+            }
+            // next overloaded function
+            overfunc = overfunc->next;
+        }
+    }
+
     // add as value
     env->curr->value.add( value->name, value );
     // enter the name into the function table
@@ -2725,19 +2796,6 @@ t_CKBOOL type_engine_scan2_func_def( Chuck_Env * env, a_Func_Def f )
     {
         env->curr->value.add( orig_name, value );
         env->curr->func.add( orig_name, func );
-    }
-    else // if overload (changed from separate if statement 1.4.1.0)
-    {
-        // make sure returns are equal
-        if( *(f->ret_type) != *(overload->func_ref->def->ret_type) )
-        {
-            EM_error2( f->linepos, "function signatures differ in return type..." );
-            EM_error2( f->linepos,
-                "function '%s.%s' matches '%s.%s' but cannot overload...",
-                env->class_def->c_name(), S_name(f->name),
-                value->owner_class->c_name(), S_name(f->name) );
-            goto error;
-        }
     }
 
     // set the current function to this
@@ -2766,7 +2824,7 @@ error:
     if( func )
     {
         env->func = NULL;
-        func->release();
+        SAFE_RELEASE(func);
     }
 
     return FALSE;

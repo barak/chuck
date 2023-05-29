@@ -30,9 +30,6 @@
 // date: Spring 2004
 //-----------------------------------------------------------------------------
 #include "ulib_std.h"
-#include <stdlib.h>
-#include <time.h>
-#include <math.h>
 #include "util_buffers.h"
 #ifndef __DISABLE_PROMPTER__
 #include "util_console.h"
@@ -42,25 +39,36 @@
 #ifndef __DISABLE_THREADS__
 #include "util_thread.h"
 #endif
+
 #include "chuck.h"
 #include "chuck_type.h"
 #include "chuck_compile.h"
 #include "chuck_instr.h"
 
-#if defined(__PLATFORM_WIN32__)
+#include <stdlib.h>
+#include <time.h>
+#include <math.h>
 
-#include <windows.h>
-
+#ifdef __PLATFORM_WIN32__
+  #ifndef __CHUNREAL_ENGINE__
+    #include <windows.h>
+  #else
+    // 1.5.0.0 (ge) | #chunreal
+    // unreal engine on windows disallows including windows.h
+    #include "Windows/MinWindows.h"
+  #endif // #ifndef __CHUNREAL_ENGINE__
 int setenv( const char *n, const char *v, int i )
 {
+  #ifndef __CHUNREAL_ENGINE__
     return !SetEnvironmentVariable(n, v);
+  #else
+    // #chunreal explicitly call ASCII version
+    return !SetEnvironmentVariableA(n, v);
+  #endif
 }
-
 #else
-
-#include <unistd.h>
-
-#endif
+  #include <unistd.h>
+#endif // #ifdef __PLATFORM_WIN32__
 
 // for ConsoleInput and StringTokenizer
 #include <sstream>
@@ -171,12 +179,12 @@ DLL_QUERY libstd_query( Chuck_DL_Query * QUERY )
     // add abs
     QUERY->add_sfun( QUERY, abs_impl, "int", "abs" );
     QUERY->add_arg( QUERY, "int", "value" );
-    QUERY->doc_func( QUERY, "compute absolute value (integer)." );
-
+    QUERY->doc_func( QUERY, "Return absolute value of integer." );
+    
     // add fabs
     QUERY->add_sfun( QUERY, fabs_impl, "float", "fabs" );
     QUERY->add_arg( QUERY, "float", "value" );
-    QUERY->doc_func( QUERY, "compute absolute value (floating point)." );
+    QUERY->doc_func( QUERY, "Return absolute value of float." );
 
     // add rand
     QUERY->add_sfun( QUERY, rand_impl, "int", "rand"); //! return int between 0 and RAND_MAX
@@ -186,17 +194,17 @@ DLL_QUERY libstd_query( Chuck_DL_Query * QUERY )
     QUERY->add_sfun( QUERY, rand2_impl, "int", "rand2" ); //! integer between [min,max]
     QUERY->add_arg( QUERY, "int", "min" );
     QUERY->add_arg( QUERY, "int", "max" );
-    QUERY->doc_func( QUERY, "generate a random integer in range [min, max]. (NOTE: this is deprecated; use Math.random2())." );
+    QUERY->doc_func( QUERY, "Generate a random integer in range [min, max]. (NOTE: this is deprecated; use Math.random2())." );
 
     // add rand
     QUERY->add_sfun( QUERY, randf_impl, "float", "randf" ); //! rand between -1.0,1.0
-    QUERY->doc_func( QUERY, "generates a random floating point number in the range [-1, 1]. (Note: this is deprecated; use Math.randomf())" );
+    QUERY->doc_func( QUERY, "Generate random floating point number in the range [-1, 1]. (Note: this is deprecated; use Math.randomf())" );
 
     // add rand2
     QUERY->add_sfun( QUERY, rand2f_impl, "float", "rand2f" ); //! rand between min and max
     QUERY->add_arg( QUERY, "float", "min" );
     QUERY->add_arg( QUERY, "float", "max" );
-    QUERY->doc_func( QUERY, "generate random floating point number in the range [min, max]. (NOTE: this is deprecated; use Math.random2f())" );
+    QUERY->doc_func( QUERY, "Generate random floating point number in the range [min, max]. (NOTE: this is deprecated; use Math.random2f())" );
 
     // add srand
     QUERY->add_sfun( QUERY, srand_impl, "void", "srand" );
@@ -255,56 +263,56 @@ DLL_QUERY libstd_query( Chuck_DL_Query * QUERY )
     //! see \example mand-o-matic.ck
     QUERY->add_sfun( QUERY, mtof_impl, "float", "mtof" ); //! midi note to frequency
     QUERY->add_arg( QUERY, "float", "value" );
-    QUERY->doc_func( QUERY, "convert a MIDI note number to frequency (Hz). MIDI note 60 is Middle C; each whole number is one semitone; the input type is float and supports fractional note numbers." );
+    QUERY->doc_func( QUERY, "Convert a MIDI note number to frequency (Hz). Note the input value is of type float (supports fractional note number). For reference, MIDI note number 60 is Middle C; each whole number is one semitone." );
 
     // add ftom
     QUERY->add_sfun( QUERY, ftom_impl, "float", "ftom" ); //! frequency to midi note
     QUERY->add_arg( QUERY, "float", "value" );
-    QUERY->doc_func( QUERY, "convert frequency (Hz) to corresponding MIDI note number." );
+    QUERY->doc_func( QUERY, "Convert frequency (Hz) to MIDI note number space." );
 
     // add powtodb
     QUERY->add_sfun( QUERY, powtodb_impl, "float", "powtodb" ); //! linear power to decibel
     QUERY->add_arg( QUERY, "float", "value" );
-    QUERY->doc_func( QUERY, "convert signal power ratio to decibels (dB)." );
+    QUERY->doc_func( QUERY, "Convert signal power ratio to decibels (dB)." );
 
     // add rmstodb
     QUERY->add_sfun( QUERY, rmstodb_impl, "float", "rmstodb" ); //! rms to decibel
     QUERY->add_arg( QUERY, "float", "value" );
-    QUERY->doc_func( QUERY, "converts rms to decibels (dB)." );
+    QUERY->doc_func( QUERY, "Convert rms to decibels (dB)." );
 
     // add dbtopow
     QUERY->add_sfun( QUERY, dbtopow_impl, "float", "dbtopow" ); //! decibel to linear
     QUERY->add_arg( QUERY, "float", "value" );
-    QUERY->doc_func( QUERY, "converts decibels (dB) to signal power ratio." );
+    QUERY->doc_func( QUERY, "Convert decibels (dB) to signal power ratio." );
 
     // add dbtorms
     QUERY->add_sfun( QUERY, dbtorms_impl, "float", "dbtorms" ); //! decibel to rms
     QUERY->add_arg( QUERY, "float", "value" );
-    QUERY->doc_func( QUERY, "convert decibles (dB) to RMS." );
+    QUERY->doc_func( QUERY, "Convert decibels (dB) to rms." );
 
     // add dbtolin
     QUERY->add_sfun( QUERY, dbtolin_impl, "float", "dbtolin" ); //! decibel to linear
     QUERY->add_arg( QUERY, "float", "value" );
-    QUERY->doc_func( QUERY, "convert decibels (dB) to linear." );
+    QUERY->doc_func( QUERY, "Convert decibels (dB) to linear amplitude." );
 
     // add lintodb
     QUERY->add_sfun( QUERY, lintodb_impl, "float", "lintodb" ); //! linear to decibel
     QUERY->add_arg( QUERY, "float", "value" );
-    QUERY->doc_func( QUERY, "convert linear to decibels (dB)." );
+    QUERY->doc_func( QUERY, "Convert linear amplitude to decibels (dB).");
 
     // add clamp
     QUERY->add_sfun( QUERY, clamp_impl, "int", "clamp" ); //! clamp to range (int)
     QUERY->add_arg( QUERY, "int", "value" );
     QUERY->add_arg( QUERY, "int", "min" );
     QUERY->add_arg( QUERY, "int", "max" );
-    QUERY->doc_func( QUERY, "clamp an integer to range [min,max]." );
+    QUERY->doc_func( QUERY, "Clamp integer to range [min, max]." );
 
     // add clampf
     QUERY->add_sfun( QUERY, clampf_impl, "float", "clampf" ); //! clamp to range (float)
     QUERY->add_arg( QUERY, "float", "value" );
     QUERY->add_arg( QUERY, "float", "min" );
     QUERY->add_arg( QUERY, "float", "max" );
-    QUERY->doc_func( QUERY, "clamp a float to range [min,max]." );
+    QUERY->doc_func( QUERY, "Clamp float to range [min, max]." );
 
     // add scalef
     QUERY->add_sfun( QUERY, scalef_impl, "float", "scalef" ); //! scale from source range to dest range (float)
@@ -313,7 +321,7 @@ DLL_QUERY libstd_query( Chuck_DL_Query * QUERY )
     QUERY->add_arg( QUERY, "float", "srcmax" );
     QUERY->add_arg( QUERY, "float", "dstmin" );
     QUERY->add_arg( QUERY, "float", "dstmax" );
-    QUERY->doc_func( QUERY, "scale from a source range to a destination range." );
+    QUERY->doc_func( QUERY, "Scale a float from source range to destination range." );
 
     // finish class
     QUERY->end_class( QUERY );
@@ -325,12 +333,21 @@ DLL_QUERY libstd_query( Chuck_DL_Query * QUERY )
     Chuck_DL_Func * func = NULL;
 
 #ifndef __DISABLE_KBHIT__
-    // KBHit
+    // doc string
+    string doc = "KBHit (terminal only) is a simple mechanism for capturing keyboard input; for a more flexible mechanism, see HID. (On Linux, KBHit does not require granting device permissions; it works out of the box.)";
+
     // begin class (KBHit)
     if( !type_engine_import_class_begin( env, "KBHit", "Event",
                                          env->global(), KBHit_ctor,
-                                         KBHit_dtor ) )
+                                         KBHit_dtor, doc.c_str() ) )
         return FALSE;
+
+    // add examples
+    if( !type_engine_import_add_ex( env, "hid/kbhit/kbhit.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "hid/kbhit/kbhit2.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "hid/kbhit/clix.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "hid/kbhit/clix2.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "hid/kbhit/clix3.ck" ) ) goto error;
 
     // add member variable
     KBHit_offset_data = type_engine_import_mvar( env, "int", "@KBHit_data", FALSE );
@@ -338,30 +355,37 @@ DLL_QUERY libstd_query( Chuck_DL_Query * QUERY )
 
     // add on()
     func = make_new_mfun( "void", "on", KBHit_on );
+    func->doc = "Enable the KBHit.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add off()
     func = make_new_mfun( "void", "off", KBHit_off );
+    func->doc = "Disable the KBHit.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add state()
     func = make_new_mfun( "void", "state", KBHit_state );
+    func->doc = "Get whether the KBHit is currently enabled.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add hit()
     func = make_new_mfun( "Event", "hit", KBHit_hit );
+    func->doc = "Return itself as an Event to wait on; this is largely unnecessary as the KBHit instance can be directly => to 'now'.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add more()
     func = make_new_mfun( "int", "more", KBHit_more );
+    func->doc = "Return whether there are unprocessed KBHit events (e.g., if a user presses multiple keys at once).";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add getchar()
     func = make_new_mfun( "int", "getchar", KBHit_getchar );
+    func->doc = "Get the ASCII value of the last keyboard press.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add can_wait()
     func = make_new_mfun( "int", "can_wait", KBHit_can_wait );
+    func->doc = "(internal) used by virtual machine for synthronization.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // end class
@@ -378,8 +402,8 @@ DLL_QUERY libstd_query( Chuck_DL_Query * QUERY )
 #ifndef __DISABLE_PROMPTER__
     // begin class (Skot)
     if( !type_engine_import_class_begin( env, "ConsoleInput", "Event",
-                                         env->global(), Skot_ctor,
-                                         Skot_dtor ) )
+                                         env->global(), Skot_ctor, Skot_dtor,
+                                         "(Terminal only) a utility for prompting user input on the command line." ) )
         return FALSE;
 
     // add member variable
@@ -388,24 +412,34 @@ DLL_QUERY libstd_query( Chuck_DL_Query * QUERY )
 
     // add prompt()
     func = make_new_mfun( "Event", "prompt", Skot_prompt );
+    func->doc = "Return an Event to wait on.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add prompt()
     func = make_new_mfun( "Event", "prompt", Skot_prompt2 );
     func->add_arg( "string", "what" );
+    func->doc = "Print a prompt text and return an Event to wait on.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
-    // add ready()
+    // add more()
     func = make_new_mfun( "int", "more", Skot_more );
+    func->doc = "Return whether there is more input to read.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add getString()
     func = make_new_mfun( "string", "getLine", Skot_getLine );
+    func->doc = "Return the next line of input as a string.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add can_wait()
     func = make_new_mfun( "int", "can_wait", Skot_can_wait );
+    func->doc = "(internal) used by virtual machine for synthronization.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add examples
+    if( !type_engine_import_add_ex( env, "string/readline.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "ai/word2vec/word2vec-prompt.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "ai/word2vec/poem-ungenerate.ck" ) ) goto error;
 
     // end class
     type_engine_import_class_end( env );
@@ -417,8 +451,8 @@ DLL_QUERY libstd_query( Chuck_DL_Query * QUERY )
 
     // begin class (StrTok)
     if( !type_engine_import_class_begin( env, "StringTokenizer", "Object",
-                                         env->global(), StrTok_ctor,
-                                         StrTok_dtor ) )
+                                         env->global(), StrTok_ctor, StrTok_dtor,
+                                         "Break a string into tokens. This uses whitespace as the delimiter." ) )
         return FALSE;
 
     // add member variable
@@ -428,39 +462,54 @@ DLL_QUERY libstd_query( Chuck_DL_Query * QUERY )
     // add set()
     func = make_new_mfun( "void", "set", StrTok_set );
     func->add_arg( "string", "line" );
+    func->doc = "Set the string to be tokenized.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add reset()
     func = make_new_mfun( "void", "reset", StrTok_reset );
+    func->doc = "Reset token iteration back to the beginning of the set string.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add more()
     func = make_new_mfun( "int", "more", StrTok_more );
+    func->doc = "Return true (1) if there are still more tokens, false (0) if no more tokens.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add next()
     func = make_new_mfun( "string", "next", StrTok_next );
+    func->doc = "Return the next token string.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add get()
     func = make_new_mfun( "string", "next", StrTok_next2 );
     func->add_arg( "string", "out" );
+    func->doc = "Return the next token string. Additionally, write the token string to the 'out' string variable.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add get()
     func = make_new_mfun( "string", "get", StrTok_get );
     func->add_arg( "int", "index" );
+    func->doc = "Return the i-th token in the set string.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add get()
     func = make_new_mfun( "string", "get", StrTok_get2 );
     func->add_arg( "int", "index" );
     func->add_arg( "string", "out" );
+    func->doc = "Return the i-th token in the set string. Additionally, write the token string to the `out` string variable.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // add size()
     func = make_new_mfun( "int", "size", StrTok_size );
+    func->doc = "Returns the number of token strings that the set string can be broken into.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add examples
+    if( !type_engine_import_add_ex( env, "string/token.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "string/readline.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "io/read-tokens.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "io/jabberwocky.txt" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "ai/word2vec/word2vec-prompt.ck" ) ) goto error;
 
     // end class
     type_engine_import_class_end( env );
@@ -751,7 +800,7 @@ CK_DLL_SFUN( ftoi_impl )
 }
 
 // getenv
-static Chuck_String g_str; // PROBLEM: not thread friendly
+// static Chuck_String g_str; // PROBLEM: not thread friendly
 CK_DLL_SFUN( getenv_impl )
 {
     const char * v = GET_CK_STRING(ARGS)->str().c_str();

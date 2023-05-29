@@ -10,7 +10,7 @@ mac mac-ub osx linux-pulse linux-jack linux-alsa cygwin osx-rl: chuck-core
 win32:
 	make -f makefile.win32
 
-CK_VERSION=1.4.2.0
+CK_VERSION=1.5.0.0
 
 LEX=flex
 YACC=bison
@@ -38,10 +38,13 @@ ifneq ($(CHUCK_STRICT),)
 CFLAGS+= -Wall
 endif
 
-ifneq ($(findstring arm,$(shell uname -m)),)
+# ifneq ($(findstring arm,$(shell uname -m)),)
 # some sort of arm platform- enable aggressive optimizations
-CFLAGS+= -ffast-math
-endif
+# CFLAGS+= -ffast-math
+# endif
+# ge: commenting out; breaks Math.isinf() since it assumes all finite
+# https://stackoverflow.com/questions/7420665/what-does-gccs-ffast-math-actually-do
+# https://simonbyrne.github.io/notes/fastmath/
 
 ifneq (,$(strip $(filter mac mac-ub osx bin-dist-mac,$(MAKECMDGOALS))))
 include makefile.x/makefile.mac
@@ -79,10 +82,10 @@ CXXSRCS_CORE+= chuck_absyn.cpp chuck_parse.cpp chuck_errmsg.cpp \
 	chuck_carrier.cpp chuck_globals.cpp \
 	midiio_rtmidi.cpp rtmidi.cpp hidio_sdl.cpp \
 	ugen_osc.cpp ugen_filter.cpp ugen_stk.cpp ugen_xxx.cpp \
-	ulib_ai.cpp ulib_machine.cpp ulib_math.cpp ulib_std.cpp \
-	ulib_opsc.cpp ulib_regex.cpp util_buffers.cpp util_console.cpp \
-	util_string.cpp util_thread.cpp util_opsc.cpp util_serial.cpp \
-	util_hid.cpp uana_xform.cpp uana_extract.cpp
+	ulib_ai.cpp ulib_doc.cpp ulib_machine.cpp ulib_math.cpp \
+	ulib_std.cpp ulib_opsc.cpp ulib_regex.cpp util_buffers.cpp \
+	util_console.cpp  util_string.cpp util_thread.cpp util_opsc.cpp \
+	util_serial.cpp util_hid.cpp uana_xform.cpp uana_extract.cpp
 LO_CSRCS+= lo/address.c lo/blob.c lo/bundle.c lo/message.c lo/method.c \
     lo/pattern_match.c lo/send.c lo/server.c lo/server_thread.c lo/timetag.c
 ################################################################################
@@ -128,6 +131,7 @@ chuck-core: $(OBJS)
 chuck.tab.c chuck.tab.h: chuck.y
 	$(YACC) -dv -b chuck chuck.y
 
+chuck.lex: chuck.tab.h
 chuck.yy.c: chuck.lex
 	$(LEX) -ochuck.yy.c chuck.lex
 

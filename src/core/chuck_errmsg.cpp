@@ -31,16 +31,17 @@
 // based on code by: Andrew Appel (appel@cs.princeton.edu)
 // date: Summer 2002
 //-----------------------------------------------------------------------------
+#include "chuck_errmsg.h"
+#include "chuck_utils.h"
+#ifndef __DISABLE_THREADS__
+#include "util_thread.h"
+#endif
+
 #include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
 #include <sstream>
 #include <iostream>
-#include "chuck_utils.h"
-#include "chuck_errmsg.h"
-#ifndef __DISABLE_THREADS__
-#include "util_thread.h"
-#endif
 
 // global
 t_CKINT EM_tokPos = 0;
@@ -576,7 +577,7 @@ void EM_log( t_CKINT level, const char * message, ... )
 {
     va_list ap;
 
-    if( level > CK_LOG_CRAZY ) level = CK_LOG_CRAZY;
+    if( level > CK_LOG_ALL ) level = CK_LOG_ALL;
     else if( level <= CK_LOG_NONE ) level = CK_LOG_NONE + 1;
 
     // check level
@@ -607,7 +608,7 @@ void EM_log( t_CKINT level, const char * message, ... )
 // set log level
 void EM_setlog( t_CKINT level )
 {
-    if( level > CK_LOG_CRAZY ) level = CK_LOG_CRAZY;
+    if( level > CK_LOG_ALL ) level = CK_LOG_ALL;
     else if( level < CK_LOG_NONE ) level = CK_LOG_NONE;
     g_loglevel = level;
 

@@ -34,15 +34,19 @@
 #include "chuck_errmsg.h"
 
 #ifdef __PLATFORM_WIN32__
-#include <Windows.h>
-#endif // __PLATFORM_WIN32__
+#ifndef __CHUNREAL_ENGINE__
+  #include <windows.h>
+#else
+  // 1.5.0.0 (ge) | #chunreal
+  // unreal engine on windows disallows including windows.h
+  #include "Windows/MinWindows.h"
+#endif // #ifndef __CHUNREAL_ENGINE__
+#endif // #ifdef __PLATFORM_WIN32__
 
-#ifdef __PLATFORM_LINUX__
-#include <linux/limits.h>
-#endif // __PLATFORM_LINUX__
-
+#include <limits.h>
 #include <stdio.h>
 using namespace std;
+
 
 
 
@@ -115,6 +119,24 @@ string toupper( const string & str )
             s[i] -= 32;
 
     return s;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: capitalize()
+// capitalize first character
+//-----------------------------------------------------------------------------
+string capitalize( const string & s )
+{
+    // copy
+    string retval = s;
+    // if not empty and first character is a lower-case letter
+    if( retval.length() > 0 && retval[0] >= 'a' && retval[0] <= 'z' )
+        retval[0] -= 32;
+    // done
+    return retval;
 }
 
 
@@ -480,14 +502,26 @@ std::string get_full_path( const std::string & fp )
     else
         return buf;
 
-#else //
+#else // windows
 
     char buf[MAX_PATH];
+#ifndef __CHUNREAL_ENGINE__
     DWORD result = GetFullPathName(fp.c_str(), MAX_PATH, buf, NULL);
+#else
+    // #chunreal explicitly use ASCII version
+    DWORD result = GetFullPathNameA(fp.c_str(), MAX_PATH, buf, NULL);
+#endif
 
     // try with .ck extension
     if(result == 0 && !str_endsin(fp.c_str(), ".ck"))
+    {
+#ifndef __CHUNREAL_ENGINE__
         result = GetFullPathName((fp + ".ck").c_str(), MAX_PATH, buf, NULL);
+#else
+        // #chunreal explicitly use ASCII version
+        result = GetFullPathNameA((fp + ".ck").c_str(), MAX_PATH, buf, NULL);
+#endif
+    }
 
     if(result == 0)
         return fp;
@@ -528,8 +562,8 @@ std::string expand_filepath( std::string & fp, t_CKBOOL ensurePathExists )
 std::string extract_filepath_dir(std::string &filepath)
 {
     char path_separator = '/';
-
-//#ifdef __WINDOWS_DS__
+    
+//#ifdef __PLATFORM_WIN32__
 //    path_separator = '\\';
 //#else
 //    path_separator = '/';

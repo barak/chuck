@@ -34,6 +34,14 @@
 // date: Spring 2004
 //       Summer 2005 - updated
 //-----------------------------------------------------------------------------
+#include "ugen_xxx.h"
+#include "chuck_type.h"
+#include "chuck_ugen.h"
+#include "chuck_vm.h"
+#include "chuck_compile.h"
+#include "chuck_instr.h"
+#include "util_math.h"
+
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -53,14 +61,6 @@
 #include "util_platforms.h"
 #endif
 
-#include "ugen_xxx.h"
-#include "chuck_type.h"
-#include "chuck_ugen.h"
-#include "chuck_vm.h"
-#include "chuck_compile.h"
-#include "chuck_instr.h"
-#include "util_math.h"
-
 #include <fstream>
 using namespace std;
 
@@ -78,7 +78,7 @@ CK_DLL_TICK( foogen_tick );
 DLL_QUERY lisa_query( Chuck_DL_Query * query );
 
 // sample rate
-t_CKUINT g_srate;
+static t_CKUINT g_srateXxx;
 
 // offset
 static t_CKUINT subgraph_offset_inlet = 0;
@@ -116,7 +116,7 @@ enum PanTypesEnum
 //-----------------------------------------------------------------------------
 DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
 {
-    g_srate = QUERY->srate;
+    g_srateXxx = QUERY->srate;
     // get the env
     Chuck_Env * env = QUERY->env();
 
@@ -138,7 +138,8 @@ DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
     type_engine_register_deprecate( env, "zerox", "ZeroX" );
     type_engine_register_deprecate( env, "delayp", "DelayP" );
     type_engine_register_deprecate( env, "sndbuf", "SndBuf" );
-    type_engine_register_deprecate( env, "Chubgraph", "Chugraph" );
+    // 1.5.0.0 (ge) removed deprecate; allow both
+    // type_engine_register_deprecate( env, "Chubgraph", "Chugraph" );
 
     //! \section audio output
 
@@ -150,7 +151,11 @@ DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
                                         subgraph_ctor, NULL, NULL, NULL, 1, 1, doc.c_str() ) )
         return FALSE;
 
+    // add examples
     if( !type_engine_import_add_ex( env, "extend/chugraph.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "class/dinky.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "class/try.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "deep/ks-chord.ck" ) ) goto error;
 
     doc = "terminal for sources chucked into this ugen.";
     subgraph_offset_inlet = type_engine_import_mvar( env, "UGen", "inlet", TRUE, doc.c_str() );
@@ -248,10 +253,10 @@ DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
     // add panType
     func = make_new_mfun( "int", "panType", stereo_ctrl_panType );
     func->add_arg( "int", "val" );
-    func->doc = "set the panning type: (0) unity again anti-panning, (1) constant power.";
+    func->doc = "set the panning type: (1) constant power panning, (0) unity gain anti-panning.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "int", "panType", stereo_cget_panType );
-    func->doc = "get the panning type: (0) unity again anti-panning, (1) constant power.";
+    func->doc = "get the panning type: (1) constant power panning, (0) unity gain anti-panning.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // end import
@@ -264,8 +269,9 @@ DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
     //---------------------------------------------------------------------
     // init as base class: dac
     //---------------------------------------------------------------------
-    if( !(env->t_dac = type_engine_import_ugen_begin( env, "DAC", "UGen_Stereo", env->global(),
-                                                      NULL, NULL, NULL, NULL, 2, 2 )) )
+    env->t_dac = type_engine_import_ugen_begin( env, "DAC", "UGen_Stereo", env->global(),
+                                                NULL, NULL, NULL, NULL, 2, 2 );
+    if( !env->t_dac )
         return FALSE;
 
     // end import
@@ -278,9 +284,10 @@ DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
     //---------------------------------------------------------------------
     // init as base class: adc
     //---------------------------------------------------------------------
-    if( !(env->t_adc = type_engine_import_ugen_begin( env, "ADC", "UGen_Stereo", env->global(),
-                                                      (f_ctor)NULL, (f_dtor)NULL, (f_tick)NULL,
-                                                      (f_pmsg)NULL, 0, 2 )) )
+    env->t_adc = type_engine_import_ugen_begin( env, "ADC", "UGen_Stereo", env->global(),
+                                                (f_ctor)NULL, (f_dtor)NULL, (f_tick)NULL,
+                                                (f_pmsg)NULL, 0, 2 );
+    if( !env->t_adc )
         return FALSE;
 
     // end import
@@ -295,7 +302,19 @@ DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
                                         pan2_ctor, NULL, NULL, NULL, 2, 2, doc.c_str() ) )
         return FALSE;
 
+    // add examples | 1.5.0.0 (ge)
+    if( !type_engine_import_add_ex( env, "basic/chirp2.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "stereo/array.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "stereo/powerup2.ck" ) ) goto error;
     if( !type_engine_import_add_ex( env, "stereo/moe2.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "stereo/larry2.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "stereo/curly2.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "stereo/ugen-array.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "stereo/stereo-noise.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "stk/honkeytonk-algo1.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "hanoi++.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "hanoi2.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "hanoi3.ck" ) ) goto error;
 
     // end import
     if( !type_engine_import_class_end( env ) )
@@ -435,7 +454,7 @@ DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
     //---------------------------------------------------------------------
     // init as base class: impulse
     //---------------------------------------------------------------------
-    doc = "a impulse generator. Can be used to set the value of the next sample; default for each sample is 0 if not set. Additionally, this can be used to generate a digial signal, one sample at a time.";
+    doc = "An impulse generator. Can be used to set the value of the next sample; default for each sample is 0 if not set. Additionally, this can be used to generate a digital signal, one sample at a time.";
     if( !type_engine_import_ugen_begin( env, "Impulse", "UGen", env->global(),
                                         impulse_ctor, impulse_dtor, impulse_tick, NULL, doc.c_str() ) )
         return FALSE;
@@ -461,6 +480,11 @@ DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
     func = make_new_mfun( "float", "next", impulse_cget_next );
     func->doc = "get value of next sample to be generated.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
+
+    // add examples
+    if( !type_engine_import_add_ex( env, "basic/imp.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "basic/comb.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "deep/chant.ck" ) ) goto error;
 
     // end import
     if( !type_engine_import_class_end( env ) )
@@ -494,7 +518,10 @@ DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
                                         step_ctor, step_dtor, step_tick, NULL, doc.c_str() ) )
         return FALSE;
 
+    // add examples | 1.5.0.0 (ge)
     if( !type_engine_import_add_ex( env, "basic/step.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "basic/fm3.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "basic/zerox.ck" ) ) goto error;
 
     // add ctrl: value
     //func = make_new_mfun( "float", "value", step_ctrl_value );
@@ -629,6 +656,7 @@ DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
     if( !type_engine_import_mfun( env, func ) ) goto error;
     // add cget: max
     func = make_new_mfun( "dur", "max", delayp_cget_max );
+
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // end import
@@ -979,6 +1007,19 @@ DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
     if( !type_engine_import_class_end( env ) )
         return FALSE;
 
+    //---------------------------------------------------------------------
+    // init as base class: Identity2
+    // 1.5.0.0 (ge + nshaheed) made this for exploring multichannel conundrums
+    //---------------------------------------------------------------------
+    doc = "A 2-channel UGen that outputs the inputs.";
+    // multichannel
+    if( !type_engine_import_ugen_begin( env, "Identity2", "UGen", env->global(),
+                                        NULL, NULL, NULL, Identity2_tickf,
+                                        NULL, 2, 2, doc.c_str() ) )
+        return FALSE;
+    // end the class import
+    type_engine_import_class_end( env );
+
     // import LiSa!
     if( !lisa_query( QUERY ) )
         return FALSE;
@@ -1014,265 +1055,359 @@ DLL_QUERY lisa_query( Chuck_DL_Query * QUERY )
 {
     Chuck_Env * env = QUERY->env();
     Chuck_DL_Func * func = NULL;
+    std::string doc;
 
     //---------------------------------------------------------------------
     // init class: LiSa; overloaded class for both LiSaBasic and LiSaMulti
     //              - probably don't need the others anymore....
     // author: Dan Trueman (dan /at/ music.princeton.edu)
     //---------------------------------------------------------------------
-    string doc = "a (li)ve (sa)mpling unit generator; also popularly used for granular synthesis.";
 
-    // begin UGen definition
+    // doc string
+    doc = "LiSa provides basic live sampling functionality,\
+    and is also often used for granular synthesis.\
+    An internal buffer stores samples chucked to LiSa's input.\
+    Segments of this buffer can be played back, with ramping and\
+    speed/direction control.\
+    Multiple voice facility is built in, allowing for a single\
+    LiSa object to serve as a source for sample layering and\
+    granular textures.\
+    by Dan Trueman (2007)\n\
+    See also: a slowly growing <a target=\"_blank\" href=\"../program/lisa/tutorial-1.html\">tutorial</a>\
+    | <a target=\"_blank\" href=\"../examples/#lisa\">LiSa examples</a> in the ChucK distribution | <a target=\"_blank\" href=\"https://www.youtube.com/watch?v=7F75v_73pF4\">video tutorial</a> by Clint Hoagland.";
     if( !type_engine_import_ugen_begin( env, "LiSa", "UGen", env->global(),
                                         LiSaMulti_ctor, LiSaMulti_dtor,
                                         LiSaMulti_tick, NULL,
-                                        LiSaMulti_pmsg, 1, 1, doc.c_str() ) )
+                                        LiSaMulti_pmsg, 1, 1, doc.c_str() ))
         return FALSE;
+
+    // add examples | 1.5.0.0 (ge)
+    if( !type_engine_import_add_ex( env, "special/LiSa-munger1.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "special/LiSa-munger2.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "special/LiSa-munger3.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "special/LiSa-load.ck.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "special/LiSa-simplelooping.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "special/LiSa-trigger.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "special/LiSa-track1.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "special/LiSa-track2.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "special/LiSa-track3.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "special/LiSa-track4.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "special/LiSa-track5.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "special/LiSa-stereo.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "special/twilight/twilight-granular-kb.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "special/twilight/twilight-granular-kb-interp.ck" ) ) goto error;
 
     // set/get buffer size
     func = make_new_mfun( "dur", "duration", LiSaMulti_size );
+    func->doc = "Set buffer size; required to allocate memory, also resets all parameter values to default.";
     func->add_arg( "dur", "val" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
-    func = make_new_mfun( "dur", "duration", LiSaMulti_cget_size );
+	func = make_new_mfun( "dur", "duration", LiSaMulti_cget_size );
+    func->doc = "Get buffer size.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // start/stop recording
     func = make_new_mfun( "int", "record", LiSaMulti_start_record );
+    func->doc = "Turn recording on and off";
     func->add_arg( "int", "toggle" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // start/stop playing
     func = make_new_mfun( "int", "play", LiSaMulti_start_play );
+    func->doc = "For particular voice (arg 1), turn on/off sample playback";
     func->add_arg( "int", "voice" );
     func->add_arg( "int", "toggle" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "int", "play", LiSaMulti_start_play0 );
+    func->doc = "Turn on/off sample playback (voice 0)";
     func->add_arg( "int", "toggle" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // set/get playback rate
     func = make_new_mfun( "float", "rate", LiSaMulti_ctrl_rate );
+    func->doc = "For particular voice (arg 1), set playback rate";
     func->add_arg( "int", "voice" );
     func->add_arg( "float", "val" );
-    if( !type_engine_import_mfun( env, func ) ) goto error;
-    func = make_new_mfun( "float", "rate", LiSaMulti_cget_rate );
+	if( !type_engine_import_mfun( env, func ) ) goto error;
+	func = make_new_mfun( "float", "rate", LiSaMulti_cget_rate );
+    func->doc = "For particular voice (arg 1), get playback rate";
     func->add_arg( "int", "voice" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "float", "rate", LiSaMulti_ctrl_rate0 );
+    func->doc = "Set playback rate (voice 0). Note that the int/float type for this method will determine whether the rate is being set (float, for voice 0) or read (int, for voice number).";
     func->add_arg( "float", "val" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
-    func = make_new_mfun( "float", "rate", LiSaMulti_cget_rate0 );
+	func = make_new_mfun( "float", "rate", LiSaMulti_cget_rate0 );
+    func->doc = "Get playback rate (voice 0).";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // playback position
     func = make_new_mfun( "dur", "playPos", LiSaMulti_ctrl_pindex );
+    func->doc = "For particular voice (arg 1), set playback position.";
     func->add_arg( "int", "voice" );
     func->add_arg( "dur", "val" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "dur", "playPos", LiSaMulti_cget_pindex );
+    func->doc = "For particular voice (arg 1), get playback position.";
     func->add_arg( "int", "voice" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "dur", "playPos", LiSaMulti_ctrl_pindex0 );
+    func->doc = "Set playback position (voice 0).";
     func->add_arg( "dur", "val" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "dur", "playPos", LiSaMulti_cget_pindex0 );
+    func->doc = "Get playback position (voice 0).";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // record position
     func = make_new_mfun( "dur", "recPos", LiSaMulti_ctrl_rindex );
+    func->doc = "Set record position.";
     func->add_arg( "dur", "val" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "dur", "recPos", LiSaMulti_cget_rindex );
+    func->doc = "Get record position.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // loopstart position
     func = make_new_mfun( "dur", "loopStart", LiSaMulti_ctrl_lstart );
+    func->doc = "For particular voice (arg 1), set loop starting point for playback. only applicable when .loop(voice, 1).";
     func->add_arg( "int", "voice" );
     func->add_arg( "dur", "val" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "dur", "loopStart", LiSaMulti_cget_lstart );
+    func->doc = "For particular voice (arg 1), get loop starting point for playback. only applicable when .loop(voice, 1).";
     func->add_arg( "int", "voice" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "dur", "loopStart", LiSaMulti_ctrl_lstart0 );
+    func->doc = "Set loop starting point for playback (voice 0). only applicable when 1 => loop.";
     func->add_arg( "dur", "val" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "dur", "loopStart", LiSaMulti_cget_lstart0 );
+    func->doc = "Get loop starting point for playback (voice 0). only applicable when 1 => loop.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // loopend position
     func = make_new_mfun( "dur", "loopEnd", LiSaMulti_ctrl_lend );
+    func->doc = "For particular voice (arg 1), set loop ending point for playback. only applicable when .loop(voice, 1).";
     func->add_arg( "int", "voice" );
     func->add_arg( "dur", "val" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "dur", "loopEnd", LiSaMulti_cget_lend);
+     func->doc = "For particular voice (arg 1), get loop ending point for playback. only applicable when .loop(voice, 1).";
     func->add_arg( "int", "voice" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "dur", "loopEnd", LiSaMulti_ctrl_lend0 );
+    func->doc = "Set loop ending point for playback (voice 0). only applicable when 1 => loop.";
     func->add_arg( "dur", "val" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "dur", "loopEnd", LiSaMulti_cget_lend0);
+    func->doc = "Get loop ending point for playback (voice 0). only applicable when 1 => loop.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // loop
     func = make_new_mfun( "int", "loop", LiSaMulti_ctrl_loop );
+    func->doc = "For particular voice (arg 1), turn on/off looping.";
     func->add_arg( "int", "voice" );
     func->add_arg( "int", "val" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
+
     func = make_new_mfun( "int", "loop", LiSaMulti_cget_loop);
+    func->doc = "For particular voice (arg 1), get looping status.";
     func->add_arg( "int", "voice" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
-    func = make_new_mfun( "int", "loop", LiSaMulti_ctrl_loop0 );
+
+    func = make_new_mfun( "int", "loop0", LiSaMulti_ctrl_loop0 );
+    func->doc = "Turn on/off looping (voice 0).";
     func->add_arg( "int", "val" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
-    func = make_new_mfun( "int", "loop", LiSaMulti_cget_loop0);
+
+    func = make_new_mfun( "int", "loop0", LiSaMulti_cget_loop0);
+    func->doc = "Get looping status (voice 0).";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // bidirectional looping
     func = make_new_mfun( "int", "bi", LiSaMulti_ctrl_bi );
+    func->doc = "For particular voice (arg 1), turn on/off bidirectional playback.";
     func->add_arg( "int", "voice" );
     func->add_arg( "int", "val" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "int", "getbi", LiSaMulti_cget_bi);
+    func->doc = "Turn on/off bidirectional playback (voice 0).";
     func->add_arg( "int", "voice" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "int", "bi", LiSaMulti_ctrl_bi0 );
+    func->doc = "For particular voice (arg 1), get bidirectional playback status.";
     func->add_arg( "int", "val" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "int", "bi", LiSaMulti_cget_bi0);
+    func->doc = "Get birectional playback status.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // loopend_rec position
     func = make_new_mfun( "dur", "loopEndRec", LiSaMulti_ctrl_loop_end_rec );
+    func->doc = "Set end point in buffer for loop recording.";
     func->add_arg( "dur", "val" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "dur", "loopEndRec", LiSaMulti_cget_loop_end_rec);
+    func->doc = "Get end point in buffer for loop recording.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // loop_rec toggle set; for turning on/off loop recording
     func = make_new_mfun( "int", "loopRec", LiSaMulti_ctrl_loop_rec );
+    func->doc = "Turn on/off loop recording.";
     func->add_arg( "int", "val" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "int", "loopRec", LiSaMulti_cget_loop_rec);
+    func->doc = "Get loop recording status.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // look at or put sample directly in record buffer, do not pass go
     func = make_new_mfun( "float", "valueAt", LiSaMulti_ctrl_sample );
+    func->doc = "Set value directly in record buffer.";
     func->add_arg( "float", "val" );
     func->add_arg( "dur", "index" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
+
     func = make_new_mfun( "float", "valueAt", LiSaMulti_cget_sample);
-    func->add_arg( "dur", "index" );
+    func->doc = "Get value directly from record buffer.";
+	func->add_arg( "dur", "index" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // set/get voiceGain
     func = make_new_mfun( "float", "voiceGain", LiSaMulti_ctrl_voicegain );
+    func->doc = "For particular voice (arg 1), set gain.";
     func->add_arg( "int", "voice" );
     func->add_arg( "float", "val" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "float", "voiceGain", LiSaMulti_cget_voicegain);
+    func->doc = "Set playback gain (voice 0).";
     func->add_arg( "int", "voice" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // set/get voicePan [value between 0 and numchans-1, to place voice]
     func = make_new_mfun( "float", "voicePan", LiSaMulti_ctrl_voicepan );
+    func->doc = "For particular voice (arg 1), set panning value [0.0, number of channels - 1.0].";
     func->add_arg( "int", "voice" );
     func->add_arg( "float", "val" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "float", "voicePan", LiSaMulti_cget_voicepan);
+    func->doc = "For particular voice (arg 1), get panning value.";
     func->add_arg( "int", "voice" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // set/get voicePan [value between 0 and numchans-1, to place voice]
     func = make_new_mfun( "float", "pan", LiSaMulti_ctrl_voicepan );
+    func->doc = "For particular voice (arg 1), set panning value [0.0, number of channels - 1.0].";
     func->add_arg( "int", "voice" );
     func->add_arg( "float", "val" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "float", "pan", LiSaMulti_cget_voicepan);
+    func->doc = "For particular voice (arg 1), get panning value.";
     func->add_arg( "int", "voice" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
-
-    func = make_new_mfun( "float", "pan", LiSaMulti_ctrl_voicepan0 );
+	
+	func = make_new_mfun( "float", "pan", LiSaMulti_ctrl_voicepan0 );
+    func->doc = "For voice 0, set panning value [0.0, number of channels - 1.0].";
     func->add_arg( "float", "val" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
-    func = make_new_mfun( "float", "pan", LiSaMulti_cget_voicepan0);
-    if( !type_engine_import_mfun( env, func ) ) goto error;
 
+    func = make_new_mfun( "float", "pan", LiSaMulti_cget_voicepan0);
+    func->doc = "For voice 0, get panning value.";
+	if( !type_engine_import_mfun( env, func ) ) goto error;
+	
     // set record feedback coefficient
     func = make_new_mfun( "float", "feedback", LiSaMulti_ctrl_coeff );
+    func->doc = "Set feedback amount when overdubbing (loop recording; how much to retain).";
     func->add_arg( "float", "val" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "float", "feedback", LiSaMulti_cget_coeff);
+    func->doc = "Get feedback amount when overdubbing (loop recording; how much to retain).";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // clear buffer
     func = make_new_mfun( "void", "clear", LiSaMulti_ctrl_clear );
+    func->doc = "Clear recording buffer.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // get free voice
     func = make_new_mfun( "int", "getVoice", LiSaMulti_cget_voice );
+    func->doc = "Return an available voice (one that is not currently playing). Return -1 if no voice is available.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // set maxvoices
     func = make_new_mfun( "int", "maxVoices", LiSaMulti_ctrl_maxvoices );
+    func->doc = "Set the maximum number of voices allowable; 10 by default (256 is the current hardwired internal limit).";
     func->add_arg( "int", "val" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "int", "maxVoices", LiSaMulti_cget_maxvoices);
+    func->doc = "Get the maximum number of voices allowable; 10 by default (256 is the current hardwired internal limit).";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // ramp stuff
     func = make_new_mfun( "void", "rampUp", LiSaMulti_ctrl_rampup );
+    func->doc = "For particular voice (arg 1), turn on sample playback, with ramp.";
     func->add_arg( "int", "voice" );
     func->add_arg( "dur", "val" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     func = make_new_mfun( "void", "rampDown", LiSaMulti_ctrl_rampdown );
+    func->doc = "For particular voice (arg 1), turn off sample playback, with ramp";
     func->add_arg( "int", "voice" );
     func->add_arg( "dur", "val" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     func = make_new_mfun( "dur", "recRamp", LiSaMulti_ctrl_rec_ramplen );
+    func->doc = "Set ramping when recording (from 0 to loopEndRec).";
     func->add_arg( "dur", "val" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     func = make_new_mfun( "void", "rampUp", LiSaMulti_ctrl_rampup0 );
+    func->doc = "Turn on sample playback, with ramp (voice 0).";
     func->add_arg( "dur", "val" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     func = make_new_mfun( "void", "rampDown", LiSaMulti_ctrl_rampdown0 );
+    func->doc = "Turn off sample playback, with ramp (voice 0).";
     func->add_arg( "dur", "val" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // get value
     func = make_new_mfun( "dur", "value", LiSaMulti_cget_value );
+    func->doc = "For particular voice (arg 1), get value from the voice.";
     func->add_arg( "int", "voice" );
     func->add_arg( "dur", "val" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "dur", "value", LiSaMulti_cget_value0 );
+    func->doc = "Get value from voice 0.";
     func->add_arg( "dur", "val" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // track
     func = make_new_mfun( "int", "track", LiSaMulti_ctrl_track );
+    func->doc = "Identical to sync.";
     func->add_arg( "int", "val" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "int", "track", LiSaMulti_cget_track);
+    func->doc = "Identical to sync.";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // sync = track
     func = make_new_mfun( "int", "sync", LiSaMulti_ctrl_track );
+    func->doc = "Set input mode; (0) input is recorded to internal buffer, (1) input sets playback position [0,1] (phase value between loopStart and loopEnd for all active voices), (2) input sets playback position, interpreted as a time value in samples (only works with voice 0)";
     func->add_arg( "int", "val" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
     func = make_new_mfun( "int", "sync", LiSaMulti_cget_track);
+    func->doc = "Get input mode; (0) input is recorded to internal buffer, (1) input sets playback position [0,1] (phase value between loopStart and loopEnd for all active voices), (2) input sets playback position, interpreted as a time value in samples (only works with voice 0)";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // playing
     func = make_new_mfun( "int", "playing", LiSaMulti_cget_playing );
+    func->doc = "Get playing status.";
     func->add_arg( "int", "val" );
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // end the class import
     type_engine_import_class_end( env );
-
 
     // LiSa2 description
     doc = "a (li)ve (sa)mpling unit generator (stereo edition); also popularly used for granular synthesis.";
@@ -1282,6 +1417,10 @@ DLL_QUERY lisa_query( Chuck_DL_Query * QUERY )
                                        NULL, LiSaMulti_tickf,
                                        LiSaMulti_pmsg, 1, 2, doc.c_str() ) )
         return FALSE;
+
+    // add examples
+    if( !type_engine_import_add_ex( env, "special/LiSa-stereo.ck" ) ) goto error;
+
     // end the class import
     type_engine_import_class_end( env );
 
@@ -2241,7 +2380,7 @@ struct delayp_data
 
     delayp_data()
     {
-        bufsize  = 2 * g_srate;
+        bufsize  = 2 * g_srateXxx;
         buffer   = ( SAMPLE * ) realloc ( NULL, sizeof ( SAMPLE ) * bufsize );
         t_CKINT i;
 
@@ -2689,6 +2828,8 @@ struct sndbuf_data
     t_CKUINT chunks_read;
     t_CKUINT chunk_num;
     SAMPLE ** chunk_map;
+    // 1.5.0.0 (ge) added (chunks will only affect next .read)
+    t_CKUINT chunks_on_next_load;
 
     SAMPLE * eob;
     //SAMPLE * curr;
@@ -2736,6 +2877,7 @@ struct sndbuf_data
         current_val = 0.0;
         chunk_map = NULL;
         chunk_num = 0;
+        chunks_on_next_load = chunks; // whatever chunks default is
 
         sinc_table_built = false;
         sinc_use_table = USE_TABLE;
@@ -2856,7 +2998,8 @@ inline t_CKINT sndbuf_load( sndbuf_data * d, t_CKUINT sample )
 
 inline void sndbuf_setpos( sndbuf_data *d, double frame_pos )
 {
-    if( !(d->buffer || d->chunk_map) ) return;
+    // if no buffer allocate (nothing read)
+    if( d->buffer == NULL && d->chunk_map == NULL ) return;
 
     d->curf = frame_pos;
 
@@ -2874,9 +3017,9 @@ inline void sndbuf_setpos( sndbuf_data *d, double frame_pos )
             d->current_val = 0;  // 1.4.1.0 (ge) added to avoid DC
             return; // 1.4.1.0 (ge) added
         }
-        else if( d->curf > d->num_frames )
+        else if( d->curf >= d->num_frames ) // 1.5.0.0 (ge) | changed from > to >=
         {
-            d->curf = d->num_frames; // 1.4.1.0 (ge) added back the -1
+            d->curf = d->num_frames;
             d->current_val = 0;
             return;
         }
@@ -2903,9 +3046,12 @@ inline SAMPLE sndbuf_sampleAt( sndbuf_data * d, t_CKINT frame_pos, t_CKINT arg_c
         while( frame_pos <  0 ) frame_pos += nf;
     }
     else {
-        if( frame_pos >= nf ) frame_pos = nf-1;
+        if( frame_pos >= nf ) frame_pos = nf; // 1.5.0.0 (ge) | set frame_pos to nf, instead of nf-1
         if( frame_pos < 0 ) frame_pos = 0;
     }
+
+    // 1.5.0.0 (ge) | added check
+    if( frame_pos == nf ) return 0;
 
     // if specific channel was requested, use that one
     t_CKUINT chan = 0;
@@ -2928,7 +3074,8 @@ inline SAMPLE sndbuf_sampleAt( sndbuf_data * d, t_CKINT frame_pos, t_CKINT arg_c
 
 inline double sndbuf_getpos( sndbuf_data * d )
 {
-    if( !(d->buffer || d->chunk_map) ) return 0;
+    // if no buffer allocated (nothing read)
+    if( d->buffer == NULL && d->chunk_map == NULL ) return 0;
     return floor(d->curf);
 }
 
@@ -3091,7 +3238,11 @@ CK_DLL_TICK( sndbuf_tick )
     }
 #endif /* CK_SNDBUF_MEMORY_BUFFER */
 
-    if( !( d->buffer || d->chunk_map ) )
+    // check if we have data to work with
+    // 1.5.0.0 (ge) modified for clarity;
+    // was: if( !(d->buffer || d->chunk_map) ) { ... }
+    // if no buffer allocated; nothing read
+    if( d->buffer == NULL && d->chunk_map == NULL )
     {
         *out = 0;
         return TRUE;
@@ -3137,7 +3288,8 @@ CK_DLL_TICKF( sndbuf_tickf )
 
     sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT(SELF, sndbuf_offset_data);
 
-    if( !( d->buffer || d->chunk_map ) ) return FALSE;
+    // if no buffer allocated, nothing read
+    if( d->buffer == NULL && d->chunk_map == NULL ) return FALSE;
 
     // we're ticking once per sample ( system )
     // curf in samples;
@@ -3213,13 +3365,14 @@ CK_DLL_CTRL( sndbuf_ctrl_read )
 {
     sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT(SELF, sndbuf_offset_data);
     Chuck_String * ckfilename = GET_CK_STRING(ARGS);
-    const char * filename = ckfilename->str().c_str();
+    const char * filename = NULL;
 
-    // return filename
+    // set return value
     RETURN->v_string = ckfilename;
 
+    // cleanup
     SAFE_DELETE_ARRAY(d->buffer);
-
+    // clean up chunk map
     if( d->chunk_map )
     {
         for(int i = 0; i < d->chunk_num; i++)
@@ -3227,15 +3380,27 @@ CK_DLL_CTRL( sndbuf_ctrl_read )
         SAFE_DELETE_ARRAY(d->chunk_map);
         d->chunk_num = 0;
     }
-
+    // close file descriptor
     if( d->fd )
     {
         sf_close( d->fd );
         d->fd = NULL;
     }
 
+    // check | 1.5.0.0 (ge) added check to avert crash on null argument
+    if( !ckfilename )
+    {
+        CK_FPRINTF_STDERR( "[chuck] SndBuf.read() given null argument; nothing read...\n" );
+        return;
+    }
+    // get filename c string
+    filename = ckfilename->str().c_str();
+
     // log
     EM_log( CK_LOG_INFO, "(sndbuf): reading '%s'...", filename );
+    
+    // copy in the chunks size | 1.5.0.0 (ge)
+    d->chunks = d->chunks_on_next_load;
 
     // built in
     if( strstr(filename, "special:") )
@@ -3401,7 +3566,11 @@ CK_DLL_CTRL( sndbuf_ctrl_read )
         {
             CK_FPRINTF_STDERR( "[chuck](via SndBuf): sndfile error '%li' opening '%s'...\n", er, filename );
             CK_FPRINTF_STDERR( "[chuck](via SndBuf): (reason: %s)\n", sf_strerror( d->fd ) );
-            if( d->fd ) sf_close( d->fd );
+            if( d->fd )
+            {
+                sf_close( d->fd );
+                d->fd = NULL; // 1.5.0.0 (ge) added
+            }
             // escape
             return;
         }
@@ -3411,7 +3580,7 @@ CK_DLL_CTRL( sndbuf_ctrl_read )
         if(d->chunks)
         {
             // split into small allocations
-            d->chunk_num = ceilf(((t_CKFLOAT) size) / ((t_CKFLOAT) d->chunks));
+            d->chunk_num = ceil(((t_CKFLOAT) size) / ((t_CKFLOAT) d->chunks)); // 1.5.0.0 (ge) | ceilf => ceil
             d->buffer = NULL;
             d->chunk_map = new SAMPLE*[d->chunk_num];
             memset(d->chunk_map, 0, d->chunk_num * sizeof(SAMPLE *));
@@ -3461,7 +3630,7 @@ CK_DLL_CTRL( sndbuf_ctrl_read )
     }
 
     // d->interp = SNDBUF_INTERP;
-    d->sampleratio = (double)d->samplerate / (double)g_srate;
+    d->sampleratio = (double)d->samplerate / (double)g_srateXxx;
     // set the rate
     d->rate = d->sampleratio * d->rate_factor;
     d->current_val = 0;
@@ -3515,15 +3684,15 @@ CK_DLL_CTRL( sndbuf_ctrl_freq )
     sndbuf_data * d = ( sndbuf_data * ) OBJ_MEMBER_UINT(SELF, sndbuf_offset_data);
     t_CKFLOAT freq = GET_CK_FLOAT(ARGS);  //hz
 
-    d->rate = ( freq * (double) d->num_frames / (double) g_srate );
+    d->rate = ( freq * (double) d->num_frames / (double)g_srateXxx);
     d->rate_factor = d->rate / d->sampleratio;
-    RETURN->v_float = d->rate * (t_CKFLOAT) g_srate / ( (t_CKFLOAT) d->num_frames ); // TODO: really?
+    RETURN->v_float = d->rate * (t_CKFLOAT)g_srateXxx / ( (t_CKFLOAT) d->num_frames ); // TODO: really?
 }
 
 CK_DLL_CGET( sndbuf_cget_freq )
 {
     sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT(SELF, sndbuf_offset_data);
-    RETURN->v_float = d->rate * (t_CKFLOAT) g_srate / ( (t_CKFLOAT) d->num_frames );
+    RETURN->v_float = d->rate * (t_CKFLOAT)g_srateXxx / ( (t_CKFLOAT) d->num_frames );
 }
 
 CK_DLL_CTRL( sndbuf_ctrl_phase )
@@ -3594,14 +3763,19 @@ CK_DLL_CTRL( sndbuf_ctrl_chunks )
 {
     sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT(SELF, sndbuf_offset_data);
     t_CKINT frames = GET_NEXT_INT(ARGS);
-    d->chunks = frames >= 0 ? frames : 0;
+    // 1.5.0.0 (ge) | modified to set chunks_on_next_load
+    // setting chunks after load violates some assumptions
+    d->chunks_on_next_load = frames >= 0 ? frames : 0;
+    // d->chunks = frames >= 0 ? frames : 0;
     RETURN->v_int = d->chunks;
 }
 
 CK_DLL_CGET( sndbuf_cget_chunks )
 {
     sndbuf_data * d = (sndbuf_data *)OBJ_MEMBER_UINT(SELF, sndbuf_offset_data);
-    RETURN->v_int = d->chunks;
+    // 1.5.0.0 (ge) | retuns d->chunks_on_next_load
+    RETURN->v_int = d->chunks_on_next_load;
+    // RETURN->v_int = d->chunks;
 }
 
 CK_DLL_CTRL( sndbuf_ctrl_phase_offset )
@@ -3639,7 +3813,8 @@ CK_DLL_CGET( sndbuf_cget_valueAt )
     t_CKINT frame, channel;
     d->sampleIndex2FrameIndexAndChannel(sample, &frame, &channel);
     if( d->fd ) sndbuf_load( d, sample );
-    RETURN->v_float = ( frame > d->num_frames || frame < 0 ) ? 0 : sndbuf_sampleAt(d, frame, channel);
+    // 1.5.0.0 (ge) 'frame >' => 'frame >='
+    RETURN->v_float = ( frame >= d->num_frames || frame < 0 ) ? 0 : sndbuf_sampleAt(d, frame, channel);
 }
 
 #endif // __DISABLE_SNDBUF__
@@ -3980,37 +4155,44 @@ struct LiSaMulti_data
     // constructor; 1.4.1.0 (ge) added
     LiSaMulti_data()
         : mdata(NULL), outsamples(NULL), mdata_len(0), maxvoices(0),
-          loop_end_rec(0), rindex(0), looprec(FALSE), reset(FALSE),
+          loop_end_rec(0), rindex(0), record(FALSE), looprec(FALSE), reset(FALSE),
           append(FALSE), coeff(0), rec_ramplen(0), rec_ramplen_inv(0),
           track(0), num_chans(0)
-    { /* zero out things out! */ }
-
-    // allocate memory, length in samples
-    inline int buffer_alloc(t_CKINT length)
     {
-        mdata = (SAMPLE *)malloc((length + 1) * sizeof(SAMPLE)); // extra sample for safety....
-        if( !mdata ) {
-            CK_FPRINTF_STDERR( "LiSaBasic: unable to allocate memory!\n" );
-            return false;
-        }
+        // zero out | 1.5.0.0 (ge) | added (instead of big memset outside!)
+        memset( loop_start, 0, sizeof(loop_start) );
+        memset( loop_end, 0, sizeof(loop_end) );
+        memset( loopplay, 0, sizeof(loopplay) );
+        memset( play, 0, sizeof(play) );
+        memset( bi, 0, sizeof(bi) );
+        memset( voiceGain, 0, sizeof(voiceGain) );
+        memset( voicePan, 0, sizeof(voicePan) );
+        memset( channelGain, 0, sizeof(channelGain) );
+        memset( p_inc, 0, sizeof(p_inc) );
+        memset( pindex, 0, sizeof(pindex) );
+        memset( rampup_len, 0, sizeof(rampup_len) );
+        memset( rampdown_len, 0, sizeof(rampdown_len) );
+        memset( rampup_len_inv, 0, sizeof(rampup_len_inv) );
+        memset( rampdown_len_inv, 0, sizeof(rampdown_len_inv) );
+        memset( rampctr, 0, sizeof(rampctr) );
+        memset( rampup, 0, sizeof(rampup) );
+        memset( rampdown, 0, sizeof(rampdown) );
 
-        memset(mdata, 0, (length + 1) * sizeof(SAMPLE));
-
-        mdata_len = length;
+        // 1.5.0.0 (ge) moved to constructor from buffer_alloc()
+        // ...in case user sets this before allocating
+        // 1.4.1.0 (ge) increased from 10 to 16
         // default maxvoices; user can set
-        maxvoices = 16; // 1.4.1.0 (ge) increased from 10 to 16
+        maxvoices = 16;
+
+        // initialize more stuff
         rec_ramplen = 0.;
         rec_ramplen_inv = 1.;
-
         track = 0;
 
+        // initialize to reasonable values
+        // 1.5.0.0 (ge) moved to constructor from buffer_alloc()
         for( t_CKINT i=0; i < LiSa_MAXVOICES; i++ )
         {
-            loop_start[i] = 0;
-            //loop_end[i] = length - 1; //no idea why i had this
-            loop_end[i] = length;
-            loop_end_rec = length;
-
             pindex[i] = rindex = 0;
             play[i] = record = bi[i] = false;
             looprec = loopplay[i] = true;
@@ -4031,6 +4213,46 @@ struct LiSaMulti_data
             channelGain[i][0] = 1.0;
             // channelGain[i][0] = 0.707;
             // channelGain[i][1] = 0.707;
+        }
+    }
+
+    // destructor | 1.5.0.0 (ge) added
+    ~LiSaMulti_data()
+    {
+        // cleanup
+        cleanup();
+    }
+
+    // clean up LiSa
+    void cleanup()
+    {
+        // deallocate
+        SAFE_FREE( mdata );
+    }
+
+    // allocate memory, length in samples
+    /* inline */ int buffer_alloc(t_CKINT length)
+    {
+        // cleanup | 1.5.0.0 (ge) added
+        cleanup();
+
+        // allocate
+        mdata = (SAMPLE *)malloc((length + 1) * sizeof(SAMPLE)); // extra sample for safety....
+        if( !mdata ) {
+            CK_FPRINTF_STDERR( "LiSaBasic: unable to allocate memory!\n" );
+            return false;
+        }
+        // zero out
+        memset( mdata, 0, (length + 1) * sizeof(SAMPLE) );
+        // remember data length
+        mdata_len = length;
+
+        for( t_CKINT i=0; i < LiSa_MAXVOICES; i++ )
+        {
+            loop_start[i] = 0;
+            //loop_end[i] = length - 1; //no idea why i had this
+            loop_end[i] = length;
+            loop_end_rec = length;
         }
 
         return true;
@@ -4361,15 +4583,19 @@ struct LiSaMulti_data
 //-----------------------------------------------------------------------------
 CK_DLL_CTOR( LiSaMulti_ctor )
 {
-    LiSaMulti_data * f =  new LiSaMulti_data;
-    memset( f, 0, sizeof(LiSaMulti_data) );
-
+    // instantiate an internal LiSa implementation instance
+    LiSaMulti_data * f = new LiSaMulti_data;
+    // get the LiSa object in ChucK
     Chuck_UGen * ugen = (Chuck_UGen *)SELF;
+    // set channel information
     f->num_chans = ugen->m_multi_chan_size > 0 ? ugen->m_multi_chan_size : 1;
-    //CK_FPRINTF_STDERR( "LiSa: number of channels = %d\n", f->num_chans );
+    // CK_FPRINTF_STDERR( "LiSa: number of channels = %d\n", f->num_chans );
+    // allocate array of samples based on channel information
     f->outsamples = new SAMPLE[f->num_chans];
+    // zero out
     memset( f->outsamples, 0, (f->num_chans)*sizeof(SAMPLE) );
 
+    // remember implementation instance in address space of LiSa object in ChucK
     OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data) = (t_CKUINT)f;
 }
 
@@ -4384,6 +4610,8 @@ CK_DLL_DTOR( LiSaMulti_dtor )
 {
     // get data
     LiSaMulti_data * d = (LiSaMulti_data *)OBJ_MEMBER_UINT(SELF, LiSaMulti_offset_data);
+    // clean up | 1.5.0.0 (ge) added
+    SAFE_DELETE_ARRAY( d->outsamples );
     // delete
     SAFE_DELETE(d);
     // set
@@ -4430,7 +4658,8 @@ CK_DLL_TICKF( LiSaMulti_tickf )
     t_CKUINT nchans = ugen->m_num_outs;
     for( t_CKUINT frame_idx = 0; frame_idx < nframes; frame_idx++ )
     {
-        SAMPLE * temp_out_samples = d->tick_multi( in[frame_idx*nchans+1] );
+        // 1.5.0.0 (ge) | changed to in[frame_idx*nchans+0]; was:+1
+        SAMPLE * temp_out_samples = d->tick_multi( in[frame_idx*nchans+0] );
         // CK_FPRINTF_STDERR( "%0.2f ", in[frame_idx*nchans+0] );
 
         for( t_CKUINT chan_idx = 0; chan_idx < nchans; chan_idx++ )
@@ -4455,7 +4684,7 @@ CK_DLL_CTRL( LiSaMulti_size )
     t_CKDUR buflen = GET_NEXT_DUR(ARGS);
     if( buflen > LiSa_MAXBUFSIZE )
     {
-        CK_FPRINTF_STDERR( "LiSa: buffer size request too large, resizing\n" );
+        CK_FPRINTF_STDERR( "LiSa: buffer size request too large, resizing to %i...\n", LiSa_MAXBUFSIZE );
         buflen = LiSa_MAXBUFSIZE;
     }
     // allocate
@@ -5017,7 +5246,7 @@ CK_DLL_CTRL( LiSaMulti_ctrl_voicepan )
     // get voice number argument
     t_CKINT which = GET_NEXT_INT(ARGS);
     // get pan argument
-    d->voicePan[which] = (t_CKFLOAT)GET_NEXT_FLOAT(ARGS);
+    d->voicePan[which] = GET_NEXT_FLOAT(ARGS);
 
     t_CKINT i;
 
@@ -5056,10 +5285,10 @@ CK_DLL_CTRL( LiSaMulti_ctrl_voicepan )
             d->channelGain[which][i] = sqrt(d->channelGain[which][i]);
         }
 
-        //CK_FPRINTF_STDERR( "gain for channel %d and voice %d = %f\n", i, which, d->channelGain[which][i] );
+        // CK_FPRINTF_STDERR( "gain for channel %d and voice %d = %f\n", i, which, d->channelGain[which][i] );
     }
 
-    RETURN->v_float = (t_CKFLOAT)d->voicePan[which];
+    RETURN->v_float = d->voicePan[which];
 }
 
 
@@ -5397,4 +5626,41 @@ CK_DLL_CGET( LiSaMulti_cget_playing )
 CK_DLL_PMSG(LiSaMulti_pmsg )
 {
     return FALSE;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: Identity2_tickf()
+// desc: TICKF function ...
+//-----------------------------------------------------------------------------
+CK_DLL_TICKF( Identity2_tickf )
+{
+    // get "this"
+    Chuck_UGen * ugen = (Chuck_UGen *)SELF;
+
+    t_CKUINT nchans = ugen->m_num_outs;
+
+    // print input to tickf
+    for( t_CKUINT f = 0; f < nframes; f++ )
+    {
+        // look over chans
+        for( t_CKUINT c = 0; c < nchans; c++ )
+        {
+            // copy input to output
+            out[f*nchans+c] = in[f*nchans+c];
+        }
+
+        // printing (can be useful for observing multichan ugen logic)
+        // cerr << "inputs: ";
+        // for( t_CKUINT c = 0; c < nchans; c++ )
+        // { cerr << in[f*nchans+c] << " "; }
+        // cerr << "output: ";
+        // for( t_CKUINT c = 0; c < nchans; c++ )
+        // { cerr << out[f*nchans+c] << " "; }
+        // cerr << endl;
+    }
+
+    return TRUE;
 }

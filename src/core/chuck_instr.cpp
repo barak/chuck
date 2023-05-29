@@ -29,21 +29,19 @@
 // author: Ge Wang (ge@ccrma.stanford.edu | gewang@cs.princeton.edu)
 // date: Autumn 2002
 //-----------------------------------------------------------------------------
-#include <math.h>
-#include <limits.h>
-
+#include "chuck_instr.h"
 #include "chuck_type.h"
 #include "chuck_lang.h"
-#include "chuck_instr.h"
 #include "chuck_vm.h"
 #include "chuck_ugen.h"
 #include "chuck_dl.h"
 #include "chuck_errmsg.h"
 #include "chuck_globals.h" // added 1.4.1.0
-
 #include "util_math.h"
 #include "util_string.h"
 
+#include <math.h>
+#include <limits.h>
 #include <typeinfo>
 using namespace std;
 
@@ -54,9 +52,12 @@ using namespace std;
 // name: Chuck_Instr()
 // desc: base class constructor
 //-----------------------------------------------------------------------------
-Chuck_Instr::Chuck_Instr() {
+Chuck_Instr::Chuck_Instr()
+{
     // set linepos to 0 so we can tell later whether it has been set properly
     m_linepos = 0;
+    // default codestr
+    m_codestr = NULL;
 }
 
 
@@ -68,7 +69,29 @@ Chuck_Instr::Chuck_Instr() {
 //-----------------------------------------------------------------------------
 const char * Chuck_Instr::name() const
 {
-     return mini_type( typeid(*this).name() );
+#ifndef __CHUNREAL_ENGINE__
+    return mini_type( typeid(*this).name() );
+#else
+    // 1.5.0.0 (ge) | #chureal
+    // Unreal Engine seems to disable C++ run time type information
+    return "[chunreal type info disabled]";
+#endif // #ifndef __CHUNREAL_ENGINE__
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: set_codestr()
+// desc: set codestr associated with this instruction
+//       only certain instructions (e.g., start of stmts) have this
+//-----------------------------------------------------------------------------
+void Chuck_Instr::set_codestr( const string & str )
+{
+    // cleanup
+    SAFE_DELETE( m_codestr );
+    // allocate
+    m_codestr = new string( str );
 }
 
 
@@ -78,7 +101,8 @@ const char * Chuck_Instr::name() const
 // name: set_linepos()
 // desc: store line position for error messages
 //-----------------------------------------------------------------------------
-void Chuck_Instr::set_linepos(t_CKUINT linepos) {
+void Chuck_Instr::set_linepos(t_CKUINT linepos)
+{
     m_linepos = linepos;
 }
 
@@ -2045,6 +2069,23 @@ void Chuck_Instr_Reg_Push_Imm4::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
 // name: execute()
 // desc: ...
 //-----------------------------------------------------------------------------
+void Chuck_Instr_Reg_Push_Zero::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
+{
+    t_CKBYTE *& reg_sp = (t_CKBYTE *&)shred->reg->sp;
+
+    // push val into reg stack
+    memset( reg_sp, 0, m_val );
+    // move stack pointer
+    reg_sp += m_val;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: execute()
+// desc: ...
+//-----------------------------------------------------------------------------
 void Chuck_Instr_Reg_Dup_Last::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
 {
     t_CKUINT *& reg_sp = (t_CKUINT *&)shred->reg->sp;
@@ -3760,7 +3801,7 @@ error:
 
 
 static Chuck_Instr_Func_Call g_func_call;
-static Chuck_Instr_Func_Call_Member g_func_call_member( 0 );
+static Chuck_Instr_Func_Call_Member g_func_call_member( 0, NULL );
 //-----------------------------------------------------------------------------
 // name: call_pre_constructor()
 // desc: ...
@@ -3779,6 +3820,10 @@ inline void call_pre_constructor( Chuck_VM * vm, Chuck_VM_Shred * shred,
     push_( reg_sp, (t_CKUINT)pre_ctor );
     // push the stack offset
     push_( reg_sp, stack_offset );
+
+    // NOTE (1.5.0.0): pre-constructors by their nature have no arguments...
+    // if they did, they would need to clean up argument list, in the built-in/native
+    // func case, by setting g_func_call_member.m_func_ref with the appropriate func
 
     // call the function
     if( pre_ctor->native_func != 0 )
@@ -3818,19 +3863,19 @@ t_CKBOOL initialize_object( Chuck_Object * object, Chuck_Type * type )
     // copy the object's virtual table
     object->vtable->funcs = type->info->obj_v_table.funcs;
     // set the type reference
-    // TODO: reference count
     object->type_ref = type;
-    object->type_ref->add_ref();
+    // reference count
+    SAFE_ADD_REF(object->type_ref);
     // get the size
-    object->size = type->obj_size;
+    object->data_size = type->obj_size;
     // allocate memory
-    if( object->size )
+    if( object->data_size )
     {
         // check to ensure enough memory
-        object->data = new t_CKBYTE[object->size];
+        object->data = new t_CKBYTE[object->data_size];
         if( !object->data ) goto out_of_memory;
         // zero it out
-        memset( object->data, 0, object->size );
+        memset( object->data, 0, object->data_size );
     }
     else object->data = NULL;
 
@@ -3933,9 +3978,9 @@ Chuck_Object * instantiate_and_initialize_object( Chuck_Type * type, Chuck_VM_Sh
         // check type TODO: make this faster
         if( type->allocator )
             object = type->allocator( vm, shred, Chuck_DL_Api::Api::instance() );
-        #ifndef __DISABLE_FILEIO__
+        // #ifndef __DISABLE_FILEIO__
         else if( isa( type, vm->env()->t_fileio ) ) object = new Chuck_IO_File( vm );
-        #endif
+        // #endif
         else if( isa( type, vm->env()->t_event ) ) object = new Chuck_Event;
         else if( isa( type, vm->env()->t_string ) ) object = new Chuck_String;
         // TODO: is this ok?
@@ -3944,6 +3989,8 @@ Chuck_Object * instantiate_and_initialize_object( Chuck_Type * type, Chuck_VM_Sh
             object = new Chuck_VM_Shred;
             ((Chuck_VM_Shred * )object)->vm_ref = vm; // REFACTOR-2017
         }
+        // 1.5.0.0 (ge) added -- here my feeble brain starts leaking out of my eyeballs
+        else if( isa( type, vm->env()->t_class ) ) object = new Chuck_Type( vm->env(), te_class, type->name, type, type->size );
         // TODO: is this ok?
         else object = new Chuck_Object;
     }
@@ -4382,11 +4429,16 @@ void Chuck_Instr_AddRef_Object2::execute( Chuck_VM * vm, Chuck_VM_Shred * shred 
 
 //-----------------------------------------------------------------------------
 // name: execute()
-// desc: add one reference on object (added 1.3.0.0)
+// desc: ref-count increment the top of the register stack (added 1.3.0.0)
+//       1.5.0.0 (ge) additional notes...
+//       this is used to keep objects referenced while on stack;
+//       relevant for cases like `return obj;` where obj may need to
+//       released for the local stack AND need to be kept on the stack
+//       to be return; in this case, we need this additional add_ref();
+//       releasing obj from stack is responsibility of the caller
 //-----------------------------------------------------------------------------
 void Chuck_Instr_Reg_AddRef_Object3::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
 {
-    // ISSUE: 64-bit?
     // NOTE: this pointer is NOT a reference pointer
     t_CKUINT * reg_sp = (t_CKUINT *&)shred->reg->sp;
     Chuck_VM_Object * obj = NULL;
@@ -4398,7 +4450,7 @@ void Chuck_Instr_Reg_AddRef_Object3::execute( Chuck_VM * vm, Chuck_VM_Shred * sh
     // ge (2012 april): check for NULL (added 1.3.0.0)
     if( obj != NULL )
     {
-        // release
+        // add reference
         obj->add_ref();
     }
 }
@@ -4453,13 +4505,70 @@ void Chuck_Instr_Release_Object2::execute( Chuck_VM * vm, Chuck_VM_Shred * shred
 
 
 
+
+//-----------------------------------------------------------------------------
+// name: execute()
+// desc: release object reference + pop from reg stack | 1.5.0.0 (ge) added
+//       the variant assumes object pointer directly on stack (not offset)
+//       used to release returned object pointer after a function call;
+//       FYI the return value is conveyed on the reg stack; this undoes
+//       the addref before the return; see Chuck_Instr_Reg_AddRef_Object3
+//-----------------------------------------------------------------------------
+void Chuck_Instr_Release_Object3_Pop_Word::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
+{
+    t_CKUINT *& reg_sp = (t_CKUINT *&)shred->reg->sp;
+    Chuck_VM_Object * obj = NULL;
+
+    // pop
+    pop_( reg_sp, 1 );
+    // copy popped value into mem stack
+    obj = *( (Chuck_VM_Object **)(reg_sp) );
+    // ge (2012 april): check for NULL (added 1.3.0.0)
+    if( obj != NULL )
+    {
+        // release
+        obj->release();
+    }
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: execute()
+// desc: release object reference from reg stack | 1.5.0.0 (ge) added
+//       the variant assumes object pointer directly on stack (not offset)
+//       used to release objects on function arguments, specifically for
+//       built-in / imported (chugins) functions; code-defined functions
+//       do their own argument cleanup
+//-----------------------------------------------------------------------------
+void Chuck_Instr_Release_Object4::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
+{
+    // NOTE: this pointer is NOT a reference pointer
+    t_CKBYTE * mem_sp = (t_CKBYTE *&)shred->mem->sp;
+    Chuck_VM_Object * obj = NULL;
+
+    // move it
+    mem_sp += m_val;
+    // copy popped value into mem stack
+    obj = *( (Chuck_VM_Object **)(mem_sp) );
+    if( obj != NULL )
+    {
+        // release
+        obj->release();
+    }
+}
+
+
+
+
 #pragma mark === Function Calls ===
 
 
 
 //-----------------------------------------------------------------------------
 // name: execute()
-// desc: ...
+// desc: converts, in place on operand stack, a Func to its Code (instructions)
 //-----------------------------------------------------------------------------
 void Chuck_Instr_Func_To_Code::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
 {
@@ -4472,6 +4581,57 @@ void Chuck_Instr_Func_To_Code::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
     assert( func != NULL );
     // code
     *(reg_sp-1) = (t_CKUINT)func->code;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: func_release_args() | 1.5.0.0 (ge) added
+// desc: helper function to release objects an function arg list
+//       input: VM, args list, mem stack pointer
+//       context: this is designed for builtin/imported functions
+//                functions defined in chuck code do their own arg list cleanup
+//-----------------------------------------------------------------------------
+t_CKBOOL func_release_args( Chuck_VM * vm, a_Arg_List args, t_CKBYTE * mem_sp )
+{
+    // keep track of offset
+    t_CKUINT offset = 0;
+    // the type in question
+    Chuck_Type * type = NULL;
+    // object pointer
+    Chuck_VM_Object * object = NULL;
+
+    // loop over
+    while( args )
+    {
+        // get the type
+        type = args->type;
+        // check we have one!
+        if( type != NULL )
+        {
+            // is an object?
+            if( isobj( vm->env(), args->type) )
+            {
+                // get the object pointer
+                object = (Chuck_VM_Object *)(*(t_CKUINT *)(mem_sp+offset));
+                // check
+                if( object != NULL )
+                {
+                    // release it
+                    object->release();
+                }
+            }
+
+            // advance offset
+            offset += args->type->size;
+        }
+
+        // go
+        args = args->next;
+    }
+
+    return TRUE;
 }
 
 
@@ -4631,8 +4791,6 @@ void Chuck_Instr_Func_Call_Member::execute( Chuck_VM * vm, Chuck_VM_Shred * shre
         // call the function (added 1.3.0.0 -- Chuck_DL_Api::Api::instance())
         f( (Chuck_Object *)(*mem_sp), mem_sp + 1, &retval, vm, shred, Chuck_DL_Api::Api::instance() );
     }
-    // pop (TODO: check if this is right)
-    mem_sp -= push;
 
     // push the return
     // 1.3.1.0: check type to use kind instead of size
@@ -4640,6 +4798,18 @@ void Chuck_Instr_Func_Call_Member::execute( Chuck_VM * vm, Chuck_VM_Shred * shre
     {
         // push the return args
         push_( reg_sp, retval.v_uint );
+
+        // 1.5.0.0 (ge) | added -- ensure ref count
+        if( m_func_ref && isobj(vm->env(), m_func_ref->def->ret_type) )
+        {
+            // get return value as object reference
+            Chuck_VM_Object * obj = (Chuck_VM_Object *) retval.v_uint;
+            if( obj )
+            {
+                // always add reference to returned objects (should release outside)
+                obj->add_ref();
+            }
+        }
     }
     else if( m_val == kindof_FLOAT ) // ISSUE: 64-bit (fixed 1.3.1.0)
     {
@@ -4668,6 +4838,22 @@ void Chuck_Instr_Func_Call_Member::execute( Chuck_VM * vm, Chuck_VM_Shred * shre
     }
     else if( m_val == kindof_VOID ) { }
     else assert( FALSE );
+
+    // if we have a func def | 1.5.0.0 (ge) added
+    if( m_func_ref != NULL )
+    {
+        // cleanup / release objects on the arg list
+        // context: this should be done here for builtin/import functions
+        //          user-defined functions do their own arg list cleanup
+        // note: this is done after pushing the return value, in case the
+        //       return value is one of these args being released;
+        //          e.g., functions that pass through args;
+        //          e.g., string Sndbuf.read(string)
+        func_release_args( vm, m_func_ref->def->arg_list, (t_CKBYTE *)(mem_sp+1) );
+    }
+
+    // pop the stack pointer
+    mem_sp -= push;
 
     return;
 
@@ -4738,8 +4924,6 @@ void Chuck_Instr_Func_Call_Static::execute( Chuck_VM * vm, Chuck_VM_Shred * shre
     // (added 1.3.0.0 -- Chuck_DL_Api::Api::instance())
     // (added 1.4.1.0 -- base_type)
     f( (Chuck_Type *)(*mem_sp), mem_sp+1, &retval, vm, shred, Chuck_DL_Api::Api::instance() );
-    // clean up memory stack
-    mem_sp -= push;
 
     // push the return
     // 1.3.1.0: check type to use kind instead of size
@@ -4747,6 +4931,18 @@ void Chuck_Instr_Func_Call_Static::execute( Chuck_VM * vm, Chuck_VM_Shred * shre
     {
         // push the return args
         push_( reg_sp, retval.v_uint );
+
+        // 1.5.0.0 (ge) | added -- ensure ref count
+        if( m_func_ref && isobj(vm->env(), m_func_ref->def->ret_type) )
+        {
+            // get return value as object reference
+            Chuck_VM_Object * obj = (Chuck_VM_Object *) retval.v_uint;
+            if( obj )
+            {
+                // always add reference to returned objects (should release outside)
+                obj->add_ref();
+            }
+        }
     }
     else if( m_val == kindof_FLOAT ) // ISSUE: 64-bit (fixed 1.3.1.0)
     {
@@ -4775,6 +4971,22 @@ void Chuck_Instr_Func_Call_Static::execute( Chuck_VM * vm, Chuck_VM_Shred * shre
     }
     else if( m_val == kindof_VOID ) { }
     else assert( FALSE );
+
+    // if we have a func def | 1.5.0.0 (ge) added
+    if( m_func_ref != NULL )
+    {
+        // cleanup / release objects on the arg list
+        // context: this should be done here for builtin/import functions
+        //          user-defined functions do their own arg list cleanup
+        // note: this is done after pushing the return value, in case the
+        //       return value is one of these args being released;
+        //          e.g., functions that pass through args;
+        //          e.g., string Sndbuf.read(string)
+        func_release_args( vm, m_func_ref->def->arg_list, (t_CKBYTE *)(mem_sp+1) );
+    }
+
+    // pop the stack pointer
+    mem_sp -= push;
 
     return;
 
@@ -4997,8 +5209,8 @@ Chuck_Instr_Array_Init::Chuck_Instr_Array_Init( Chuck_Env * env, Chuck_Type * t,
     m_length = length;
     // copy
     m_type_ref = t;
-    // TODO: do this? remember?
-    // m_type_ref->add_ref();
+    // add reference
+    m_type_ref->add_ref();
     // type
     m_param_str = new char[64];
     // obj | REFACTOR-2017: added env
@@ -5038,8 +5250,7 @@ Chuck_Instr_Array_Init::~Chuck_Instr_Array_Init()
     delete [] m_param_str;
     m_param_str = NULL;
     // release
-    //m_type_ref->release();
-    m_type_ref = NULL;
+    SAFE_RELEASE( m_type_ref );
 }
 
 
@@ -5197,26 +5408,35 @@ out_of_memory:
 
 //-----------------------------------------------------------------------------
 // name: Chuck_Instr_Array_Alloc()
-// desc: ...
+// desc: allocate a chuck array
 //-----------------------------------------------------------------------------
-Chuck_Instr_Array_Alloc::Chuck_Instr_Array_Alloc( Chuck_Env * env, t_CKUINT depth, Chuck_Type * t,
-                                                  t_CKUINT offset, t_CKBOOL is_ref )
+Chuck_Instr_Array_Alloc::Chuck_Instr_Array_Alloc( Chuck_Env * env, t_CKUINT depth, Chuck_Type * contentType,
+                                                  t_CKUINT offset, t_CKBOOL is_ref, Chuck_Type * arrayType )
 {
     // set
     m_depth = depth;
-    // copy
-    m_type_ref = t;
+
+    // 1.5.0.0 (ge) now maintains two Chuck_Types: one for the array content;
+    // one for the array itself (which has depth > 0); the latter is so that
+    // array object can have a reference to the array type itself
+
+    // copy array content type, e.g., int
+    m_type_ref_content = contentType;
     // remember
-    // m_type_ref->add_ref();
-    // type
+    SAFE_ADD_REF( m_type_ref_content );
+    // remember the type of the array itself, e.g., int[][]
+    m_type_ref_array = arrayType;
+    SAFE_ADD_REF( m_type_ref_array );
+
+    // parameter string
     m_param_str = new char[64];
     // obj | REFACTOR-2017: added env
-    m_is_obj = isobj( env, m_type_ref );
+    m_is_obj = isobj( env, m_type_ref_content );
     // offset for pre constructor
     m_stack_offset = offset;
     // is object ref
     m_is_ref = is_ref;
-    const char * str = m_type_ref->c_name();
+    const char * str = m_type_ref_content->c_name();
     t_CKUINT len = strlen( str );
     // copy
     if( len < 64 )
@@ -5237,12 +5457,11 @@ Chuck_Instr_Array_Alloc::Chuck_Instr_Array_Alloc( Chuck_Env * env, t_CKUINT dept
 //-----------------------------------------------------------------------------
 Chuck_Instr_Array_Alloc::~Chuck_Instr_Array_Alloc()
 {
-    // delete
-    delete [] m_param_str;
-    m_param_str = NULL;
-    // release
-    //m_type_ref->release();
-    m_type_ref = NULL;
+    // delete | 1.5.0.0 (ge) convert to macro
+    SAFE_DELETE_ARRAY( m_param_str );
+    // release | 1.5.0.0 (ge) added
+    SAFE_RELEASE(m_type_ref_content);
+    SAFE_RELEASE(m_type_ref_array);
 }
 
 
@@ -5255,11 +5474,13 @@ Chuck_Instr_Array_Alloc::~Chuck_Instr_Array_Alloc()
 Chuck_Object * do_alloc_array( Chuck_VM * vm, // REFACTOR-2017: added
                                t_CKINT * capacity, const t_CKINT * top,
                                t_CKUINT kind, t_CKBOOL is_obj,
-                               t_CKUINT * objs, t_CKINT & index )
+                               t_CKUINT * objs, t_CKINT & index,
+                               Chuck_Type * type )
 {
     // not top level
-    Chuck_Array4 * base = NULL;
+    Chuck_Array4 * theBase = NULL;
     Chuck_Object * next = NULL;
+    Chuck_Type * typeNext = NULL;
     t_CKINT i = 0;
 
     // capacity
@@ -5272,8 +5493,8 @@ Chuck_Object * do_alloc_array( Chuck_VM * vm, // REFACTOR-2017: added
         // 1.3.1.0: look at type to use kind instead of size
         if( kind == kindof_INT ) // ISSUE: 64-bit (fixed 1.3.1.0)
         {
-            Chuck_Array4 * base = new Chuck_Array4( is_obj, *capacity );
-            if( !base ) goto out_of_memory;
+            Chuck_Array4 * baseX = new Chuck_Array4( is_obj, *capacity );
+            if( !baseX ) goto out_of_memory;
 
             // if object
             if( is_obj && objs )
@@ -5282,49 +5503,59 @@ Chuck_Object * do_alloc_array( Chuck_VM * vm, // REFACTOR-2017: added
                 for( i = 0; i < *capacity; i++ )
                 {
                     // add to array for later allocation
-                    objs[index++] = base->addr( i );
+                    objs[index++] = baseX->addr( i );
                 }
             }
 
-            // initialize object
-            initialize_object( base, vm->env()->t_array );
-            return base;
+            // initialize object | 1.5.0.0 (ge) use array type instead of base t_array
+            // for the object->type_ref to contain more specific information
+            initialize_object( baseX, type );
+            // initialize_object( baseX, vm->env()->t_array );
+            return baseX;
         }
         else if( kind == kindof_FLOAT ) // ISSUE: 64-bit (fixed 1.3.1.0)
         {
-            Chuck_Array8 * base = new Chuck_Array8( *capacity );
-            if( !base ) goto out_of_memory;
+            Chuck_Array8 * baseX = new Chuck_Array8( *capacity );
+            if( !baseX ) goto out_of_memory;
 
-            // initialize object
-            initialize_object( base, vm->env()->t_array );
-            return base;
+            // initialize object | 1.5.0.0 (ge) use array type instead of base t_array
+            // for the object->type_ref to contain more specific information
+            initialize_object( baseX, type );
+            // initialize_object( baseX, vm->env()->t_array );
+            return baseX;
         }
         else if( kind == kindof_COMPLEX ) // ISSUE: 64-bit (fixed 1.3.1.0)
         {
-            Chuck_Array16 * base = new Chuck_Array16( *capacity );
-            if( !base ) goto out_of_memory;
+            Chuck_Array16 * baseX = new Chuck_Array16( *capacity );
+            if( !baseX ) goto out_of_memory;
 
-            // initialize object
-            initialize_object( base, vm->env()->t_array );
-            return base;
+            // initialize object | 1.5.0.0 (ge) use array type instead of base t_array
+            // for the object->type_ref to contain more specific information
+            initialize_object( baseX, type );
+            // initialize_object( baseX, vm->env()->t_array );
+            return baseX;
         }
         else if( kind == kindof_VEC3 ) // 1.3.5.3
         {
-            Chuck_Array24 * base = new Chuck_Array24( *capacity );
-            if( !base ) goto out_of_memory;
+            Chuck_Array24 * baseX = new Chuck_Array24( *capacity );
+            if( !baseX ) goto out_of_memory;
 
-            // initialize object
-            initialize_object( base, vm->env()->t_array );
-            return base;
+            // initialize object | 1.5.0.0 (ge) use array type instead of base t_array
+            // for the object->type_ref to contain more specific information
+            initialize_object( baseX, type );
+            // initialize_object( baseX, vm->env()->t_array );
+            return baseX;
         }
         else if( kind == kindof_VEC4 ) // 1.3.5.3
         {
-            Chuck_Array32 * base = new Chuck_Array32( *capacity );
-            if( !base ) goto out_of_memory;
+            Chuck_Array32 * baseX = new Chuck_Array32( *capacity );
+            if( !baseX ) goto out_of_memory;
 
-            // initialize object
-            initialize_object( base, vm->env()->t_array );
-            return base;
+            // initialize object | 1.5.0.0 (ge) use array type instead of base t_array
+            // for the object->type_ref to contain more specific information
+            initialize_object( baseX, type );
+            // initialize_object( baseX, vm->env()->t_array );
+            return baseX;
         }
 
         // shouldn't get here
@@ -5332,23 +5563,38 @@ Chuck_Object * do_alloc_array( Chuck_VM * vm, // REFACTOR-2017: added
     }
 
     // not top level
-    base = new Chuck_Array4( TRUE, *capacity );
-    if( !base ) goto out_of_memory;
+    theBase = new Chuck_Array4( TRUE, *capacity );
+    if( !theBase) goto out_of_memory;
+
+    // construct type for next array level | 1.5.0.0 (ge) added
+    typeNext = type->copy( vm->env() );
+    // check
+    if( typeNext->array_depth == 0 ) goto internal_error_array_depth;
+    // minus the depth
+    typeNext->array_depth--;
 
     // allocate the next level
     for( i = 0; i < *capacity; i++ )
     {
         // the next | REFACTOR-2017: added vm
-        next = do_alloc_array( vm, capacity+1, top, kind, is_obj, objs, index );
+        next = do_alloc_array( vm, capacity+1, top, kind, is_obj, objs, index, typeNext );
         // error if NULL
         if( !next ) goto error;
         // set that, with ref count
-        base->set( i, (t_CKUINT)next );
+        theBase->set( i, (t_CKUINT)next );
     }
 
-    // initialize object
-    initialize_object( base, vm->env()->t_array );
-    return base;
+    // initialize object | 1.5.0.0 (ge) use array type instead of base t_array
+    // for the object->type_ref to contain more specific information
+    initialize_object( theBase, type );
+    // initialize_object( theBase, vm->env()->t_array );
+    return theBase;
+
+internal_error_array_depth:
+    // we have a big problem
+    CK_FPRINTF_STDERR(
+        "[chuck](VM): internal error: multi-dimensional array depth mismatch while allocating arrays...\n" );
+    goto error;
 
 out_of_memory:
     // we have a problem
@@ -5364,7 +5610,7 @@ negative_array_size:
 
 error:
     // base shouldn't have been ref counted
-    SAFE_DELETE( base );
+    SAFE_DELETE( theBase );
     return NULL;
 }
 
@@ -5441,9 +5687,8 @@ void Chuck_Instr_Array_Alloc::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
     ref = (t_CKUINT)do_alloc_array( vm,
         (t_CKINT *)(reg_sp - m_depth),
         (t_CKINT *)(reg_sp - 1),
-        getkindof(vm->env(), m_type_ref), // 1.3.1.0: changed; was 'm_type_ref->size'
-        m_is_obj,
-        obj_array, index
+        getkindof(vm->env(), m_type_ref_content), // 1.3.1.0: changed; was 'm_type_ref->size'
+        m_is_obj, obj_array, index, m_type_ref_array // 1.5.0.0: added m_type_ref_array
     );
 
     // pop the indices - this protects the contents of the stack
@@ -5498,6 +5743,22 @@ error:
 
 
 //-----------------------------------------------------------------------------
+// name: normalize_index()
+// desc: normalize index to allow for negative array indexing
+//       1.5.0.0 (nshaheed) added
+//-----------------------------------------------------------------------------
+static t_CKINT normalize_index( t_CKINT i, t_CKINT len )
+{
+    // a normal array index
+    if( i >= 0 ) return i;
+    // start with len-1 and keep going down
+    return len + i;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
 // name: execute()
 // desc: ...
 //-----------------------------------------------------------------------------
@@ -5507,6 +5768,7 @@ void Chuck_Instr_Array_Access::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
     t_CKUINT *& sp = (t_CKUINT *&)shred->reg->sp;
     // UNUSED: t_CKUINT *& reg_sp = sp;
     t_CKINT i = 0;
+    t_CKINT ni = 0; // normalized
     t_CKUINT val = 0;
     t_CKFLOAT fval = 0;
     t_CKCOMPLEX cval;
@@ -5529,17 +5791,19 @@ void Chuck_Instr_Array_Access::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
         Chuck_Array4 * arr = (Chuck_Array4 *)(*sp);
         // get index
         i = (t_CKINT)(*(sp+1));
+        // normalize index to allow for negative indexing | 1.5.0.0 (nshaheed) added
+        ni = normalize_index( i, arr->size() );
         // check if writing
         if( m_emit_addr ) {
             // get the addr
-            val = arr->addr( i );
+            val = arr->addr( ni );
             // exception
             if( !val ) goto array_out_of_bound;
             // push the addr
             push_( sp, val );
         } else {
             // get the value
-            if( !arr->get( i, &val ) )
+            if( !arr->get( ni, &val ) )
                 goto array_out_of_bound;
             // push the value
             push_( sp, val );
@@ -5551,17 +5815,19 @@ void Chuck_Instr_Array_Access::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
         Chuck_Array8 * arr = (Chuck_Array8 *)(*sp);
         // get index
         i = (t_CKINT)(*(sp+1));
+        // normalize index to allow for negative indexing
+        ni = normalize_index( i, arr->size() );
         // check if writing
         if( m_emit_addr ) {
             // get the addr
-            val = arr->addr( i );
+            val = arr->addr( ni );
             // exception
             if( !val ) goto array_out_of_bound;
             // push the addr
             push_( sp, val );
         } else {
             // get the value
-            if( !arr->get( i, &fval ) )
+            if( !arr->get( ni, &fval ) )
                 goto array_out_of_bound;
             // push the value
             push_( ((t_CKFLOAT *&)sp), fval );
@@ -5573,17 +5839,19 @@ void Chuck_Instr_Array_Access::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
         Chuck_Array16 * arr = (Chuck_Array16 *)(*sp);
         // get index
         i = (t_CKINT)(*(sp+1));
+        // normalize index to allow for negative indexing
+        ni = normalize_index( i, arr->size() );
         // check if writing
         if( m_emit_addr ) {
             // get the addr
-            val = arr->addr( i );
+            val = arr->addr( ni );
             // exception
             if( !val ) goto array_out_of_bound;
             // push the addr
             push_( sp, val );
         } else {
             // get the value
-            if( !arr->get( i, &cval ) )
+            if( !arr->get( ni, &cval ) )
                 goto array_out_of_bound;
             // push the value
             push_( ((t_CKCOMPLEX *&)sp), cval );
@@ -5594,18 +5862,20 @@ void Chuck_Instr_Array_Access::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
         // get array
         Chuck_Array24 * arr = (Chuck_Array24 *)(*sp);
         // get index
-        i = (t_CKINT)(*(sp+1));
+        i = (t_CKINT)(*(sp + 1));
+        // normalize index to allow for negative indexing
+        ni = normalize_index( i, arr->size() );
         // check if writing
         if( m_emit_addr ) {
             // get the addr
-            val = arr->addr( i );
+            val = arr->addr( ni );
             // exception
             if( !val ) goto array_out_of_bound;
             // push the addr
             push_( sp, val );
         } else {
             // get the value
-            if( !arr->get( i, &v3 ) )
+            if( !arr->get( ni, &v3 ) )
                 goto array_out_of_bound;
             // push the value
             push_( ((t_CKVEC3 *&)sp), v3 );
@@ -5617,17 +5887,19 @@ void Chuck_Instr_Array_Access::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
         Chuck_Array32 * arr = (Chuck_Array32 *)(*sp);
         // get index
         i = (t_CKINT)(*(sp+1));
+        // normalize index to allow for negative indexing
+        ni = normalize_index( i, arr->size() );
         // check if writing
         if( m_emit_addr ) {
             // get the addr
-            val = arr->addr( i );
+            val = arr->addr( ni );
             // exception
             if( !val ) goto array_out_of_bound;
             // push the addr
             push_( sp, val );
         } else {
             // get the value
-            if( !arr->get( i, &v4 ) )
+            if( !arr->get( ni, &v4 ) )
                 goto array_out_of_bound;
             // push the value
             push_( ((t_CKVEC4 *&)sp), v4 );
@@ -7444,17 +7716,27 @@ void Chuck_Instr_Hack::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
     if( m_type_ref->size == sz_INT && iskindofint(vm->env(), m_type_ref) ) // ISSUE: 64-bit (fixed 1.3.1.0)
     {
         t_CKINT * sp = (t_CKINT *)shred->reg->sp;
-        if( !isa( m_type_ref, vm->env()->t_string ) ||  *(sp-1) == 0 )
+        Chuck_Object * obj = ((Chuck_Object *)*(sp-1));
+        if( !isa( m_type_ref, vm->env()->t_string ) || *(sp-1) == 0 )
         {
             // print it
-            if( *(sp-1) == 0 && isa( m_type_ref, vm->env()->t_object ) )
-                CK_FPRINTF_STDERR( "null :(%s)\n", m_type_ref->c_name() );
+            if( isa( m_type_ref, vm->env()->t_object ) )
+            {
+                if( obj == NULL )
+                {
+                    CK_FPRINTF_STDERR( "null :(%s)\n", m_type_ref->c_name() );
+                }
+                else
+                {
+                    CK_FPRINTF_STDERR( "0x%lx :(%s|refcount=%d)\n", *(sp-1), m_type_ref->c_name(), obj->m_ref_count );
+                }
+            }
             else
-                CK_FPRINTF_STDERR( "%ld :(%s)\n", *(sp-1), m_type_ref->c_name() );
+                CK_FPRINTF_STDERR( "%d :(%s)\n", *(sp-1), m_type_ref->c_name() );
         }
         else
         {
-            CK_FPRINTF_STDERR( "\"%s\" : (%s)\n", ((Chuck_String *)*(sp-1))->str().c_str(), m_type_ref->c_name() );
+            CK_FPRINTF_STDERR( "\"%s\" :(%s)\n", ((Chuck_String *)obj)->str().c_str(), m_type_ref->c_name() );
         }
     }
     else if( m_type_ref->size == sz_FLOAT ) // ISSUE: 64-bit (fixed 1.3.1.0)
@@ -7576,11 +7858,12 @@ void Chuck_Instr_Gack::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
             {
                 if( isa( type, vm->env()->t_object ) )
                 {
+                    Chuck_Object * obj = ((Chuck_Object *)(*sp));
                     // print it
                     if( *(sp) == 0 )
                         CK_FPRINTF_STDERR( "null " );
                     else
-                        CK_FPRINTF_STDERR( "0x%lx ", *(sp) );
+                        CK_FPRINTF_STDERR( "0x%lx (refcount=%d)", *(sp), obj->m_ref_count );
                 }
                 else
                 {

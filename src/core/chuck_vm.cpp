@@ -35,12 +35,12 @@
 #include "chuck_type.h"
 #include "chuck_dl.h"
 #include "chuck_globals.h" // added 1.4.1.0 (jack)
+#include "chuck_errmsg.h"
 
 #ifndef __DISABLE_SERIAL__
 #include "chuck_io.h"
 #endif
 
-#include "chuck_errmsg.h"
 #include "ugen_xxx.h"
 #include "util_buffers.h"
 
@@ -56,11 +56,16 @@
 using namespace std;
 
 #if defined(__PLATFORM_WIN32__)
-  #include <windows.h>
+  #ifndef __CHUNREAL_ENGINE__
+    #include <windows.h>
+  #else
+    // 1.5.0.0 (ge) | #chunreal
+    #include "Windows/MinWindows.h"
+  #endif // #ifndef __CHUNREAL_ENGINE__
 #else
   #include <unistd.h>
   #include <pthread.h>
-#endif
+#endif // #if defined(__PLATFORM_WIN32__)
 
 // uncomment to compile VM debug messages
 #define CK_VM_DEBUG_ENABLE (0)
@@ -272,11 +277,6 @@ t_CKBOOL Chuck_VM::initialize_synthesis( )
     }
 
     // log
-    EM_log( CK_LOG_SYSTEM, "initializing synthesis engine..." );
-    // push indent
-    EM_pushlog();
-
-    // log
     EM_log( CK_LOG_SEVERE, "initializing 'dac'..." );
     // allocate dac and adc (REFACTOR-2017: g_t_dac changed to env()->t_dac)
     env()->t_dac->ugen_info->num_outs =
@@ -317,9 +317,6 @@ t_CKBOOL Chuck_VM::initialize_synthesis( )
     m_shreduler->m_bunghole = m_bunghole;
     m_shreduler->m_num_dac_channels = m_num_dac_channels;
     m_shreduler->m_num_adc_channels = m_num_adc_channels;
-
-    // pop indent
-    EM_poplog();
 
     return TRUE;
 }
@@ -484,20 +481,22 @@ t_CKBOOL Chuck_VM::compute()
     // global manager added 1.4.1.0 (jack)
     m_globals_manager->handle_global_queue_messages();
 
-    // iteration until no more shreds/events/messages
+    // iterate until no more shreds/events/messages
     while( iterate )
     {
         // get the shreds queued for 'now'
-        while(( shred = m_shreduler->get() ))
+        shred = m_shreduler->get();
+        // run all shreds waiting to run 'now'
+        while( shred != NULL )
         {
             // set the current time of the shred
             shred->now = shred->wake_time;
-
             // track shred activation
             CK_TRACK( Chuck_Stats::instance()->activate_shred( shred ) );
 
             // run the shred
-            if( !shred->run( this ) )
+            // 1.5.0.0 (ge) add check for shred->is_done, which flags a shred to exit
+            if( shred->is_done || !shred->run( this ) )
             {
                 // track shred deactivation
                 CK_TRACK( Chuck_Stats::instance()->deactivate_shred( shred ) );
@@ -509,9 +508,8 @@ t_CKBOOL Chuck_VM::compute()
 
             // track shred deactivation
             CK_TRACK( if( shred ) Chuck_Stats::instance()->deactivate_shred( shred ) );
-
-            // zero out
-            shred = NULL;
+            // get next shred queued for 'now'
+            shred = m_shreduler->get();
         }
 
         // set to false for now
@@ -2158,7 +2156,7 @@ void Chuck_VM_Shreduler::advance( t_CKINT N )
 
 //-----------------------------------------------------------------------------
 // name: get()
-// desc: ...
+// desc: get the next shred shreduled to run 'now'
 //-----------------------------------------------------------------------------
 Chuck_VM_Shred * Chuck_VM_Shreduler::get( )
 {
@@ -2336,7 +2334,7 @@ Chuck_VM_Shred * Chuck_VM_Shreduler::lookup( t_CKUINT xid )
 struct SortByID
 {
     bool operator() ( const Chuck_VM_Shred * lhs, const Chuck_VM_Shred * rhs )
-    {    return lhs->xid < rhs->xid; }
+    { return lhs->xid < rhs->xid; }
 };
 
 
@@ -2384,8 +2382,8 @@ void Chuck_VM_Shreduler::status( Chuck_VM_Status * status )
     }
 
     // get current shred
-    if( ( temp = m_current_shred ) )
-        list.push_back( temp );
+    temp = m_current_shred;
+    if( temp ) list.push_back( temp );
 
     // sort the list
     SortByID byid;
