@@ -25,6 +25,10 @@ override_dh_auto_install:
 override_dh_installchangelogs:
 	dh_installchangelogs VERSIONS
 
+execute_after_dh_installexamples:
+	@echo "Symbolic link duplicate audio files."
+	jdupes --recurse --link-soft debian/chuck-data/usr/share/doc/chuck-data/examples
+
 override_dh_compress:
 	dh_compress -X.wav -X.ck
 

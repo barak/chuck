@@ -14,6 +14,7 @@ Build-Depends: debhelper-compat (= 13),
     libjack-dev,
     libpulse-dev,
     libsndfile1-dev,
+    jdupes,
 Priority: optional
 Section: sound
 
