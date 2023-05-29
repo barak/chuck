@@ -1,3 +1,10 @@
+chuck (1.5.0.0-1) unstable; urgency=medium
+
+  * New upstream version
+  * Remove upstreamed quilt patches
+
+ -- Barak A. Pearlmutter <bap@debian.org>  Mon, 29 May 2023 11:39:29 +0100
+
 chuck (1.4.2.0-1) unstable; urgency=medium
 
   * Patch to #include <limits.h> instead of <linux/limits.h>
