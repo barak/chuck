@@ -1,0 +1,204 @@
+From: "Barak A. Pearlmutter" <barak+git@pearlmutter.net>
+Date: Mon, 29 May 2023 12:47:58 +0100
+Subject: typos
+
+---
+ VERSIONS                                | 4 ++--
+ examples/ai/word2vec/word2vec-prompt.ck | 2 +-
+ src/core/chuck_io.cpp                   | 6 +++---
+ src/core/chuck_lang.cpp                 | 2 +-
+ src/core/chuck_otf.cpp                  | 2 +-
+ src/core/dirent_win32.h                 | 2 +-
+ src/core/lo/lo_types.h                  | 6 +++---
+ src/core/rtmidi.h                       | 8 ++++----
+ src/core/ulib_ai.cpp                    | 2 +-
+ src/core/ulib_machine.cpp               | 2 +-
+ src/host/RtAudio/RtAudio.h              | 2 +-
+ 11 files changed, 19 insertions(+), 19 deletions(-)
+
+diff --git a/VERSIONS b/VERSIONS
+index 21f0c7b..2178574 100644
+--- a/VERSIONS
++++ b/VERSIONS
+@@ -198,7 +198,7 @@ Music Conference/. https://mcd.stanford.edu/publish/files/2007-icmc-uana.pdf
+ - (added) MLP [ChAI] (thanks Yikai Li)
+     |- a multilayer perceptron (MLP)--a basic artificial neural 
+        network--that maps an input layer to an output layer across a 
+-       number of fully-connected hidden layers. This implemention can be 
++       number of fully-connected hidden layers. This implementation can be 
+        trained either 1) by using one of the comprehensive .train() 
+        functions OR 2) by iteratively calling .forward() and .backprop() 
+        for each input-output observation, and using .shuffle() for each 
+@@ -421,7 +421,7 @@ Music Conference/. https://mcd.stanford.edu/publish/files/2007-icmc-uana.pdf
+     string baseName();
+         Return the base name of this Type. The base of name of an array Type is the type without the array dimensions (e.g., base name of 'int[][]' is 'int')
+     string origin();
+-        Return a string decribing where this Type was defined (e.g., "builtin", "chugin", "cklib", "user").
++        Return a string describing where this Type was defined (e.g., "builtin", "chugin", "cklib", "user").
+     Type parent();
+         Return this Type's parent Type; returns null if this Type is 'Object'.
+     static Type find( string typeName );
+diff --git a/examples/ai/word2vec/word2vec-prompt.ck b/examples/ai/word2vec/word2vec-prompt.ck
+index 37812c3..c208537 100644
+--- a/examples/ai/word2vec/word2vec-prompt.ck
++++ b/examples/ai/word2vec/word2vec-prompt.ck
+@@ -107,7 +107,7 @@ fun int execute( string line[] )
+     {
+         <<< "    available word2vec2chuck commands:", "" >>>;
+         <<< "       load / l-- load a pre-trained model", "" >>>;
+-        <<< "       eval / e -- evalute a word vector expression", "" >>>;
++        <<< "       eval / e -- evaluate a word vector expression", "" >>>;
+         <<< "       analog / a-- query a logical analogy", "" >>>;
+         <<< "       vector / v -- display vector associated with a word", "" >>>;
+         <<< "       go / g -- from a word to another across a duration", "" >>>;
+diff --git a/src/core/chuck_io.cpp b/src/core/chuck_io.cpp
+index 5da06b3..cbed56c 100644
+--- a/src/core/chuck_io.cpp
++++ b/src/core/chuck_io.cpp
+@@ -900,12 +900,12 @@ t_CKBOOL init_class_HID( Chuck_Env * env )
+         return FALSE;
+ 
+     // add member variable
+-    doc = "Device type that produced the messsage.";
++    doc = "Device type that produced the message.";
+     HidMsg_offset_device_type = type_engine_import_mvar( env, "int", "deviceType", FALSE, doc.c_str() );
+     if( HidMsg_offset_device_type == CK_INVALID_OFFSET ) goto error;
+ 
+     // add member variable
+-    doc = "Device number that produced the messsage.";
++    doc = "Device number that produced the message.";
+     HidMsg_offset_device_num = type_engine_import_mvar( env, "int", "deviceNum", FALSE, doc.c_str() );
+     if( HidMsg_offset_device_num == CK_INVALID_OFFSET ) goto error;
+ 
+@@ -930,7 +930,7 @@ t_CKBOOL init_class_HID( Chuck_Env * env )
+     if( HidMsg_offset_fdata == CK_INVALID_OFFSET ) goto error;
+ 
+     // add member variable
+-    doc = "Time when the HidMsg occured, relative to the start of the file.";
++    doc = "Time when the HidMsg occurred, relative to the start of the file.";
+     HidMsg_offset_when = type_engine_import_mvar( env, "time", "when", FALSE, doc.c_str() );
+     if( HidMsg_offset_when == CK_INVALID_OFFSET ) goto error;
+ 
+diff --git a/src/core/chuck_lang.cpp b/src/core/chuck_lang.cpp
+index 700d183..eb08269 100644
+--- a/src/core/chuck_lang.cpp
++++ b/src/core/chuck_lang.cpp
+@@ -1191,7 +1191,7 @@ t_CKBOOL init_class_type( Chuck_Env * env, Chuck_Type * type )
+ 
+     // add origin()
+     func = make_new_mfun( "string", "origin", type_origin );
+-    func->doc = "return a string decribing where this Type was defined (e.g., \"builtin\", \"chugin\", \"cklib\", \"user\").";
++    func->doc = "return a string describing where this Type was defined (e.g., \"builtin\", \"chugin\", \"cklib\", \"user\").";
+     if( !type_engine_import_mfun( env, func ) ) goto error;
+ 
+     // add find()
+diff --git a/src/core/chuck_otf.cpp b/src/core/chuck_otf.cpp
+index a56a689..d521293 100644
+--- a/src/core/chuck_otf.cpp
++++ b/src/core/chuck_otf.cpp
+@@ -648,7 +648,7 @@ void * otf_cb( void * p )
+         // REFACTOR-2017: change g_sock to per-VM socket
+         client = ck_accept( carrier->otf_socket );
+ 
+-        // check for thread shutdown, potentially occured during ck_accept
++        // check for thread shutdown, potentially occurred during ck_accept
+         if(!carrier->otf_thread)
+             break;
+ 
+diff --git a/src/core/dirent_win32.h b/src/core/dirent_win32.h
+index 1e92536..63bbba2 100644
+--- a/src/core/dirent_win32.h
++++ b/src/core/dirent_win32.h
+@@ -202,7 +202,7 @@ readdir(
+   } else {
+     /* read next directory entry from disk */
+     if (FindNextFileA (dirp->search_handle, &dirp->current.data) == FALSE) {
+-      /* the very last file has been processed or an error occured */
++      /* the very last file has been processed or an error occurred */
+       FindClose (dirp->search_handle);
+       dirp->search_handle = INVALID_HANDLE_VALUE;
+       return NULL;
+diff --git a/src/core/lo/lo_types.h b/src/core/lo/lo_types.h
+index e77c7bd..ae5d519 100644
+--- a/src/core/lo/lo_types.h
++++ b/src/core/lo/lo_types.h
+@@ -99,8 +99,8 @@ typedef void *lo_server_thread;
+  * On callback the paramters will be set to the following values:
+  *
+  * \param num An error number that can be used to identify this condition.
+- * \param msg An error message describing the condidtion.
+- * \param where A string describing the place the error occured - typically
++ * \param msg An error message describing the condition.
++ * \param where A string describing the place the error occurred - typically
+  * either a function call or method path.
+  */
+ typedef void (*lo_err_handler)(int num, const char *msg, const char *where);
+@@ -127,7 +127,7 @@ typedef void (*lo_err_handler)(int num, const char *msg, const char *where);
+  * found in argv[0]->f.
+  * \param argc The number of argumets received.
+  * \param msg A structure containing the original raw message as received. No
+- * type coercion will have occured and the data will be in OSC byte order
++ * type coercion will have occurred and the data will be in OSC byte order
+  * (bigendian).
+  * \param user_data This contains the user_data value passed in the call to
+  * lo_server_thread_add_method.
+diff --git a/src/core/rtmidi.h b/src/core/rtmidi.h
+index b15150c..34e6758 100644
+--- a/src/core/rtmidi.h
++++ b/src/core/rtmidi.h
+@@ -63,12 +63,12 @@ public:
+         UNSPECIFIED,       /*!< The default, unspecified error type. */
+         NO_DEVICES_FOUND,  /*!< No devices found on system. */
+         INVALID_DEVICE,    /*!< An invalid device ID was specified. */
+-        MEMORY_ERROR,      /*!< An error occured during memory allocation. */
++        MEMORY_ERROR,      /*!< An error occurred during memory allocation. */
+         INVALID_PARAMETER, /*!< An invalid parameter was specified to a function. */
+         INVALID_USE,       /*!< The function was called incorrectly. */
+-        DRIVER_ERROR,      /*!< A system driver error occured. */
+-        SYSTEM_ERROR,      /*!< A system error occured. */
+-        THREAD_ERROR       /*!< A thread error occured. */
++        DRIVER_ERROR,      /*!< A system driver error occurred. */
++        SYSTEM_ERROR,      /*!< A system error occurred. */
++        THREAD_ERROR       /*!< A thread error occurred. */
+     };
+ 
+     //! The constructor.
+diff --git a/src/core/ulib_ai.cpp b/src/core/ulib_ai.cpp
+index 0d988bb..eeb6140 100644
+--- a/src/core/ulib_ai.cpp
++++ b/src/core/ulib_ai.cpp
+@@ -1031,7 +1031,7 @@ DLL_QUERY libai_query( Chuck_DL_Query * QUERY )
+     //---------------------------------------------------------------------
+     // doc string
+     doc =
+-        "a multilayer perceptron (MLP)--a basic artificial neural network--that maps an input layer to an output layer across a number of fully-connected hidden layers. This implemention can be trained either 1) by using one of the comprehensive .train() functions OR 2) by iteratively calling .forward() and .backprop() for each input-output observation, and using .shuffle() for each epoch. Commonly used for regression or classification.";
++        "a multilayer perceptron (MLP)--a basic artificial neural network--that maps an input layer to an output layer across a number of fully-connected hidden layers. This implementation can be trained either 1) by using one of the comprehensive .train() functions OR 2) by iteratively calling .forward() and .backprop() for each input-output observation, and using .shuffle() for each epoch. Commonly used for regression or classification.";
+ 
+     // begin class definition
+     if( !type_engine_import_class_begin( env, "MLP", "Object", env->global(), MLP_ctor, MLP_dtor, doc.c_str() ) )
+diff --git a/src/core/ulib_machine.cpp b/src/core/ulib_machine.cpp
+index 60c1903..0fb642d 100644
+--- a/src/core/ulib_machine.cpp
++++ b/src/core/ulib_machine.cpp
+@@ -90,7 +90,7 @@ DLL_QUERY machine_query( Chuck_DL_Query * QUERY )
+     // class
+     QUERY->begin_class( QUERY, "Machine", "Object" );
+     // documentation
+-    QUERY->doc_class( QUERY, "Machine is ChucK runtime interface to the virtual machine. This interface can be used to manage shreds, evalute code, set log levels, etc. Machine's shred commands are similar to the On-the-fly Programming Commands, except these are invoked from within a ChucK program, and are subject to the timing mechanism." );
++    QUERY->doc_class( QUERY, "Machine is ChucK runtime interface to the virtual machine. This interface can be used to manage shreds, evaluate code, set log levels, etc. Machine's shred commands are similar to the On-the-fly Programming Commands, except these are invoked from within a ChucK program, and are subject to the timing mechanism." );
+ 
+ #ifndef __DISABLE_OTF_SERVER__
+     // add add
+diff --git a/src/host/RtAudio/RtAudio.h b/src/host/RtAudio/RtAudio.h
+index c4d2974..1d31625 100644
+--- a/src/host/RtAudio/RtAudio.h
++++ b/src/host/RtAudio/RtAudio.h
+@@ -213,7 +213,7 @@ enum RtAudioErrorType {
+   RTAUDIO_NO_DEVICES_FOUND,  /*!< No devices found on system. */
+   RTAUDIO_INVALID_DEVICE,    /*!< An invalid device ID was specified. */
+   RTAUDIO_DEVICE_DISCONNECT, /*!< A device in use was disconnected. */
+-  RTAUDIO_MEMORY_ERROR,      /*!< An error occured during memory allocation. */
++  RTAUDIO_MEMORY_ERROR,      /*!< An error occurred during memory allocation. */
+   RTAUDIO_INVALID_PARAMETER, /*!< An invalid parameter was specified to a function. */
+   RTAUDIO_INVALID_USE,       /*!< The function was called incorrectly. */
+   RTAUDIO_DRIVER_ERROR,      /*!< A system driver error occurred. */
