@@ -35,6 +35,7 @@
 //-----------------------------------------------------------------------------
 #include "chuck_audio.h"
 #include "chuck_errmsg.h"
+#include "util_string.h"
 #include "util_thread.h"
 #include <limits.h>
 #include "rtmidi.h"
@@ -48,16 +49,12 @@
 #endif
 
 
-
-
 // sample
 #if defined(__CHUCK_USE_64_BIT_SAMPLE__)
 #define CK_RTAUDIO_FORMAT RTAUDIO_FLOAT64
 #else
 #define CK_RTAUDIO_FORMAT RTAUDIO_FLOAT32
 #endif
-
-
 
 
 // real-time watch dog
@@ -72,8 +69,6 @@ t_CKUINT g_watchdog_countermeasure_priority = 0;
 #endif
 // watchdog timeout
 t_CKFLOAT g_watchdog_timeout = 0.5;
-
-
 
 
 // static initialization
@@ -101,51 +96,82 @@ f_audio_cb ChuckAudio::m_audio_cb = NULL;
 void * ChuckAudio::m_cb_user_data = NULL;
 
 
-static RtAudio::Api driverNameToApi(char const *driver)
+
+
+//-----------------------------------------------------------------------------
+// global symbols expected from RtAudio | 1.5.0.1 (ge) added
+//-----------------------------------------------------------------------------
+extern "C" const unsigned int rtaudio_num_compiled_apis;
+extern "C" const unsigned int rtaudio_compiled_apis[];
+extern "C" const char* rtaudio_api_names[][2];
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: driverNameToApi()
+// desc: look up from driver name to API/driver
+//-----------------------------------------------------------------------------
+static RtAudio::Api driverNameToApi( const char * driver )
 {
     RtAudio::Api api = RtAudio::UNSPECIFIED;
-    if(driver)
+    if( driver )
     {
+        // get lowercase version
+        std::string driverLower = ::tolower(::trim(driver));
+        // from what is available, match by driver name
     #if defined(__WINDOWS_ASIO__)
-        if(!strcmp(driver, "ASIO") || !strcmp(driver, "asio") || !strcmp(driver, "Asio"))
+        if( driverLower == "asio" )
             api = RtAudio::WINDOWS_ASIO;
-        else
     #endif
     #if defined(__WINDOWS_DS__)
-        if(!strcmp(driver, "DS") || !strcmp(driver, "ds") || !strcmp(driver, "Ds"))
+        if( driverLower == "ds" || driverLower == "directsound" )
             api = RtAudio::WINDOWS_DS;
     #endif
     #if defined(__WINDOWS_WASAPI__)
-        if(!strcmp(driver, "WASAPI") || !strcmp(driver, "wasapi") || !strcmp(driver, "Wasapi"))
+        if( driverLower == "wasapi" )
             api = RtAudio::WINDOWS_WASAPI;
     #endif
     #if defined(__LINUX_ALSA__)
-        if(!strcmp(driver, "ALSA") || !strcmp(driver, "alsa") || !strcmp(driver, "Alsa")) // should match apiToDriverName
+        if( driverLower == "alsa" )
             api = RtAudio::LINUX_ALSA;
     #endif
     #if defined(__LINUX_PULSE__)
-        if(!strcmp(driver, "Pulse") || !strcmp(driver, "pulse") || !strcmp(driver, "PULSE"))
-            api = RtAudio:: LINUX_PULSE;
+        if( driverLower == "pulse" )
+            api = RtAudio::LINUX_PULSE;
     #endif
     #if defined(__UNIX_JACK__)
-        if(!strcmp(driver, "Jack") || !strcmp(driver, "jack") || !strcmp(driver, "JACK"))
-            api = RtAudio:: UNIX_JACK;
+        if( driverLower == "jack" )
+            api = RtAudio::UNIX_JACK;
+    #endif
+    #if defined(__MACOSX_CORE__)
+        if( driverLower == "coreaudio" || driverLower == "core" )
+            api = RtAudio::MACOSX_CORE;
     #endif
         // XXX: add swap between ALSA, PULSE, OSS? and JACK
-        if(api == RtAudio::UNSPECIFIED) 
+        if( api == RtAudio::UNSPECIFIED ) 
         {
-            EM_error2( 0, "unsupported audio driver: %s", driver);
+            EM_error2( 0, "unsupported audio driver: %s", driver );
         }
     }
 
+    // 1.5.0.0 (nshaheed) If the audio driver is UNSPECIFIED then
+    // return a default driver. This will depend on OS and, in the
+    // case of linux, which drivers chuck is being compiled with.
     if(api == RtAudio::UNSPECIFIED)
     {
     #if defined(__PLATFORM_WIN32__)
         // traditional chuck default behavior:
         // DIRECT SOUND is most general albeit high-latency
-        api = RtAudio::WINDOWS_DS; 
-    #elif defined(__PLATFORM_LINUX__)
+        api = RtAudio::WINDOWS_DS;
+    #elif defined(__PLATFORM_LINUX__) && defined(__LINUX_PULSE__)
         api = RtAudio::LINUX_PULSE;
+    #elif defined(__PLATFORM_LINUX__) && defined(__LINUX_ALSA__)
+        api = RtAudio::LINUX_ALSA;
+    #elif defined(__PLATFORM_LINUX__) && defined(__UNIX_JACK__)
+        api = RtAudio::UNIX_JACK;
+    #elif defined(__MACOSX_CORE__)
+        api = RtAudio::MACOSX_CORE;
     #endif
     }
     return api;
@@ -158,10 +184,10 @@ static RtAudio::Api driverNameToApi(char const *driver)
 // name: apiToDriverName()
 // desc: get driver name from API
 //-----------------------------------------------------------------------------
-static char const * apiToDriverName( RtAudio::Api api )
+static const char * apiToDriverName( RtAudio::Api api )
 {
-    static char const * drivers[] = {
-        "system default",
+    static const char * const drivers[] = {
+        "(Unspecified)",
         "ALSA",
         "Pulse",
         "OSS",
@@ -169,12 +195,16 @@ static char const * apiToDriverName( RtAudio::Api api )
         "CoreAudio",
         "WASAPI",
         "ASIO",
-        "DS", // DirectSound
-        "DUMMY",
-        "invalid"
+        "DirectSound", // DirectSound
+        "(DUMMY)"
     };
 
-    return drivers[(int)api];
+    // cast and check
+    t_CKINT index = (t_CKINT)api;
+    if( index < 0 || index >= sizeof(drivers) / sizeof(const char *) ) return NULL;
+
+    // return
+    return drivers[index];
 }
 
 
@@ -220,25 +250,33 @@ void print( const RtAudio::DeviceInfo & info )
     }
 }
 
-/* this is the RtAudio error handler --- */
-static void rtAudioErrorHandler(
-    RtAudioErrorType t,
-    const std::string &errorText)
+
+
+
+//-----------------------------------------------------------------------------
+// name: rtAudioErrorHandler()
+// desc: the RtAudio error handler
+//-----------------------------------------------------------------------------
+static void rtAudioErrorHandler( RtAudioErrorType t, const std::string & errorText)
 {
     // problem finding audio devices, most likely
     EM_error2b( 0, "%s", errorText.c_str() );
 }
 
 
+
+
 //-----------------------------------------------------------------------------
 // name: probe()
-// desc: ...
+// desc: probe audio devices by driver
 //-----------------------------------------------------------------------------
-void ChuckAudio::probe( char const * driver )
+void ChuckAudio::probe( const char * driver )
 {
-    RtAudio::Api api = driverNameToApi( driver ); // handles driver=NULL case
-    char const * dnm = apiToDriverName( api );
-    // rtaduio pointer
+    // get the audio driver enum by name; handles driver == NULL case
+    RtAudio::Api api = driverNameToApi( driver );
+    // go back from driver enum to driver name
+    const char * dnm = apiToDriverName( api );
+    // rtaudio pointer
     RtAudio * audio = NULL;
     // device info struct
     RtAudio::DeviceInfo info;
@@ -293,7 +331,7 @@ void ChuckAudio::probe( char const * driver )
 // desc: get device number by name; needs_dac/adc prompts further checks on
 //       requested device having > 0 channels
 //-----------------------------------------------------------------------------
-t_CKINT ChuckAudio::device_named( char const * driver,
+t_CKINT ChuckAudio::device_named( const char * driver,
                                   const std::string & name,
                                   t_CKBOOL needs_dac,
                                   t_CKBOOL needs_adc )
@@ -303,7 +341,7 @@ t_CKINT ChuckAudio::device_named( char const * driver,
     // device info struct
     RtAudio::DeviceInfo info;
     RtAudio::Api api = driverNameToApi(driver); // handles driver=NULL case
-    // char const * dnm = apiToDriverName(api);
+    // const char * dnm = apiToDriverName(api);
     
     // allocate RtAudio
     audio = new RtAudio(api, rtAudioErrorHandler);
@@ -365,6 +403,88 @@ t_CKINT ChuckAudio::device_named( char const * driver,
     
     // done
     return device_no;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: defaultDriverApi()
+// desc: get default audio driver number, i.e., RtAudio::Api enum
+//-----------------------------------------------------------------------------
+RtAudio::Api ChuckAudio::defaultDriverApi()
+{
+    return driverNameToApi( NULL );
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: defaultDriverName()
+// desc: get default audio driver name
+//-----------------------------------------------------------------------------
+const char * ChuckAudio::defaultDriverName()
+{
+    return driverApiToName( defaultDriverApi() );
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: driverNameToApi()
+// desc: get API/driver enum
+//-----------------------------------------------------------------------------
+RtAudio::Api ChuckAudio::driverNameToApi( const char * driver )
+{
+    // pass it on
+    return ::driverNameToApi( driver );
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: driverApiToName()
+// desc: get API/driver name
+//-----------------------------------------------------------------------------
+const char * ChuckAudio::driverApiToName( t_CKUINT num )
+{
+    // pass it on
+    return apiToDriverName( (RtAudio::Api)num );
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: numDrivers()
+// desc: get number of compiled audio driver APIs
+//-----------------------------------------------------------------------------
+t_CKUINT ChuckAudio::numDrivers()
+{
+    return (t_CKUINT)rtaudio_num_compiled_apis;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: getDriver()
+// desc: get info on a particular driver
+//-----------------------------------------------------------------------------
+ChuckAudioDriverInfo ChuckAudio::getDriverInfo( t_CKUINT n )
+{
+    // check
+    if( n >= numDrivers() ) return ChuckAudioDriverInfo();
+
+    ChuckAudioDriverInfo info;
+    info.driver = rtaudio_compiled_apis[n];
+    info.name = rtaudio_api_names[info.driver][0];
+    info.userFriendlyName = rtaudio_api_names[info.driver][1];
+
+    return info;
 }
 
 
@@ -603,7 +723,7 @@ t_CKBOOL ChuckAudio::initialize( t_CKUINT dac_device,
                                  f_audio_cb callback,
                                  void * data,
                                  t_CKBOOL force_srate,
-                                 char const * driver )
+                                 const char * driver )
 {
     // check if already initialized
     if( m_init ) return FALSE;
@@ -644,7 +764,7 @@ t_CKBOOL ChuckAudio::initialize( t_CKUINT dac_device,
 
     // allocate RtAudio
     RtAudio::Api api = driverNameToApi(driver);
-    char const *dnm = apiToDriverName(api);
+    const char * dnm = apiToDriverName(api);
     RtAudioErrorType code = RTAUDIO_NO_ERROR;
     m_rtaudio = new RtAudio(api, rtAudioErrorHandler);
     if(!m_rtaudio)
