@@ -1,3 +1,10 @@
+chuck (1.5.0.2-1) unstable; urgency=medium
+
+  * New upstream version
+  * Update some documentation file paths
+
+ -- Barak A. Pearlmutter <bap@debian.org>  Tue, 20 Jun 2023 13:13:44 +0100
+
 chuck (1.5.0.0-1) unstable; urgency=medium
 
   * New upstream version
