@@ -79,6 +79,31 @@ extern t_CKFLOAT g_watchdog_timeout;
 
 
 
+//-----------------------------------------------------------------------------
+// name: class ChuckAudioDriverInfo
+// desc: info pertaining to an audio driver
+//-----------------------------------------------------------------------------
+struct ChuckAudioDriverInfo
+{
+    // driver API ID; e.g., RtAudio::Api values
+    // RtAudio::MACOSX_CORE or RtAudio::WINDOWS_DS or RtAudio::UNIX_JACK
+    // (see RtAudio.h for full list)
+    t_CKUINT driver;
+    // a short name of the driver, e.g., "DS"
+    std::string name;
+    // a longer name of the driver, e.g., "DirectSound"
+    std::string userFriendlyName;
+
+    // constructor
+    ChuckAudioDriverInfo()
+        : driver(0),
+        name("(unspecified)"),
+        userFriendlyName("(unspecified driver")
+    {  }
+};
+
+
+
 
 //-----------------------------------------------------------------------------
 // name: class ChuckAudio
@@ -97,7 +122,7 @@ public:
                                 f_audio_cb callback,
                                 void * data,
                                 t_CKBOOL force_srate, // force_srate | 1.3.1.2 (added)
-                                char const * driver // NULL means default for build | 1.5.0.0 (added)
+                                const char * driver // NULL means default for build | 1.5.0.0 (added)
                                 );
     static void shutdown();
     static t_CKBOOL start();
@@ -107,12 +132,26 @@ public: // watchdog stuff
     static t_CKBOOL watchdog_start();
     static t_CKBOOL watchdog_stop();
 
-public: // device info
-    // probe audio devices
-    static void probe(char const *driver); // NULL means default for build
+public: // driver related operations
+    // default audio driver number
+    static RtAudio::Api defaultDriverApi();
+    // default audio driver name
+    static const char * defaultDriverName();
+    // get API/driver enum from name
+    static RtAudio::Api driverNameToApi( const char * driver = NULL );
+    // get API/drive name from int assumed to be RtAudio::Api enum
+    static const char * driverApiToName( t_CKUINT driverNum );
+    // get number of compiled audio driver APIs
+    static t_CKUINT numDrivers();
+    // get info on a particular driver
+    static ChuckAudioDriverInfo getDriverInfo( t_CKUINT n );
+
+public: // audio device related operations
+    // probe audio devices; NULL for driver means default for build
+    static void probe( const char * driver );
     // get device number by name?
     // 1.4.2.0: changed return type from t_CKUINT to t_CKINT
-    static t_CKINT device_named( char const *driver,
+    static t_CKINT device_named( const char * driver,
                                  const std::string & name,
                                  t_CKBOOL needs_dac = FALSE,
                                  t_CKBOOL needs_adc = FALSE );
