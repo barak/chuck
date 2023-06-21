@@ -1,3 +1,10 @@
+chuck (1.5.0.3-1) unstable; urgency=medium
+
+  * New upstream release
+  * Update debian/rules to upstream makefile changes
+
+ -- Barak A. Pearlmutter <bap@debian.org>  Wed, 21 Jun 2023 08:50:38 +0100
+
 chuck (1.5.0.2-1) unstable; urgency=medium
 
   * New upstream version
