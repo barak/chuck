@@ -1,11 +1,17 @@
-chuck (1.4.2.0-1.1) UNRELEASED; urgency=medium
+chuck (1.5.0.4-1) unstable; urgency=medium
 
-  * Non-maintainer upload.
-  * Fix FTCBFS: (Closes: #-1)
+  [ Helmut Grohne ]
+  * Fix FTCBFS: (Closes: #1033991)
     + Let dh_auto_build pass cross tools to make.
     + cross.patch: Default LD to CXX as dh_auto_build doesn't pass LD.
 
- -- Helmut Grohne <helmut@subdivi.de>  Mon, 03 Apr 2023 07:23:01 +0200
+  [ Barak A. Pearlmutter ]
+  * New upstream release
+  * Merge neglected cross-build fix
+  * Tweak debian/rules
+  * Patch issues in upstream test target
+
+ -- Barak A. Pearlmutter <bap@debian.org>  Tue, 04 Jul 2023 10:00:09 +0100
 
 chuck (1.5.0.3-1) unstable; urgency=medium
 

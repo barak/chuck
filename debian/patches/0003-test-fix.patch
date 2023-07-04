@@ -1,0 +1,24 @@
+From: "Barak A. Pearlmutter" <barak+git@pearlmutter.net>
+Date: Tue, 4 Jul 2023 09:59:04 +0100
+Subject: test fix
+
+Address two issues in the test target in src/makefile:
+- POSIX shell does not mandate pushd.
+- Exit gracefully if directory does not exist or python script fails.
+---
+ src/makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/makefile b/src/makefile
+index bb3074c..1744f51 100644
+--- a/src/makefile
++++ b/src/makefile
+@@ -246,7 +246,7 @@ clean:
+ 
+ ############################### RUN TEST #######################################
+ test:
+-	pushd test; ./test.py ../chuck .; popd
++	(cd test && ./test.py ../chuck .)
+ 
+ 
+ ############################### DISTRIBUTION ###################################

@@ -17,10 +17,10 @@ Subject: typos
  11 files changed, 19 insertions(+), 19 deletions(-)
 
 diff --git a/VERSIONS b/VERSIONS
-index 21f0c7b..2178574 100644
+index 1285c1e..8c4889b 100644
 --- a/VERSIONS
 +++ b/VERSIONS
-@@ -198,7 +198,7 @@ Music Conference/. https://mcd.stanford.edu/publish/files/2007-icmc-uana.pdf
+@@ -410,7 +410,7 @@ Music Conference/. https://mcd.stanford.edu/publish/files/2007-icmc-uana.pdf
  - (added) MLP [ChAI] (thanks Yikai Li)
      |- a multilayer perceptron (MLP)--a basic artificial neural 
         network--that maps an input layer to an output layer across a 
@@ -29,7 +29,7 @@ index 21f0c7b..2178574 100644
         trained either 1) by using one of the comprehensive .train() 
         functions OR 2) by iteratively calling .forward() and .backprop() 
         for each input-output observation, and using .shuffle() for each 
-@@ -421,7 +421,7 @@ Music Conference/. https://mcd.stanford.edu/publish/files/2007-icmc-uana.pdf
+@@ -633,7 +633,7 @@ Music Conference/. https://mcd.stanford.edu/publish/files/2007-icmc-uana.pdf
      string baseName();
          Return the base name of this Type. The base of name of an array Type is the type without the array dimensions (e.g., base name of 'int[][]' is 'int')
      string origin();
@@ -52,10 +52,10 @@ index 37812c3..c208537 100644
          <<< "       vector / v -- display vector associated with a word", "" >>>;
          <<< "       go / g -- from a word to another across a duration", "" >>>;
 diff --git a/src/core/chuck_io.cpp b/src/core/chuck_io.cpp
-index 5da06b3..cbed56c 100644
+index a71754c..8facaed 100644
 --- a/src/core/chuck_io.cpp
 +++ b/src/core/chuck_io.cpp
-@@ -900,12 +900,12 @@ t_CKBOOL init_class_HID( Chuck_Env * env )
+@@ -904,12 +904,12 @@ t_CKBOOL init_class_HID( Chuck_Env * env )
          return FALSE;
  
      // add member variable
@@ -70,7 +70,7 @@ index 5da06b3..cbed56c 100644
      HidMsg_offset_device_num = type_engine_import_mvar( env, "int", "deviceNum", FALSE, doc.c_str() );
      if( HidMsg_offset_device_num == CK_INVALID_OFFSET ) goto error;
  
-@@ -930,7 +930,7 @@ t_CKBOOL init_class_HID( Chuck_Env * env )
+@@ -934,7 +934,7 @@ t_CKBOOL init_class_HID( Chuck_Env * env )
      if( HidMsg_offset_fdata == CK_INVALID_OFFSET ) goto error;
  
      // add member variable
@@ -93,10 +93,10 @@ index 700d183..eb08269 100644
  
      // add find()
 diff --git a/src/core/chuck_otf.cpp b/src/core/chuck_otf.cpp
-index a56a689..d521293 100644
+index 8849269..b00e67d 100644
 --- a/src/core/chuck_otf.cpp
 +++ b/src/core/chuck_otf.cpp
-@@ -648,7 +648,7 @@ void * otf_cb( void * p )
+@@ -663,7 +663,7 @@ void * otf_cb( void * p )
          // REFACTOR-2017: change g_sock to per-VM socket
          client = ck_accept( carrier->otf_socket );
  
@@ -177,7 +177,7 @@ index 0d988bb..eeb6140 100644
      // begin class definition
      if( !type_engine_import_class_begin( env, "MLP", "Object", env->global(), MLP_ctor, MLP_dtor, doc.c_str() ) )
 diff --git a/src/core/ulib_machine.cpp b/src/core/ulib_machine.cpp
-index 60c1903..0fb642d 100644
+index c46914b..095b85d 100644
 --- a/src/core/ulib_machine.cpp
 +++ b/src/core/ulib_machine.cpp
 @@ -90,7 +90,7 @@ DLL_QUERY machine_query( Chuck_DL_Query * QUERY )

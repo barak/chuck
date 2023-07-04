@@ -5,7 +5,6 @@ DPKG_EXPORT_BUILDFLAGS = 1
 include /usr/share/dpkg/buildflags.mk
 
 export CFLAGS:=$(CPPFLAGS) $(CFLAGS)
-export CHUCK_STRICT=1
 
 %:
 	dh $@ --sourcedirectory=src
@@ -13,11 +12,8 @@ export CHUCK_STRICT=1
 # The build targets "linux" generates a single chuck executable with
 # support for multiple sound systems: alsa, pulse, and jack.
 override_dh_auto_build:
-	dh_auto_build -- CHUCK_DEBUG=y linux
-	docbook-to-man debian/chuck.sgml > build/chuck.1
-
-execute_after_dh_auto_clean:
-	rm -rf build/
+	dh_auto_build -- CHUCK_STRICT=1 CHUCK_DEBUG=y linux
+	docbook-to-man debian/chuck.sgml > debian/chuck.1
 
 override_dh_installchangelogs:
 	dh_installchangelogs VERSIONS
