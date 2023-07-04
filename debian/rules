@@ -8,25 +8,21 @@ export CFLAGS:=$(CPPFLAGS) $(CFLAGS)
 export CHUCK_STRICT=1
 
 %:
-	dh $@
+	dh $@ --sourcedirectory=src
 
 override_dh_auto_build:
 	mkdir build
-	$(MAKE) -C src linux-alsa
+	dh_auto_build -- linux-alsa
 	mv src/chuck build/chuck.alsa
-	$(MAKE) -C src clean
-	$(MAKE) -C src linux-pulse
+	dh_auto_clean
+	dh_auto_build -- linux-pulse
 	mv src/chuck build/chuck.pulse
-	$(MAKE) -C src clean
-	$(MAKE) -C src linux-jack CHUCK_DEBUG=y
+	dh_auto_clean
+	dh_auto_build -- linux-jack CHUCK_DEBUG=y
 	docbook-to-man debian/chuck.sgml > build/chuck.1
 
 execute_after_dh_auto_clean:
-	$(MAKE) -C src clean
 	rm -rf build/
-
-override_dh_auto_install:
-	$(MAKE) -C src install DESTDIR=$(CURDIR)/debian/tmp
 
 override_dh_installchangelogs:
 	dh_installchangelogs VERSIONS
