@@ -607,6 +607,9 @@ t_CKBOOL ChucK::initChugins()
     Chuck_VM_Code * code = NULL;
     Chuck_VM_Shred * shred = NULL;
 
+    // print whether chugins enabled
+    EM_log( CK_LOG_SYSTEM, "chugin system: %s", getParamInt( CHUCK_PARAM_CHUGIN_ENABLE ) ? "ON" : "OFF" );
+
     // whether or not chug should be enabled (added 1.3.0.0)
     if( getParamInt( CHUCK_PARAM_CHUGIN_ENABLE ) != 0 )
     {
@@ -621,6 +624,11 @@ t_CKBOOL ChucK::initChugins()
         // list of individually named chug-ins (added 1.3.0.0)
         std::list<std::string> named_dls = getParamStringList( CHUCK_PARAM_USER_CHUGINS );
 
+        EM_pushlog();
+        // print host version
+        EM_log( CK_LOG_SEVERE, "host version: %d.%d", CK_DLL_VERSION_MAJOR, CK_DLL_VERSION_MINOR );
+        EM_poplog();
+
         //---------------------------------------------------------------------
         // set origin hint | 1.5.0.0 (ge) added
         m_carrier->compiler->m_originHint = te_originChugin;
@@ -628,9 +636,9 @@ t_CKBOOL ChucK::initChugins()
         // log
         EM_log( CK_LOG_SYSTEM, "loading chugins..." );
         // push indent level
-        EM_pushlog();
-        // load external libs
-        if( !compiler()->load_external_modules( ".chug", dl_search_path, named_dls ) )
+        // EM_pushlog();
+        // load external libs | 1.5.0.4 (ge) enabled recursive search
+        if( !compiler()->load_external_modules( ".chug", dl_search_path, named_dls, TRUE ) )
         {
             // pop indent level
             EM_poplog();
@@ -638,14 +646,14 @@ t_CKBOOL ChucK::initChugins()
             goto error;
         }
         // pop log
-        EM_poplog();
+        // EM_poplog();
 
         //---------------------------------------------------------------------
         // set origin hint | 1.5.0.0 (ge) added
         m_carrier->compiler->m_originHint = te_originImport;
         //---------------------------------------------------------------------
         // log
-        EM_log( CK_LOG_SYSTEM, "pre-loading ChucK libs..." );
+        EM_log( CK_LOG_SYSTEM, "loading chuck extensions..." );
         EM_pushlog();
 
         // iterate over list of ck files that the compiler found
@@ -711,6 +719,77 @@ error: // 1.4.1.0 (ge) added
     m_carrier->compiler->m_originHint = te_originUnknown;
 
     return false;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: probeChugins()
+// desc: probe chugin system and print output
+//-----------------------------------------------------------------------------
+void ChucK::probeChugins()
+{
+    // ck files to pre load
+    std::list<std::string> ck_libs_to_preload;
+
+    // print whether chugins enabled
+    EM_log( CK_LOG_SYSTEM, "chugin system: %s", getParamInt( CHUCK_PARAM_CHUGIN_ENABLE ) ? "ON" : "OFF" );
+    // print host version
+    EM_log( CK_LOG_SYSTEM, "chuck host version: %d.%d", CK_DLL_VERSION_MAJOR, CK_DLL_VERSION_MINOR );
+    // push
+    EM_pushlog();
+    // print host version
+    EM_log( CK_LOG_SYSTEM, "chugin major version must == host major version" );
+    EM_log( CK_LOG_SYSTEM, "chugin minor version must <= host major version" );
+    // pop
+    EM_poplog();
+
+    // chugin dur
+    std::string chuginDir = getParamString( CHUCK_PARAM_CHUGIN_DIRECTORY );
+    // list of search pathes (added 1.3.0.0)
+    std::list<std::string> dl_search_path = getParamStringList( CHUCK_PARAM_USER_CHUGIN_DIRECTORIES );
+    if( chuginDir != "" )
+    {
+        // add to search path
+        dl_search_path.push_back( chuginDir );
+    }
+    // list of individually named chug-ins (added 1.3.0.0)
+    std::list<std::string> named_dls = getParamStringList( CHUCK_PARAM_USER_CHUGINS );
+
+    // log
+    EM_log( CK_LOG_SYSTEM, "probing chugins (.chug)..." );
+    // push indent level
+    // EM_pushlog();
+    // load external libs
+    if( !Chuck_Compiler::probe_external_modules( ".chug", dl_search_path, named_dls, TRUE, ck_libs_to_preload ) )
+    {
+        // warning
+        EM_log( CK_LOG_SYSTEM, "error probing chugins..." );
+    }
+    // pop log
+    // EM_poplog();
+
+    // log
+    EM_log( CK_LOG_SYSTEM, "probing auto-load chuck files (.ck)..." );
+    EM_pushlog();
+
+    // iterate over list of ck files that the compiler found
+    for( std::list<std::string>::iterator j = ck_libs_to_preload.begin();
+         j != ck_libs_to_preload.end(); j++ )
+    {
+        // the filename
+        std::string filename = *j;
+        // log
+        EM_log( CK_LOG_SYSTEM, "[SOURCE] '%s'...", filename.c_str() );
+    }
+
+    // check
+    if( ck_libs_to_preload.size() == 0 )
+        EM_log( CK_LOG_INFO, "(no auto-load chuck files found)" );
+
+    // pop log
+    EM_poplog();
 }
 
 
@@ -796,35 +875,51 @@ t_CKBOOL ChucK::shutdown()
 
 #ifndef __DISABLE_OTF_SERVER__
     // cancel otf thread
-    if( m_carrier->otf_thread )
+    if( m_carrier!= NULL )
     {
+        // stop otf thread
+        if( m_carrier->otf_thread )
+        {
 #if !defined(__PLATFORM_WIN32__) || defined(__WINDOWS_PTHREAD__)
-        pthread_cancel( m_carrier->otf_thread );
+            pthread_cancel( m_carrier->otf_thread );
 #else
-        CloseHandle( m_carrier->otf_thread ); // doesn't cancel thread
+            CloseHandle( m_carrier->otf_thread ); // doesn't cancel thread
 #endif
-        m_carrier->otf_thread = 0; // signals thread shutdown
+            m_carrier->otf_thread = 0; // signals thread shutdown
+        }
+
+        // close otf socket
+        if( m_carrier->otf_socket )
+        {
+            ck_close( m_carrier->otf_socket );
+        }
+
+        // reset
+        m_carrier->otf_socket = NULL;
+        m_carrier->otf_port = 0;
     }
-
-    // close otf socket
-    if( m_carrier->otf_socket ) ck_close( m_carrier->otf_socket );
-
-    // reset
-    m_carrier->otf_socket = NULL;
-    m_carrier->otf_port = 0;
 #endif // __DISABLE_OTF_SERVER__
 
     // TODO: a different way to unlock?
     // unlock all objects to delete chout, cherr
     Chuck_VM_Object::unlock_all();
-    SAFE_RELEASE( m_carrier->chout );
-    SAFE_RELEASE( m_carrier->cherr );
+    // ensure we have a carrier
+    if( m_carrier != NULL )
+    {
+        SAFE_RELEASE( m_carrier->chout );
+        SAFE_RELEASE( m_carrier->cherr );
+    }
     // relock
     Chuck_VM_Object::lock_all();
-    // clean up vm, compiler
-    SAFE_DELETE( m_carrier->vm );
-    SAFE_DELETE( m_carrier->compiler );
-    m_carrier->env = NULL;
+
+    // ensure we have a carrier
+    if( m_carrier != NULL )
+    {
+        // clean up vm, compiler
+        SAFE_DELETE( m_carrier->vm );
+        SAFE_DELETE( m_carrier->compiler );
+        m_carrier->env = NULL;
+    }
 
     // clear flag
     m_init = FALSE;
@@ -861,6 +956,7 @@ t_CKBOOL ChucK::compileFile( const std::string & path, const std::string & argsT
     std::vector<std::string> args;
     Chuck_VM_Code * code = NULL;
     Chuck_VM_Shred * shred = NULL;
+    std::string thePath;
     std::string full_path;
 
     //-------------------------------------------------------------------------
@@ -869,12 +965,18 @@ t_CKBOOL ChucK::compileFile( const std::string & path, const std::string & argsT
     //-------------------------------------------------------------------------
 
     // log
-    EM_log( CK_LOG_FINE, "compiling '%s'...", path.c_str() );
+    EM_log( CK_LOG_INFO, "compiling '%s'...", path.c_str() );
     // push indent
     EM_pushlog();
 
+    // path expansion (e.g., ~ for unix systems)
+    thePath = expand_filepath(path);
+    // log if the path exansion is different
+    if( path != thePath )
+    { EM_log( CK_LOG_FINE, "expanding path '%s'...", thePath.c_str() ); }
+
     // append
-    std::string theThing = path + ":" + argsTogether;
+    std::string theThing = thePath + ":" + argsTogether;
 #ifdef __ANDROID__
     if( theThing.rfind("jar:", 0) == 0 )
     {
