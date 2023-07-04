@@ -8,19 +8,16 @@ export CFLAGS:=$(CPPFLAGS) $(CFLAGS)
 export CHUCK_STRICT=1
 
 %:
-	dh $@
+	dh $@ --sourcedirectory=src
 
 # The build targets "linux" generates a single chuck executable with
 # support for multiple sound systems: alsa, pulse, and jack.
 override_dh_auto_build:
-	$(MAKE) -C src CHUCK_DEBUG=y linux
-	docbook-to-man debian/chuck.sgml > debian/chuck.1
+	dh_auto_build -- CHUCK_DEBUG=y linux
+	docbook-to-man debian/chuck.sgml > build/chuck.1
 
 execute_after_dh_auto_clean:
-	$(MAKE) -C src clean
-
-override_dh_auto_install:
-	$(MAKE) -C src install DESTDIR=$(CURDIR)/debian/tmp
+	rm -rf build/
 
 override_dh_installchangelogs:
 	dh_installchangelogs VERSIONS

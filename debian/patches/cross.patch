@@ -1,0 +1,21 @@
+From: Helmut Grohne <helmut@subdivi.de>
+Date: Mon, 3 Apr 2023 18:13:03 +0200
+Subject: cross
+
+---
+ src/makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/makefile b/src/makefile
+index ecf7630..fb86575 100644
+--- a/src/makefile
++++ b/src/makefile
+@@ -80,7 +80,7 @@ LEX=flex
+ YACC=bison
+ CC=gcc
+ CXX=g++
+-LD=g++
++LD=$(CXX)
+ 
+ 
+ ############################# COMPILER FLAGS ###################################
