@@ -20,10 +20,10 @@ override_dh_installchangelogs:
 
 execute_after_dh_installexamples:
 	@echo "Symbolic link duplicate audio files."
-	jdupes --recurse --link-soft debian/chuck-data/usr/share/doc/chuck-data/examples
+	-jdupes --recurse --link-soft $(CURDIR)/debian/chuck-data/usr/share/doc/chuck-data/examples
 
 override_dh_compress:
 	dh_compress -X.wav -X.ck
 
 execute_after_dh_fixperms:
-	-find debian/chuck-data/usr/share/doc/chuck-data/examples/ -type f -exec chmod --changes 644 '{}' '+'
+	-find $(CURDIR)/debian/chuck-data/usr/share/doc/chuck-data/examples/ -type f -exec chmod --changes 644 '{}' '+'
