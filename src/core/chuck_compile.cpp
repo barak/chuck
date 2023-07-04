@@ -49,6 +49,7 @@
 #include "ulib_machine.h"
 #include "ulib_math.h"
 #include "ulib_std.h"
+#include "util_string.h"
 
 #ifndef __DISABLE_NETWORK__
 #include "ulib_opsc.h"
@@ -56,16 +57,15 @@
 
 #if defined(__PLATFORM_WIN32__)
   #include "dirent_win32.h"
-#else
-  #ifndef __DISABLE_WORDEXP__
-  #include <wordexp.h> // 1.5.0.0 (ge) added
-  #endif
 #endif
 
 //#if defined(__WINDOWS_PTHREAD__)
 #include <sys/stat.h>
 //#endif
 
+#include <string>
+#include <vector>
+#include <algorithm>
 using namespace std;
 
 
@@ -94,6 +94,8 @@ Chuck_Compiler::Chuck_Compiler()
 
     // REFACTOR-2017: add carrier
     m_carrier = NULL;
+    // initialize
+    m_auto_depend = FALSE;
 
     // origin hint | 1.5.0.0 (ge) added
     m_originHint = te_originUnknown;
@@ -446,16 +448,20 @@ t_CKBOOL Chuck_Compiler::do_normal_depend( const string & filename, FILE * fd,
     t_CKBOOL ret = TRUE;
     Chuck_Context * context = NULL;
 
+    // expand
+    string theFilename = expand_filepath(filename);
+    string theFullpath = expand_filepath(full_path);
+
     // parse the code
-    if( !chuck_parse( filename.c_str(), fd, str_src ) )
+    if( !chuck_parse( theFilename.c_str(), fd, str_src ) )
         return FALSE;
 
     // make the context
-    context = type_engine_make_context( g_program, filename );
+    context = type_engine_make_context( g_program, theFilename );
     if( !context ) return FALSE;
 
     // remember full path (added 1.3.0.0)
-    context->full_path = full_path;
+    context->full_path = theFullpath;
 
     // reset the env
     env()->reset();
@@ -744,6 +750,183 @@ error:
 
 
 
+
+//-----------------------------------------------------------------------------
+// name: getDirEntryAttribute()
+// desc: get directory entry attribute | 1.5.0.4 (ge) moved into function
+//-----------------------------------------------------------------------------
+t_CKBOOL getDirEntryAttribute( dirent * de, t_CKBOOL & isDirectory, t_CKBOOL & isRegular )
+{
+#if defined(__PLATFORM_WIN32__)
+    isDirectory = de->data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY;
+    isRegular = ((de->data.dwFileAttributes & FILE_ATTRIBUTE_NORMAL) ||
+                  (de->data.dwFileAttributes & FILE_ATTRIBUTE_READONLY) ||
+                  (de->data.dwFileAttributes & FILE_ATTRIBUTE_ARCHIVE));
+#elif defined(__WINDOWS_PTHREAD__) // Cygwin -- doesn't have dirent d_type
+    std::string absolute_path = std::string(directory) + "/" + de->d_name;
+    struct stat st;
+    if( stat(absolute_path.c_str(), &st) == 0 )
+    {
+        isDirectory = st.st_mode & S_IFDIR;
+        isRegular = st.st_mode & S_IFREG;
+    }
+    else
+    {
+        // uhh ...
+        EM_log( CK_LOG_INFO,
+               "unable to open file '%s', ignoring for chugins",
+               absolute_path.c_str() );
+        return false;
+    }
+#else
+    isDirectory = de->d_type == DT_DIR;
+    isRegular = de->d_type == DT_REG;
+#endif
+
+    return true;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: struct ChuginFileInfo()
+// desc: file info for loading
+//-----------------------------------------------------------------------------
+struct ChuginFileInfo
+{
+    string filename;
+    string path;
+    bool isBundle;
+
+    // constructor
+    ChuginFileInfo() { isBundle = false;  }
+
+    // constructor
+    ChuginFileInfo( const string & f, const string & p, bool bundle = false )
+    {
+        filename = f; path = p; isBundle = bundle;
+    }
+};
+// compare function for sorting ChuginFileInfo
+static bool comp_func_chuginfileinfo( const ChuginFileInfo & a, const ChuginFileInfo & b )
+{
+    return tolower( a.filename ) < tolower( b.filename );
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: format_dir_name_for_display()
+// desc: format directory name for display, considering underlying platform
+//-----------------------------------------------------------------------------
+static string format_dir_name_for_display( const string & path )
+{
+#ifndef __PLATFORM_WIN32__
+    return path;
+#else // not __PLATFORM_WIN32__
+    return expand_filepath( path );
+#endif
+}
+
+
+
+//-----------------------------------------------------------------------------
+// name: scan_external_modules_in_directory()
+// desc: scan all external modules by extension within a directory
+//-----------------------------------------------------------------------------
+t_CKBOOL scan_external_modules_in_directory( const char * directory,
+    const char * extension, t_CKBOOL recursiveSearch,
+    vector<ChuginFileInfo> & chugins2load, vector<string> & dirs2search,
+    vector<string> & ckfiles2load )
+{
+    // expand directory path
+    string path = expand_filepath( string(directory), FALSE );
+    // open the directory
+    DIR * dir = opendir( path.c_str() );
+
+    // cannot open
+    if( !dir ) return FALSE;
+
+    // do first read | 1.5.0.0 (ge + eito) #chunreal
+    struct dirent * de = readdir( dir );
+    // while( (de = readdir(dir)) ) <- UE5 forces us to not do this
+    while( de != NULL )
+    {
+        t_CKBOOL is_regular = false;
+        t_CKBOOL is_directory = false;
+        // get attributes
+        if( !getDirEntryAttribute( de, is_directory, is_regular ) ) continue;
+
+        // check | TODO: follow links?
+        if( is_regular )
+        {
+            // check for ck files to pre-load
+            if( extension_matches( de->d_name, ".ck" ) )
+            {
+                // construct absolute path
+                std::string absolute_path = path + "/" + de->d_name;
+                // append file path
+                ckfiles2load.push_back( absolute_path );
+            }
+            // check extension passed in
+            else if( extension_matches( de->d_name, extension ) )
+            {
+                // construct absolute path
+                std::string absolute_path = path + "/" + de->d_name;
+                // append module
+                chugins2load.push_back( ChuginFileInfo( de->d_name, absolute_path ) );
+            }
+        }
+        // recursive search? into directories...
+        // (whose name doesn't end in .chug, unless it was precisely .chug)
+        else if( recursiveSearch && is_directory && subdir_ok2recurse( de->d_name, extension ) )
+        {
+            // recurse | TODO: max depth?
+            if( strncmp( de->d_name, ".", sizeof( "." ) ) != 0 &&
+                strncmp( de->d_name, "..", sizeof( ".." ) ) != 0 )
+            {
+                // construct absolute path (use the non-expanded path for consistency when printing)
+                std::string absolute_path = string(directory) + "/" + de->d_name;
+                // queue search in sub-directory
+                dirs2search.push_back( absolute_path );
+            }
+        }
+#ifdef __PLATFORM_MACOSX__
+        else if( is_directory && extension_matches( de->d_name, extension ) )
+        {
+            // On macOS, a chugin can either be a regular file (a .dylib simply renamed to .chug)
+            // or it can be a MODULE like using CMake with add_library(FooChugin MODULE foo.cpp)
+            // If it's a module bundle, then because .chug is a nonstandard extension,
+            // on the filesystem it shows up as a directory ending in .chug.
+            // If we see one of these directories, we can dive directly to the Contents/MacOS subfolder
+            // and look for a regular file. | 1.5.0.1 (dbraun) added
+            std::string absolute_path = path + "/" + de->d_name + "/Contents/MacOS";
+            // probe NAME.chug/Contents/MacOS/NAME
+            string actualName = extension_removed( de->d_name, extension );
+            // construct
+            absolute_path += "/" + actualName;
+            // get cstr
+            const char * subdirectory = absolute_path.c_str();
+            // load directly
+            chugins2load.push_back( ChuginFileInfo( de->d_name, subdirectory, true ) );
+        }
+#endif // #ifdef __PLATFORM_MACOSX__
+
+        // read next | 1.5.0.0 (ge) moved here due to #chunreal
+        de = readdir( dir );
+    }
+
+    // close
+    closedir( dir );
+
+    return TRUE;
+}
+
+
+
+
 //-----------------------------------------------------------------------------
 // name: load_external_module_at_path()
 // desc: ...
@@ -764,12 +947,12 @@ t_CKBOOL load_external_module_at_path( Chuck_Compiler * compiler,
     if( query_failed || !type_engine_add_dll2(env, dll, "global"))
     {
         EM_pushlog();
-        EM_log(CK_LOG_SEVERE, "cannot load chugin '%s', skipping...", name);
-        // EM_error2( 0, "error: cannot load chugin '%s', skipping...", name );
+        EM_log(CK_LOG_SEVERE, "cannot load '%s', skipping...", name);
+        // EM_error2( 0, "error: cannot load '%s', skipping...", name );
         if( query_failed )
         {
+            EM_log( CK_LOG_SEVERE, "reason: %s", dll->last_error() );
             // EM_error2( 0, "%s", dll->last_error() );
-            EM_log( CK_LOG_SEVERE, "%s", dll->last_error() );
         }
         delete dll;
         EM_poplog();
@@ -787,159 +970,75 @@ t_CKBOOL load_external_module_at_path( Chuck_Compiler * compiler,
 
 
 //-----------------------------------------------------------------------------
-// name: extension_matches()
-// desc: ...
-//-----------------------------------------------------------------------------
-static t_CKBOOL extension_matches( const char * filename, const char * extension )
-{
-    t_CKUINT extension_length = strlen(extension);
-    t_CKUINT filename_length = strlen(filename);
-
-    return strncmp( extension, filename+(filename_length-extension_length),
-                    extension_length) == 0;
-}
-
-
-
-
-//-----------------------------------------------------------------------------
 // name: load_external_modules_in_directory()
-// desc: ...
+// desc: load all external modules by extension within a directory
 //-----------------------------------------------------------------------------
 t_CKBOOL load_external_modules_in_directory( Chuck_Compiler * compiler,
                                              const char * directory,
-                                             const char * extension )
+                                             const char * extension,
+                                             t_CKBOOL recursiveSearch )
 {
-    static const t_CKBOOL RECURSIVE_SEARCH = false;
+    vector<ChuginFileInfo> chugins2load;
+    vector<string> dirs2search;
+    vector<string> ckfiles2load;
 
-    // directory path
-    string path = directory, exp = "";
+    // print directory to examine
+    EM_log( CK_LOG_SEVERE, "searching '%s'", format_dir_name_for_display(directory).c_str() );
+    // push
+    EM_pushlog();
 
-#ifndef __PLATFORM_WIN32__
-#ifndef __DISABLE_WORDEXP__
-    // 1.5.0.0 (ge) added (for ~)
-    wordexp_t exp_result;
-    // "perform shell-style word expansions"
-    wordexp( directory, &exp_result, 0 );
-    // concatenate in case there are spaces in the path
-    for( t_CKINT i = 0; i < exp_result.we_wordc; i++ )
-        exp += string(i > 0 ? " " : "") + exp_result.we_wordv[i];
-    // replace
-    path = exp;
-#endif
-#endif
-
-    // open the directory
-    DIR * dir = opendir( path.c_str() );
-
-    // if successful
-    if( dir )
-    {
-        // log
-        EM_log( CK_LOG_INFO, "examining directory '%s' for chugins", directory );
-
-        // do first read | 1.5.0.0 (ge + eito) #chunreal
-        struct dirent * de = readdir(dir);
-
-        // while( (de = readdir(dir)) ) <- in ge's opinion clearer than what UE5 forces us to do
-        while( de != NULL )
-        {
-            t_CKBOOL is_regular = false;
-            t_CKBOOL is_directory = false;
-
-#if defined(__PLATFORM_WIN32__)
-            is_directory = de->data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY;
-            is_regular = ((de->data.dwFileAttributes & FILE_ATTRIBUTE_NORMAL) ||
-                          (de->data.dwFileAttributes & FILE_ATTRIBUTE_READONLY) ||
-                          (de->data.dwFileAttributes & FILE_ATTRIBUTE_ARCHIVE));
-#elif defined(__WINDOWS_PTHREAD__) // Cygwin -- doesn't have dirent d_type
-            std::string absolute_path = std::string(directory) + "/" + de->d_name;
-            struct stat st;
-            if( stat(absolute_path.c_str(), &st) == 0 )
-            {
-                is_directory = st.st_mode & S_IFDIR;
-                is_regular = st.st_mode & S_IFREG;
-            }
-            else
-            {
-                // uhh ...
-                EM_log( CK_LOG_INFO,
-                        "unable to open file '%s', ignoring for chugins",
-                        absolute_path.c_str() );
-                continue;
-            }
-#else
-            is_directory = de->d_type == DT_DIR;
-            is_regular = de->d_type == DT_REG;
-#endif
-
-            if( is_regular ) // TODO: follow links?
-            {
-                if( extension_matches(de->d_name, extension) )
-                {
-                    std::string absolute_path = std::string(directory) + "/" + de->d_name;
-
-                    load_external_module_at_path(compiler, de->d_name,
-                                                 absolute_path.c_str());
-                }
-                else if( extension_matches(de->d_name, ".ck") )
-                {
-                    std::string absolute_path = std::string(directory) + "/" + de->d_name;
-                    compiler->m_cklibs_to_preload.push_back(absolute_path);
-                }
-            }
-            else if( RECURSIVE_SEARCH && is_directory )
-            {
-                // recurse
-                // TODO: max depth?
-                if( strncmp(de->d_name, ".", sizeof(".")) != 0 &&
-                    strncmp(de->d_name, "..", sizeof("..")) != 0 )
-                {
-                    std::string absolute_path = std::string(directory) + "/" + de->d_name;
-                    load_external_modules_in_directory(compiler,
-                                                       absolute_path.c_str(),
-                                                       extension);
-                }
-            }
-#ifdef __PLATFORM_MACOSX__
-            // #if __APPLE__ probably cleaner but using the above for consistency for now (ge)
-            // ---
-            // On macOS, a chugin can either be a regular file (a .dylib simply renamed to .chug)
-            // or it can be a MODULE like using CMake with add_library(FooChugin MODULE foo.cpp)
-            // If it's a module bundle, then because .chug is a nonstandard extension,
-            // on the filesystem it shows up as a directory ending in .chug.
-            // If we see one of these directories, we can dive directly to the Contents/MacOS subfolder
-            // and look for a regular file. | 1.5.0.1 (dbraun) added
-            else if (is_directory && extension_matches(de->d_name, extension)) {
-                std::string absolute_path = std::string(directory) + "/" + de->d_name + "/Contents/MacOS";
-                const char* subdirectory = absolute_path.c_str();
-                load_external_modules_in_directory(compiler, subdirectory, "");
-            }
-#endif // #ifdef __PLATFORM_MACOSX__
-
-            // read next | 1.5.0.0 (ge) moved here due to #chunreal
-            de = readdir( dir );
-        }
-
-        // close
-        closedir( dir );
-    }
-    else
+    // scan
+    t_CKBOOL retval = scan_external_modules_in_directory( directory, extension, recursiveSearch, chugins2load, dirs2search, ckfiles2load );
+    if( !retval )
     {
         // log (1.3.1.2: changed to 2 lines to stay within 80 chars)
-        EM_log( CK_LOG_INFO, "unable to open directory:" );
-        EM_pushlog();
-        EM_log( CK_LOG_INFO, "'%s'", directory );
+        EM_log( CK_LOG_INFO, "unable to open directory..." );
         EM_log( CK_LOG_INFO, "ignoring for chugins..." );
+        // pop
         EM_poplog();
+        // go ahead and return true
+        return TRUE;
     }
 
-#ifndef __PLATFORM_WIN32__
-#ifndef __DISABLE_WORDEXP__
-    // free | 1.5.0.0 (ge) added
-    wordfree( &exp_result );
-#endif
-#endif
+    // sort
+    sort( chugins2load.begin(), chugins2load.end(), comp_func_chuginfileinfo );
+    sort( dirs2search.begin(), dirs2search.end() );
+    sort( ckfiles2load.begin(), ckfiles2load.end() );
+
+    // loop over chugins to load
+    for( t_CKINT i = 0; i < chugins2load.size(); i++ )
+    {
+        // load module
+        t_CKBOOL retval = load_external_module_at_path( compiler, chugins2load[i].filename.c_str(),
+            chugins2load[i].path.c_str() );
+        // if no error
+        if( chugins2load[i].isBundle && retval ) {
+            // log
+            EM_pushlog();
+            EM_log( CK_LOG_INFO, "macOS bundle was detected..." );
+            string shortenSubdir = chugins2load[i].path;
+            shortenSubdir = shortenSubdir.substr( shortenSubdir.find( chugins2load[i].filename ) );
+            EM_log( CK_LOG_INFO, "loaded %s", shortenSubdir.c_str() );
+            EM_poplog();
+        }
+    }
+
+    // loop over ck files to load (later)
+    for( t_CKINT i = 0; i < ckfiles2load.size(); i++ )
+    {
+        // save for later
+        compiler->m_cklibs_to_preload.push_back( ckfiles2load[i] );
+    }
+
+    // pop log
+    EM_poplog();
+
+    // loop over dirs2 to search | if not recursive, this should be empty
+    for( t_CKINT i = 0; i < dirs2search.size(); i++ )
+    {
+        // search in dir
+        load_external_modules_in_directory( compiler, dirs2search[i].c_str(), extension, recursiveSearch );
+    }
 
     return TRUE;
 }
@@ -949,11 +1048,12 @@ t_CKBOOL load_external_modules_in_directory( Chuck_Compiler * compiler,
 
 //-----------------------------------------------------------------------------
 // name: load_external_modules()
-// desc: ...
+// desc: load external modules (e.g., .chug and .ck library files)
 //-----------------------------------------------------------------------------
-t_CKBOOL Chuck_Compiler:: load_external_modules( const char * extension,
-    std::list<std::string> & chugin_search_paths,
-    std::list<std::string> & named_dls )
+t_CKBOOL Chuck_Compiler::load_external_modules( const char * extension,
+                                                std::list<std::string> & chugin_search_paths,
+                                                std::list<std::string> & named_dls,
+                                                t_CKBOOL recursiveSearch )
 {
     // get env
     Chuck_Env * env = this->env();
@@ -964,23 +1064,25 @@ t_CKBOOL Chuck_Compiler:: load_external_modules( const char * extension,
     // load it
     type_engine_load_context( env, context );
 
-    /* first load dynamic libraries explicitly named on the command line */
-    for(std::list<std::string>::iterator i_dl = named_dls.begin();
-        i_dl != named_dls.end(); i_dl++)
+    // first load dynamic libraries explicitly named on the command line
+    for( std::list<std::string>::iterator i_dl = named_dls.begin();
+         i_dl != named_dls.end(); i_dl++ )
     {
+        // get chugin name
         std::string & dl_path = *i_dl;
-        if(!extension_matches(dl_path.c_str(), extension))
+        // check extension, append if no match
+        if( !extension_matches(dl_path.c_str(), extension) )
             dl_path += extension;
-
-        load_external_module_at_path(this, dl_path.c_str(),
-                                     dl_path.c_str());
+        // load the module
+        load_external_module_at_path( this, dl_path.c_str(), dl_path.c_str() );
     }
 
-    /* now recurse through search paths and load any DLs or .ck files found */
-    for(std::list<std::string>::iterator i_sp = chugin_search_paths.begin();
-        i_sp != chugin_search_paths.end(); i_sp++)
+    // now recurse through search paths and load any DLs or .ck files found
+    for( std::list<std::string>::iterator i_sp = chugin_search_paths.begin();
+         i_sp != chugin_search_paths.end(); i_sp++ )
     {
-        load_external_modules_in_directory(this, (*i_sp).c_str(), extension);
+        // search directory and load contents
+        load_external_modules_in_directory( this, (*i_sp).c_str(), extension, recursiveSearch );
     }
 
     // clear context
@@ -990,18 +1092,184 @@ t_CKBOOL Chuck_Compiler:: load_external_modules( const char * extension,
     env->global()->commit();
 
     return TRUE;
-   /*
-error:
+}
 
-    // probably dangerous: rollback
-    env->global()->rollback();
 
-    // clear context
-    type_engine_unload_context( env );
 
-    // pop indent level
+
+//-----------------------------------------------------------------------------
+// name: probe_external_module_at_path()
+// desc: probe external module
+//-----------------------------------------------------------------------------
+t_CKBOOL probe_external_module_at_path( const char * name, const char * dl_path )
+{
+    // create dynamic module
+    Chuck_DLL * dll = new Chuck_DLL( NULL, name );
+
+    // load the dll, lazy mode
+    if( dll->load(dl_path, CK_QUERY_FUNC, TRUE) )
+    {
+        // probe it
+        dll->probe();
+        // if not compatible
+        if( dll->compatible() )
+        {
+            // print
+            EM_log( CK_LOG_SYSTEM, "[OK] chugin %s (%d.%d)", name, dll->versionMajor(), dll->versionMinor() );
+        }
+        else
+        {
+            // print
+            EM_log( CK_LOG_SYSTEM, "[FAILED] chugin %s (%d.%d)", name, dll->versionMajor(), dll->versionMinor() );
+            // push
+            EM_pushlog();
+            EM_log( CK_LOG_SYSTEM, "reason: %s", dll->last_error() );
+            EM_poplog();
+
+        }
+    }
+    else
+    {
+        // print
+        EM_log( CK_LOG_SYSTEM, "[FAILED] chugin '%s' load...", name );
+        // more info
+        EM_pushlog();
+        EM_log( CK_LOG_SYSTEM, "reason: %s", dll->last_error() );
+        EM_poplog();
+    }
+
+    // done
+    return TRUE;
+}
+
+
+
+//-----------------------------------------------------------------------------
+// name: probe_external_modules_in_directory()
+// desc: probe all external modules by extension within a directory
+//-----------------------------------------------------------------------------
+t_CKBOOL probe_external_modules_in_directory( const char * directory,
+                                              const char * extension,
+                                              t_CKBOOL recursiveSearch,
+                                              std::list<std::string> & ck_libs )
+{
+    vector<ChuginFileInfo> chugins2load;
+    vector<string> dirs2search;
+    vector<string> ckfiles2load;
+
+    // print directory to examine
+    EM_log( CK_LOG_SYSTEM, "searching '%s'", format_dir_name_for_display( directory ).c_str() );
+    // push
+    EM_pushlog();
+
+    // scan
+    t_CKBOOL retval = scan_external_modules_in_directory( directory, extension, recursiveSearch, chugins2load, dirs2search, ckfiles2load );
+    if( !retval )
+    {
+        // log (1.3.1.2: changed to 2 lines to stay within 80 chars)
+        EM_log( CK_LOG_INFO, "unable to open directory..." );
+        EM_log( CK_LOG_INFO, "ignoring for chugins..." );
+        // pop log
+        EM_poplog();
+        // go ahead and return true
+        return TRUE;
+    }
+
+    // sort
+    sort( chugins2load.begin(), chugins2load.end(), comp_func_chuginfileinfo );
+    sort( dirs2search.begin(), dirs2search.end() );
+    sort( ckfiles2load.begin(), ckfiles2load.end() );
+
+    // loop over chugins to load
+    for( t_CKINT i = 0; i < chugins2load.size(); i++ )
+    {
+        // load module
+        t_CKBOOL retval = probe_external_module_at_path(
+            chugins2load[i].filename.c_str(), chugins2load[i].path.c_str() );
+        // if no error
+        if( chugins2load[i].isBundle && retval ) {
+            // log
+            EM_pushlog();
+            EM_log( CK_LOG_INFO, "macOS bundle was detected..." );
+            string shortenSubdir = chugins2load[i].path;
+            shortenSubdir = shortenSubdir.substr( shortenSubdir.find( chugins2load[i].filename ) );
+            EM_log( CK_LOG_INFO, "loaded %s", shortenSubdir.c_str() );
+            EM_poplog();
+        }
+    }
+
+    // loop over ck files to load (later)
+    for( t_CKINT i = 0; i < ckfiles2load.size(); i++ )
+    {
+        // save for later
+        ck_libs.push_back( ckfiles2load[i] );
+    }
+
+    // pop log
     EM_poplog();
 
-    return FALSE;
-   */
+    // loop over dirs2 to search | if not recursive, this should be empty
+    for( t_CKINT i = 0; i < dirs2search.size(); i++ )
+    {
+        // search in dir
+        probe_external_modules_in_directory( dirs2search[i].c_str(), extension, recursiveSearch, ck_libs );
+    }
+
+    return TRUE;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: probe_external_modules()
+// desc: probe external modules (e.g., .chug and .ck library files)
+//-----------------------------------------------------------------------------
+t_CKBOOL Chuck_Compiler::probe_external_modules( const char * extension,
+                                                 std::list<std::string> & chugin_search_paths,
+                                                 std::list<std::string> & named_dls,
+                                                 t_CKBOOL recursiveSearch,
+                                                 std::list<std::string> & ck_libs )
+{
+    // print
+    EM_log( CK_LOG_SYSTEM, "probing specified chugins (e.g., via --chugin)..." );
+    // push
+    EM_pushlog();
+
+    // first load dynamic libraries explicitly named on the command line
+    for( std::list<std::string>::iterator i_dl = named_dls.begin();
+         i_dl != named_dls.end(); i_dl++ )
+    {
+        // get chugin name
+        std::string & dl_path = *i_dl;
+        // check extension, append if no match
+        if( !extension_matches(dl_path.c_str(), extension) )
+            dl_path += extension;
+        // load the module
+        probe_external_module_at_path( dl_path.c_str(), dl_path.c_str() );
+    }
+
+    // check
+    if( named_dls.size() == 0 )
+        EM_log( CK_LOG_INFO, "(none specified)" );
+
+    // pop
+    EM_poplog();
+    // print
+    EM_log( CK_LOG_SYSTEM, "probing chugins in search paths..." );
+    // push
+    EM_pushlog();
+
+    // now recurse through search paths and load any DLs or .ck files found
+    for( std::list<std::string>::iterator i_sp = chugin_search_paths.begin();
+         i_sp != chugin_search_paths.end(); i_sp++ )
+    {
+        // search directory and load contents
+        probe_external_modules_in_directory( (*i_sp).c_str(), extension, recursiveSearch, ck_libs );
+    }
+
+    // pop
+    EM_poplog();
+
+    return TRUE;
 }

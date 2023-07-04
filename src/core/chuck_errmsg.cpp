@@ -586,8 +586,7 @@ void EM_log( t_CKINT level, const char * message, ... )
     #ifndef __DISABLE_THREADS__
     g_logmutex.acquire();
     #endif
-    CK_FPRINTF_STDERR( "[chuck]:" );
-    CK_FPRINTF_STDERR( "(%i:%s): ", level, g_str[level] );
+    CK_FPRINTF_STDERR( "[chuck:%d:%s]: ", level, g_str[level] );
 
     // if( g_logstack ) CK_FPRINTF_STDERR( " " );
     for( int i = 0; i < g_logstack; i++ )
@@ -613,7 +612,7 @@ void EM_setlog( t_CKINT level )
     g_loglevel = level;
 
     // log this
-    EM_log( CK_LOG_SYSTEM, "setting log level to: %li (%s)...", level, g_str[level] );
+    EM_log( CK_LOG_INFO, "setting log level to: %li (%s)...", level, g_str[level] );
 }
 
 // push log

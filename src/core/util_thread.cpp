@@ -81,13 +81,15 @@ XThread::~XThread( )
         // TODO: find an alternative for Android?
 #if defined(__PLATFORM_MACOSX__) || ( defined(__PLATFORM_LINUX__) && !defined(__ANDROID__) ) || defined(__WINDOWS_PTHREAD__)
         // log
-        EM_log( CK_LOG_FINER, "cancelling XThread: %u on thread: %u", (t_CKUINT)thread, (t_CKUINT)pthread_self() );
+        EM_log( CK_LOG_FINER, "cancelling thread [0x%x] from [0x%x]...", getID(thread), getID(pthread_self()) );
         pthread_cancel(thread);
         pthread_join(thread, NULL);
         // log
-        EM_log( CK_LOG_FINER, "joined with XThread: %u on thread: %u", (t_CKUINT)thread, (t_CKUINT)pthread_self() );
+        EM_log( CK_LOG_FINER, "joined with thread [0x%x] from [0x%x]", getID(thread), getID(pthread_self()) );
 #elif defined(__PLATFORM_WIN32__)
-        TerminateThread((HANDLE)thread, 0);
+        // log
+        EM_log( CK_LOG_FINER, "terminating thread [0x%x] from [0x%x]...", getID(thread), (t_CKUINT)GetCurrentThreadId() );
+        TerminateThread( (HANDLE)thread, 0 );
 #endif
     }
 }
@@ -105,11 +107,18 @@ bool XThread::start( THREAD_FUNCTION routine, void * ptr )
 
 #if ( defined(__PLATFORM_MACOSX__) || defined(__PLATFORM_LINUX__) || defined(__WINDOWS_PTHREAD__) )
     if( pthread_create( &thread, NULL, *routine, ptr ) == 0 )
+    {
+        EM_log( CK_LOG_FINER, "starting thread [0x%x] from [0x%x]...", thread, getID(pthread_self()) );
         result = true;
+    }
 #elif defined(__PLATFORM_WIN32__)
     unsigned thread_id;
     thread = _beginthreadex( NULL, 0, routine, ptr, 0, &thread_id );
-    if( thread ) result = true;
+    if( thread )
+    {
+        EM_log( CK_LOG_FINER, "starting thread [0x%x] from [0x%x]...", thread_id, (t_CKUINT)GetCurrentThreadId() );
+        result = true;
+    }
 #endif
     return result;
 }
@@ -158,6 +167,22 @@ void XThread :: test( )
     // TODO: find an alternative for Android?
 #if ( defined(__PLATFORM_MACOSX__) || ( defined(__PLATFORM_LINUX__) && !defined(__ANDROID__) ) || defined(__WINDOWS_PTHREAD__) )
     pthread_testcancel();
+#endif
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: getID() | 1.5.0.4 (ge) added
+// desc: get thread id from a thread handle
+//-----------------------------------------------------------------------------
+t_CKUINT XThread::getID( THREAD_HANDLE t )
+{
+#if ( defined(__PLATFORM_MACOSX__) || defined(__PLATFORM_LINUX__) || defined(__WINDOWS_PTHREAD__) )
+    return (t_CKUINT)t;
+#elif defined(__PLATFORM_WIN32__)
+    return (t_CKUINT)GetThreadId( (HANDLE)t );
 #endif
 }
 
@@ -295,11 +320,11 @@ void XWriteThread::shutdown()
     SmartPushLog logPush;
 
     // log
-    EM_log( CK_LOG_FINER, "waiting on write thread: %u", (t_CKUINT)m_thread.getThread() );
+    EM_log( CK_LOG_FINER, "waiting on write thread [0x%x]...", m_thread.getID() );
     // wait on the thread
     m_thread.wait( -1, false );
     // log
-    EM_log( CK_LOG_FINER, "done waiting for thread: %u", (t_CKUINT)m_thread.getThread() );
+    EM_log( CK_LOG_FINER, "done waiting for thread [0x%x]", m_thread.getID() );
 }
 
 
@@ -315,9 +340,9 @@ size_t XWriteThread::fwrite(const void * ptr, size_t size, size_t nitems, FILE *
         flush_data_buffer();
 
     // TODO: overflow detection
-    if(m_data_buffer->put((char*)ptr, size*nitems) == 0)
+    if( m_data_buffer->put((char*)ptr, size*nitems) == 0 )
     {
-        EM_log(CK_LOG_SEVERE, "XWriteThread::fwrite: data buffer overflow");
+        EM_log( CK_LOG_SEVERE, "XWriteThread::fwrite(): data buffer overflow!" );
     }
 
     m_bytes_in_buffer += size*nitems;
@@ -435,8 +460,8 @@ unsigned XWriteThread::write_cb(void * _thiss)
                                                                msg.write.data_size);
                 if(actual_size != msg.write.data_size)
                 {
-                    EM_log(CK_LOG_SEVERE, "XWriteThread: buffered data size mismatch (%li : %li)",
-                           msg.write.data_size, actual_size);
+                    EM_log( CK_LOG_SEVERE, "XWriteThread: buffered data size mismatch (%li : %li)",
+                            msg.write.data_size, actual_size );
                 }
 
                 ::fwrite(_this->m_thread_buffer, 1, actual_size, msg.file);
@@ -492,7 +517,7 @@ t_CKBOOL XThreadUtil::set_priority( CHUCK_THREAD tid, t_CKINT priority )
     int policy;
 
     // log
-    EM_log( CK_LOG_INFO, "setting thread priority to: %ld...", priority );
+    EM_log( CK_LOG_INFO, "setting thread [0x%x] priority to: %ld...", (t_CKUINT)tid, priority );
 
     // get for thread
     if( pthread_getschedparam( tid, &policy, &param) )
@@ -552,7 +577,7 @@ t_CKBOOL XThreadUtil::set_priority( CHUCK_THREAD tid, t_CKINT priority )
     if( !priority ) return TRUE;
 
     // log
-    EM_log( CK_LOG_FINE, "setting thread priority to: %ld...", priority );
+    EM_log( CK_LOG_FINE, "setting thread [0x%x] priority to: %ld...", (t_CKUINT)GetThreadId(tid), priority );
 
     // set the priority the thread, windows style
     if( !SetThreadPriority( tid, priority ) )
