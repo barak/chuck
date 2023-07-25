@@ -7,15 +7,15 @@ Subject: cross
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/src/makefile b/src/makefile
-index 4cb08f6..bb3074c 100644
+index d8ae170..b2edeb6 100644
 --- a/src/makefile
 +++ b/src/makefile
-@@ -86,7 +86,7 @@ LEX=flex
- YACC=bison
- CC=gcc
+@@ -89,7 +89,7 @@ CC=gcc
+ # c++ compiler
  CXX=g++
+ # linker
 -LD=g++
 +LD=$(CXX)
  
  
- ############################# COMPILER FLAGS ###################################
+ ############################# COMPILER FLAGS ##################################

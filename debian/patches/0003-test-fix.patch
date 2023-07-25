@@ -10,15 +10,15 @@ Address two issues in the test target in src/makefile:
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/src/makefile b/src/makefile
-index bb3074c..1744f51 100644
+index b2edeb6..7f990ce 100644
 --- a/src/makefile
 +++ b/src/makefile
-@@ -246,7 +246,7 @@ clean:
+@@ -261,7 +261,7 @@ $(CXXOBJS_HOST): %.o: %.cpp
  
- ############################### RUN TEST #######################################
+ ############################## RUN UNIT TEST ##################################
  test:
 -	pushd test; ./test.py ../chuck .; popd
 +	(cd test && ./test.py ../chuck .)
  
  
- ############################### DISTRIBUTION ###################################
+ ############################### DISTRIBUTION ##################################
