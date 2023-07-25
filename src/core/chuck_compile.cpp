@@ -32,7 +32,9 @@
 #include "chuck_compile.h"
 #include "chuck_lang.h"
 #include "chuck_errmsg.h"
+#include "chuck.h"
 #include "chuck_io.h"
+
 #ifndef  __DISABLE_OTF_SERVER__
 #include "chuck_otf.h"
 #endif
@@ -55,13 +57,11 @@
 #include "ulib_opsc.h"
 #endif
 
-#if defined(__PLATFORM_WIN32__)
+#if defined(__PLATFORM_WINDOWS__)
   #include "dirent_win32.h"
 #endif
 
-//#if defined(__WINDOWS_PTHREAD__)
 #include <sys/stat.h>
-//#endif
 
 #include <string>
 #include <vector>
@@ -269,30 +269,50 @@ void Chuck_Compiler::set_auto_depend( t_CKBOOL v )
 // name: go()
 // desc: parse, type-check, and emit a program
 //-----------------------------------------------------------------------------
-t_CKBOOL Chuck_Compiler::go( const string & filename, FILE * fd, const char * str_src, const string & full_path )
+t_CKBOOL Chuck_Compiler::go( const string & filename,
+                             const string & full_path,
+                             const string & codeLiteral )
 {
-    t_CKBOOL ret = TRUE;
-    // Chuck_Context * context = NULL;
+    // hold return value
+    t_CKBOOL ret = FALSE;
 
+    // clear any error messages
     EM_reset_msg();
+    // set the chuck | 1.5.0.5 (ge) added
+    EM_set_current_chuck( this->carrier()->chuck );
 
     // check to see if resolve dependencies automatically
     if( !m_auto_depend )
     {
         // normal (note: full_path added 1.3.0.0)
-        ret = this->do_normal_depend( filename, fd, str_src, full_path );
+        ret = this->do_normal_depend( filename, codeLiteral, full_path );
     }
     else // auto depend
     {
         // call auto-depend compile (1.4.1.0)
-        ret = this->do_auto_depend( filename, fd, str_src, full_path );
+        ret = this->do_auto_depend( filename, codeLiteral, full_path );
     }
 
     // 1.4.1.0 (ge) | added to unset the fileName reference, which determines
     // how messages print to console (e.g., [file.ck]: or [chuck]:)
-    EM_change_file( NULL );
+    // 1.5.0.5 (ge) | changed to reset_parse() which does more reset
+    // reset the parser, including reset filename and unset current chuck *
+    reset_parse();
 
     return ret;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: set_file2parse()
+// desc: set a FILE * for one-time use on next go(); see header for details
+//-----------------------------------------------------------------------------
+void Chuck_Compiler::set_file2parse( FILE * fd, t_CKBOOL autoClose )
+{
+    // call down to parser
+    ::fd2parse_set( fd, autoClose );
 }
 
 
@@ -442,8 +462,9 @@ t_CKBOOL Chuck_Compiler::do_all_except_classes( Chuck_Context * context )
 // name: do_normal_depend()
 // desc: compile normally without auto-depend
 //-----------------------------------------------------------------------------
-t_CKBOOL Chuck_Compiler::do_normal_depend( const string & filename, FILE * fd,
-                                          const char * str_src, const string & full_path )
+t_CKBOOL Chuck_Compiler::do_normal_depend( const string & filename,
+                                           const string & codeLiteral,
+                                           const string & full_path )
 {
     t_CKBOOL ret = TRUE;
     Chuck_Context * context = NULL;
@@ -453,7 +474,7 @@ t_CKBOOL Chuck_Compiler::do_normal_depend( const string & filename, FILE * fd,
     string theFullpath = expand_filepath(full_path);
 
     // parse the code
-    if( !chuck_parse( theFilename.c_str(), fd, str_src ) )
+    if( !chuck_parse( theFilename, codeLiteral ) )
         return FALSE;
 
     // make the context
@@ -500,7 +521,7 @@ cleanup:
     // unload the context from the type-checker
     if( !type_engine_unload_context( env() ) )
     {
-        EM_error2( 0, "internal error unloading context...\n" );
+        EM_error2( 0, "(internal error) unloading context..." );
         return FALSE;
     }
 
@@ -514,14 +535,15 @@ cleanup:
 // name: do_auto_depend()
 // desc: compile with auto-depend (TODO: this doesn't work yet, I don't think)
 //-----------------------------------------------------------------------------
-t_CKBOOL Chuck_Compiler::do_auto_depend( const string & filename, FILE * fd,
-                                         const char * str_src, const string & full_path )
+t_CKBOOL Chuck_Compiler::do_auto_depend( const string & filename,
+                                         const string & codeLiteral,
+                                         const string & full_path )
 {
     t_CKBOOL ret = TRUE;
     Chuck_Context * context = NULL;
 
     // parse the code
-    if( !chuck_parse( filename.c_str(), fd, str_src ) )
+    if( !chuck_parse( filename, codeLiteral ) )
         return FALSE;
 
     // make the context
@@ -544,7 +566,7 @@ t_CKBOOL Chuck_Compiler::do_auto_depend( const string & filename, FILE * fd,
     if( !code )
     {
         ret = FALSE;
-        EM_error2( 0, "internal error: context->code() NULL!" );
+        EM_error2( 0, "(internal error) context->code() NULL!" );
         goto cleanup;
     }
 
@@ -558,7 +580,7 @@ cleanup:
     // unload the context from the type-checker
     if( !type_engine_unload_context( env() ) )
     {
-        EM_error2( 0, "internal error unloading context...\n" );
+        EM_error2( 0, "(internal error) unloading context..." );
         return FALSE;
     }
 
@@ -634,11 +656,10 @@ t_CKBOOL load_module( Chuck_Compiler * compiler, Chuck_Env * env, f_ck_query que
     query_failed = !(dll->load( query ) && dll->query());
     if( query_failed || !type_engine_add_dll( env, dll, nspc ) )
     {
-        CK_FPRINTF_STDERR(
-                 "[chuck]: internal error loading module '%s.%s'...\n",
-                 nspc, name );
+        EM_error2( 0, "internal error loading module '%s.%s'...",
+                   nspc, name );
         if( query_failed )
-            CK_FPRINTF_STDERR( "       %s", dll->last_error() );
+        EM_error2( 0, " |- reason: %s", dll->last_error() );
 
         return FALSE;
     }
@@ -757,7 +778,7 @@ error:
 //-----------------------------------------------------------------------------
 t_CKBOOL getDirEntryAttribute( dirent * de, t_CKBOOL & isDirectory, t_CKBOOL & isRegular )
 {
-#if defined(__PLATFORM_WIN32__)
+#if defined(__PLATFORM_WINDOWS__)
     isDirectory = de->data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY;
     isRegular = ((de->data.dwFileAttributes & FILE_ATTRIBUTE_NORMAL) ||
                   (de->data.dwFileAttributes & FILE_ATTRIBUTE_READONLY) ||
@@ -823,9 +844,9 @@ static bool comp_func_chuginfileinfo( const ChuginFileInfo & a, const ChuginFile
 //-----------------------------------------------------------------------------
 static string format_dir_name_for_display( const string & path )
 {
-#ifndef __PLATFORM_WIN32__
+#ifndef __PLATFORM_WINDOWS__
     return path;
-#else // not __PLATFORM_WIN32__
+#else // __PLATFORM_WINDOWS__
     return expand_filepath( path );
 #endif
 }
@@ -893,7 +914,7 @@ t_CKBOOL scan_external_modules_in_directory( const char * directory,
                 dirs2search.push_back( absolute_path );
             }
         }
-#ifdef __PLATFORM_MACOSX__
+#ifdef __PLATFORM_APPLE__
         else if( is_directory && extension_matches( de->d_name, extension ) )
         {
             // On macOS, a chugin can either be a regular file (a .dylib simply renamed to .chug)
@@ -912,7 +933,7 @@ t_CKBOOL scan_external_modules_in_directory( const char * directory,
             // load directly
             chugins2load.push_back( ChuginFileInfo( de->d_name, subdirectory, true ) );
         }
-#endif // #ifdef __PLATFORM_MACOSX__
+#endif // #ifdef __PLATFORM_APPLE__
 
         // read next | 1.5.0.0 (ge) moved here due to #chunreal
         de = readdir( dir );
@@ -937,33 +958,73 @@ t_CKBOOL load_external_module_at_path( Chuck_Compiler * compiler,
 {
     Chuck_Env * env = compiler->env();
 
-    EM_log(CK_LOG_SEVERE, "loading chugin '%s'", name);
+    // EM_log(CK_LOG_SEVERE, "loading chugin '%s'", name);
 
     Chuck_DLL * dll = new Chuck_DLL( compiler->carrier(), name );
     t_CKBOOL query_failed = FALSE;
 
-    // try to load and query
-    query_failed = !(dll->load(dl_path) && dll->query());
-    if( query_failed || !type_engine_add_dll2(env, dll, "global"))
+    // load (but don't query yet; lazy mode == TRUE)
+    if( dll->load(dl_path, CK_QUERY_FUNC, TRUE) )
     {
-        EM_pushlog();
-        EM_log(CK_LOG_SEVERE, "cannot load '%s', skipping...", name);
-        // EM_error2( 0, "error: cannot load '%s', skipping...", name );
-        if( query_failed )
+        // probe it
+        dll->probe();
+        // if not compatible
+        if( !dll->compatible() )
         {
-            EM_log( CK_LOG_SEVERE, "reason: %s", dll->last_error() );
-            // EM_error2( 0, "%s", dll->last_error() );
+            // print
+            EM_log( CK_LOG_SEVERE, "[%s] loading chugin %s (%d.%d)", TC::red("FAILED",true).c_str(), name, dll->versionMajor(), dll->versionMinor() );
+            // push
+            EM_pushlog();
+            EM_log( CK_LOG_SEVERE, "reason: %s", TC::orange(dll->last_error(),true).c_str() );
+            EM_poplog();
+            // go to error for cleanup
+            goto error;
         }
-        delete dll;
-        EM_poplog();
 
-        return FALSE;
+        // try to query the chugin
+        query_failed = !dll->query();
+        // try to add to type system
+        if( query_failed || !type_engine_add_dll2( env, dll, "global" ) )
+        {
+            // print
+            EM_log( CK_LOG_SEVERE, "[%s] loading chugin %s (%d.%d)", TC::red("FAILED",true).c_str(), name, dll->versionMajor(), dll->versionMinor() );
+            EM_pushlog();
+            // if add_dll2 failed, an error should have already been output
+            if( query_failed )
+            {
+                // print reason
+                EM_log( CK_LOG_SEVERE, "reason: %s", TC::orange(dll->last_error(),true).c_str() );
+            }
+            EM_log( CK_LOG_SEVERE, "%s '%s'...", TC::blue("skipping",true).c_str(), dl_path );
+            EM_poplog();
+            // go to error for cleanup
+            goto error;
+        }
     }
     else
     {
-        compiler->m_dlls.push_back(dll);
-        return TRUE;
+        // print
+        EM_log( CK_LOG_SEVERE, "[%s] chugin '%s' load...", TC::red("FAILED",true).c_str(), name );
+        // more info
+        EM_pushlog();
+        EM_log( CK_LOG_SEVERE, "reason: %s", TC::orange(dll->last_error(),true).c_str() );
+        EM_poplog();
+        // go to error for cleanup
+        goto error;
     }
+
+    // print
+    EM_log( CK_LOG_SEVERE, "[%s] chugin %s (%d.%d)", TC::green("OK",true).c_str(), name, dll->versionMajor(), dll->versionMinor() );
+    // add to compiler
+    compiler->m_dlls.push_back(dll);
+    // return home successful
+    return TRUE;
+
+error:
+    // clean up
+    CK_SAFE_DELETE( dll );
+
+    return FALSE;
 }
 
 
@@ -1009,10 +1070,10 @@ t_CKBOOL load_external_modules_in_directory( Chuck_Compiler * compiler,
     for( t_CKINT i = 0; i < chugins2load.size(); i++ )
     {
         // load module
-        t_CKBOOL retval = load_external_module_at_path( compiler, chugins2load[i].filename.c_str(),
+        t_CKBOOL loaded = load_external_module_at_path( compiler, chugins2load[i].filename.c_str(),
             chugins2load[i].path.c_str() );
         // if no error
-        if( chugins2load[i].isBundle && retval ) {
+        if( chugins2load[i].isBundle && loaded) {
             // log
             EM_pushlog();
             EM_log( CK_LOG_INFO, "macOS bundle was detected..." );
@@ -1115,15 +1176,15 @@ t_CKBOOL probe_external_module_at_path( const char * name, const char * dl_path 
         if( dll->compatible() )
         {
             // print
-            EM_log( CK_LOG_SYSTEM, "[OK] chugin %s (%d.%d)", name, dll->versionMajor(), dll->versionMinor() );
+            EM_log( CK_LOG_SYSTEM, "[%s] chugin %s (%d.%d)", TC::green("OK",true).c_str(), name, dll->versionMajor(), dll->versionMinor() );
         }
         else
         {
             // print
-            EM_log( CK_LOG_SYSTEM, "[FAILED] chugin %s (%d.%d)", name, dll->versionMajor(), dll->versionMinor() );
+            EM_log( CK_LOG_SYSTEM, "[%s] chugin %s (%d.%d)", TC::red("FAILED",true).c_str(), name, dll->versionMajor(), dll->versionMinor() );
             // push
             EM_pushlog();
-            EM_log( CK_LOG_SYSTEM, "reason: %s", dll->last_error() );
+            EM_log( CK_LOG_SYSTEM, "reason: %s", TC::orange(dll->last_error(),true).c_str() );
             EM_poplog();
 
         }
@@ -1131,10 +1192,10 @@ t_CKBOOL probe_external_module_at_path( const char * name, const char * dl_path 
     else
     {
         // print
-        EM_log( CK_LOG_SYSTEM, "[FAILED] chugin '%s' load...", name );
+        EM_log( CK_LOG_SYSTEM, "[%s] chugin '%s' load...", TC::red("FAILED",true).c_str(), name );
         // more info
         EM_pushlog();
-        EM_log( CK_LOG_SYSTEM, "reason: %s", dll->last_error() );
+        EM_log( CK_LOG_SYSTEM, "reason: %s", TC::orange(dll->last_error(),true).c_str() );
         EM_poplog();
     }
 
@@ -1184,10 +1245,10 @@ t_CKBOOL probe_external_modules_in_directory( const char * directory,
     for( t_CKINT i = 0; i < chugins2load.size(); i++ )
     {
         // load module
-        t_CKBOOL retval = probe_external_module_at_path(
+        t_CKBOOL probed = probe_external_module_at_path(
             chugins2load[i].filename.c_str(), chugins2load[i].path.c_str() );
         // if no error
-        if( chugins2load[i].isBundle && retval ) {
+        if( chugins2load[i].isBundle && probed) {
             // log
             EM_pushlog();
             EM_log( CK_LOG_INFO, "macOS bundle was detected..." );

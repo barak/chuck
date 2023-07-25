@@ -37,10 +37,11 @@
 #include "chuck_errmsg.h"
 #include "util_string.h"
 #include "util_thread.h"
+#include "util_platforms.h"
 #include <limits.h>
 #include "rtmidi.h"
 
-#if (defined(__PLATFORM_WIN32__) && !defined(__WINDOWS_PTHREAD__))
+#if (defined(__PLATFORM_WINDOWS__) && !defined(__WINDOWS_PTHREAD__))
   #include <windows.h>
   #include <sys/timeb.h>
 #else
@@ -60,9 +61,9 @@
 // real-time watch dog
 t_CKBOOL g_do_watchdog = FALSE;
 // countermeasure
-#ifdef __MACOSX_CORE__
+#ifdef __PLATFORM_APPLE__
 t_CKUINT g_watchdog_countermeasure_priority = 10;
-#elif defined(__PLATFORM_WIN32__) && !defined(__WINDOWS_PTHREAD__)
+#elif defined(__PLATFORM_WINDOWS__) && !defined(__WINDOWS_PTHREAD__)
 t_CKUINT g_watchdog_countermeasure_priority = THREAD_PRIORITY_LOWEST;
 #else
 t_CKUINT g_watchdog_countermeasure_priority = 0;
@@ -77,12 +78,12 @@ t_CKBOOL ChuckAudio::m_start = FALSE;
 t_CKBOOL ChuckAudio::m_go = FALSE;
 t_CKBOOL ChuckAudio::m_silent = FALSE;
 t_CKBOOL ChuckAudio::m_expand_in_mono2stereo= FALSE;
-t_CKUINT ChuckAudio::m_num_channels_out = NUM_CHANNELS_DEFAULT;
-t_CKUINT ChuckAudio::m_num_channels_in = NUM_CHANNELS_DEFAULT;
-t_CKUINT ChuckAudio::m_num_channels_max = NUM_CHANNELS_DEFAULT;
-t_CKUINT ChuckAudio::m_sample_rate = SAMPLE_RATE_DEFAULT;
-t_CKUINT ChuckAudio::m_buffer_size = BUFFER_SIZE_DEFAULT;
-t_CKUINT ChuckAudio::m_num_buffers = NUM_BUFFERS_DEFAULT;
+t_CKUINT ChuckAudio::m_num_channels_out = CK_NUM_CHANNELS_DEFAULT;
+t_CKUINT ChuckAudio::m_num_channels_in = CK_NUM_CHANNELS_DEFAULT;
+t_CKUINT ChuckAudio::m_num_channels_max = CK_NUM_CHANNELS_DEFAULT;
+t_CKUINT ChuckAudio::m_sample_rate = CK_SAMPLE_RATE_DEFAULT;
+t_CKUINT ChuckAudio::m_buffer_size = CK_BUFFER_SIZE_DEFAULT;
+t_CKUINT ChuckAudio::m_num_buffers = CK_NUM_BUFFERS_DEFAULT;
 SAMPLE * ChuckAudio::m_buffer_out = NULL;
 SAMPLE * ChuckAudio::m_buffer_in = NULL;
 SAMPLE * ChuckAudio::m_extern_in = NULL;
@@ -141,6 +142,10 @@ static RtAudio::Api driverNameToApi( const char * driver )
         if( driverLower == "pulse" )
             api = RtAudio::LINUX_PULSE;
     #endif
+    #if defined(__LINUX_OSS__)
+        if( driverLower == "oss" )
+            api = RtAudio::LINUX_OSS;
+    #endif
     #if defined(__UNIX_JACK__)
         if( driverLower == "jack" )
             api = RtAudio::UNIX_JACK;
@@ -166,14 +171,16 @@ static RtAudio::Api driverNameToApi( const char * driver )
     // case of linux, which drivers chuck is being compiled with.
     if( api == RtAudio::UNSPECIFIED )
     {
-    #if defined(__PLATFORM_WIN32__)
+    #if defined(__PLATFORM_WINDOWS__)
         // traditional chuck default behavior:
         // DirectSound is most general albeit high-latency
         api = RtAudio::WINDOWS_DS;
-    #elif defined(__PLATFORM_LINUX__) && defined(__LINUX_PULSE__)
-        api = RtAudio::LINUX_PULSE;
     #elif defined(__PLATFORM_LINUX__) && defined(__LINUX_ALSA__)
         api = RtAudio::LINUX_ALSA;
+    #elif defined(__PLATFORM_LINUX__) && defined(__LINUX_PULSE__)
+        api = RtAudio::LINUX_PULSE;
+    #elif defined(__PLATFORM_LINUX__) && defined(__LINUX_OSS__)
+        api = RtAudio::LINUX_OSS;
     #elif defined(__PLATFORM_LINUX__) && defined(__UNIX_JACK__)
         api = RtAudio::UNIX_JACK;
     #elif defined(__MACOSX_CORE__)
@@ -225,10 +232,10 @@ void print( const RtAudio::DeviceInfo & info )
 {
     EM_error2b( 0, "device name = \"%s\"", info.name.c_str() );
     if (!info.probed)
-        EM_error2b( 0, "probe [failed] ..." );
+        EM_error2b( 0, "probe [failed]..." );
     else
     {
-        EM_error2b( 0, "probe [success] ..." );
+        EM_error2b( 0, "probe [success]..." );
         EM_error2b( 0, "# output channels = %d", info.outputChannels );
         EM_error2b( 0, "# input channels  = %d", info.inputChannels );
         EM_error2b( 0, "# duplex Channels = %d", info.duplexChannels );
@@ -267,7 +274,7 @@ void print( const RtAudio::DeviceInfo & info )
 static void rtAudioErrorHandler( RtAudioErrorType t, const std::string & errorText)
 {
     // problem finding audio devices, most likely
-    EM_error2b( 0, "%s", errorText.c_str() );
+    EM_error2( 0, "%s", errorText.c_str() );
 }
 
 
@@ -298,8 +305,8 @@ void ChuckAudio::probe( const char * driver )
 
     // get count
     int devices = audio->getDeviceCount();
-    EM_error2b( 0, "[%s] driver found %d audio device(s)...", dnm, devices );
-    EM_error2( 0, "" );
+    EM_error2b( 0, "[%s] driver found %d audio device(s)...", TC::green(dnm,TRUE).c_str(), devices );
+    EM_error2b( 0, "" );
 
     // reset -- what does this do
     EM_reset_msg();
@@ -309,23 +316,23 @@ void ChuckAudio::probe( const char * driver )
     {
         info = audio->getDeviceInfo(i);
         if (!info.probed) { // errorHandle reports issues above
-            EM_error2(0, "");
+            EM_error2b(0, "");
             EM_reset_msg();
             continue;
         }
         
         // print
-        EM_error2b( 0, "------( audio device: %d )---------------", i+1 );
+        EM_print2blue( "------( audio device: %d )------", i+1 );
         print( info );
         // skip
-        if( i < devices ) EM_error2( 0, "" );
+        if( i < devices ) EM_error2b( 0, "" );
         
         // reset
         EM_reset_msg();
     }
 
     // done
-    SAFE_DELETE( audio );
+    CK_SAFE_DELETE( audio );
 
     return;
 }
@@ -406,7 +413,7 @@ t_CKINT ChuckAudio::device_named( const char * driver,
     }
 
     // clean up
-    SAFE_DELETE( audio );
+    CK_SAFE_DELETE( audio );
     
     // done
     return device_no;
@@ -505,7 +512,7 @@ ChuckAudioDriverInfo ChuckAudio::getDriverInfo( t_CKUINT n )
 //-----------------------------------------------------------------------------
 static t_CKFLOAT get_current_time( t_CKBOOL fresh = TRUE )
 {
-#ifdef __PLATFORM_WIN32__
+#ifdef __PLATFORM_WINDOWS__
     struct _timeb t;
     _ftime(&t);
     return t.time + t.millitm/1000.0;
@@ -532,7 +539,7 @@ static t_CKFLOAT g_watchdog_time = 0;
 // name: watch_dog()
 // desc: this sniff out possible non-time advancing infinite loops
 //-----------------------------------------------------------------------------
-#if !defined(__PLATFORM_WIN32__) || defined(__WINDOWS_PTHREAD__)
+#if !defined(__PLATFORM_WINDOWS__) || defined(__WINDOWS_PTHREAD__)
 static void * watch_dog( void * )
 #else
 static unsigned int __stdcall watch_dog( void * )
@@ -596,7 +603,7 @@ static unsigned int __stdcall watch_dog( void * )
         }
         
         // advance time
-        usleep( 40000 );
+        ck_usleep( 40000 );
     }
     
     // log
@@ -644,9 +651,9 @@ t_CKBOOL ChuckAudio::watchdog_stop()
     // stop things
     g_do_watchdog = FALSE;
     // wait a bit | TODO: is this needed?
-    usleep( 100000 );
+    ck_usleep( 100000 );
     // delete watchdog thread | TODO: is this safe?
-    SAFE_DELETE( g_watchdog_thread );
+    CK_SAFE_DELETE( g_watchdog_thread );
     
     return TRUE;
 }
@@ -1054,7 +1061,7 @@ t_CKBOOL ChuckAudio::initialize( t_CKUINT dac_device,
         if( code > RTAUDIO_WARNING ) // was: } catch( RtAudioErrorType ) {
         {
             // RtAudio no longer throws, errors reported via errorHandler
-            SAFE_DELETE( m_rtaudio );
+            CK_SAFE_DELETE( m_rtaudio );
             // clean up
             goto error;
         }
@@ -1119,7 +1126,7 @@ int ChuckAudio::cb( void * output_buffer, void * input_buffer, unsigned int buff
     // priority boost
     if( !m_go && XThreadUtil::our_priority != 0x7fffffff )
     {
-#if !defined(__PLATFORM_WIN32__) || defined(__WINDOWS_PTHREAD__)
+#if !defined(__PLATFORM_WINDOWS__) || defined(__WINDOWS_PTHREAD__)
         g_tid_synthesis = pthread_self();
 #else
         // must duplicate for handle to be usable by other threads
@@ -1273,11 +1280,11 @@ void ChuckAudio::shutdown()
     // close stream
     m_rtaudio->closeStream();
     // cleanup
-    SAFE_DELETE( m_rtaudio );
+    CK_SAFE_DELETE( m_rtaudio );
 
     // deallocate | 1.5.0.0 (ge) added
-    SAFE_DELETE( m_buffer_in );
-    SAFE_DELETE( m_buffer_out );
+    CK_SAFE_DELETE( m_buffer_in );
+    CK_SAFE_DELETE( m_buffer_out );
 
     // unflag
     m_init = FALSE;

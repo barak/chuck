@@ -2,10 +2,10 @@
 current:
 	@echo "[chuck build]: please use one of the following configurations:"
 	@echo "   make linux-alsa, make linux-jack, make linux-pulse, linux-all,"
-	@echo "   make mac, make mac-ub, make cygwin, or make win32"
+	@echo "   make mac, make mac-ub, make cygwin, make win32, or make vanilla"
 
-.PHONY: mac mac-ub osx linux-all linux linux-pulse linux-jack linux-alsa cygwin osx-rl test
-mac mac-ub osx linux-all linux linux-pulse linux-jack linux-alsa cygwin osx-rl: chuck-core
+.PHONY: mac mac-ub osx linux-all linux linux-pulse linux-jack linux-alsa vanilla cygwin osx-rl test
+mac mac-ub osx linux-all linux linux-pulse linux-jack linux-alsa vanilla cygwin osx-rl: chuck-core
 
 win32:
 	make -f makefile.win32
@@ -23,7 +23,7 @@ CFLAGS+= -D__CHUCK_STAT_TRACK__
 endif
 
 ifneq ($(CHUCK_DEBUG),)
-CFLAGS+= -g
+CFLAGS+= -g -D__CHUCK_DEBUG__
 else
 CFLAGS+= -O3
 endif
@@ -64,6 +64,10 @@ ifneq (,$(strip $(filter linux-alsa,$(MAKECMDGOALS))))
 include makefile.x/makefile.alsa
 endif
 
+ifneq (,$(strip $(filter vanilla,$(MAKECMDGOALS))))
+include makefile.x/makefile.vanilla
+endif
+
 ifneq (,$(strip $(filter cygwin,$(MAKECMDGOALS))))
 include makefile.x/makefile.cygwin
 endif
@@ -80,14 +84,14 @@ CXXSRCS_CORE+= chuck_absyn.cpp chuck_parse.cpp chuck_errmsg.cpp \
 	chuck_vm.cpp chuck_instr.cpp chuck_scan.cpp chuck_type.cpp \
 	chuck_emit.cpp chuck_compile.cpp chuck_dl.cpp chuck_oo.cpp \
 	chuck_lang.cpp chuck_ugen.cpp chuck_otf.cpp chuck_stats.cpp \
-	chuck_shell.cpp chuck_io.cpp chuck.cpp \
-	chuck_carrier.cpp chuck_globals.cpp \
-	midiio_rtmidi.cpp rtmidi.cpp hidio_sdl.cpp \
+	chuck_shell.cpp chuck_io.cpp chuck.cpp chuck_carrier.cpp \
+	chuck_globals.cpp midiio_rtmidi.cpp rtmidi.cpp hidio_sdl.cpp \
 	ugen_osc.cpp ugen_filter.cpp ugen_stk.cpp ugen_xxx.cpp \
 	ulib_ai.cpp ulib_doc.cpp ulib_machine.cpp ulib_math.cpp \
 	ulib_std.cpp ulib_opsc.cpp util_buffers.cpp util_console.cpp \
-	util_math.cpp util_string.cpp util_thread.cpp util_opsc.cpp \
-	util_serial.cpp util_hid.cpp uana_xform.cpp uana_extract.cpp
+	util_math.cpp util_platforms.cpp util_string.cpp util_thread.cpp \
+	util_opsc.cpp util_serial.cpp util_hid.cpp uana_xform.cpp \
+	uana_extract.cpp
 LO_CSRCS+= lo/address.c lo/blob.c lo/bundle.c lo/message.c lo/method.c \
     lo/pattern_match.c lo/send.c lo/server.c lo/server_thread.c lo/timetag.c
 ################################################################################
@@ -129,11 +133,11 @@ chuck.lex: chuck.tab.h
 chuck.yy.c: chuck.lex
 	$(LEX) -ochuck.yy.c chuck.lex
 
-chuck_win32.c: chuck.yy.c
+chuck_yacc.c: chuck.yy.c
 	$(LEX) --nounistd -ochuck.yy.c chuck.lex
 	cat chuck.tab.c chuck.yy.c > $@
 
-chuck_win32.h: chuck.tab.h
+chuck_yacc.h: chuck.tab.h
 	cat chuck.tab.h > $@
 
 $(CXXOBJS): %.o: %.cpp

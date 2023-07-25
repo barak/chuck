@@ -31,11 +31,14 @@
 //-----------------------------------------------------------------------------
 #include "ulib_std.h"
 #include "util_buffers.h"
+#include "util_math.h"
+#include "util_string.h"
+#include "util_platforms.h"
+
 #ifndef __DISABLE_PROMPTER__
 #include "util_console.h"
 #endif
-#include "util_math.h"
-#include "util_string.h"
+
 #ifndef __DISABLE_THREADS__
 #include "util_thread.h"
 #endif
@@ -49,7 +52,7 @@
 #include <time.h>
 #include <math.h>
 
-#ifdef __PLATFORM_WIN32__
+#ifdef __PLATFORM_WINDOWS__
   #ifndef __CHUNREAL_ENGINE__
     #include <windows.h>
   #else
@@ -68,7 +71,7 @@ int setenv( const char *n, const char *v, int i )
 }
 #else
   #include <unistd.h>
-#endif // #ifdef __PLATFORM_WIN32__
+#endif // #ifdef __PLATFORM_WINDOWS__
 
 // for ConsoleInput and StringTokenizer
 #include <sstream>
@@ -576,7 +579,7 @@ DLL_QUERY libstd_query( Chuck_DL_Query * QUERY )
     type_engine_import_class_end( env );
 
 
-#if defined(__PLATFORM_WIN32__)
+#if defined(__PLATFORM_WINDOWS__)
     // begin class (Cereal)
     if( !type_engine_import_class_begin( env, "Cereal", "Object",
                                          env->global(), Cereal_ctor ) )
@@ -911,7 +914,7 @@ XThread * KBHitManager::the_thread;
 #define BUFFER_SIZE 1024
 
 
-#if !defined(__PLATFORM_WIN32__) || defined(__WINDOWS_PTHREAD__)
+#if !defined(__PLATFORM_WINDOWS__) || defined(__WINDOWS_PTHREAD__)
 static void * kb_loop( void * )
 #else
 static unsigned int __stdcall kb_loop( void * )
@@ -937,7 +940,7 @@ static unsigned int __stdcall kb_loop( void * )
         }
 
         // wait
-        usleep( 5000 );
+        ck_usleep( 5000 );
     }
 
     return 0;
@@ -955,7 +958,7 @@ t_CKBOOL KBHitManager::init()
     if( !the_buf->initialize( BUFFER_SIZE, sizeof(t_CKINT) ) )
     {
         EM_log( CK_LOG_SEVERE, "KBHitManager: couldn't allocate central KB buffer..." );
-        SAFE_DELETE( the_buf );
+        CK_SAFE_DELETE( the_buf );
         return FALSE;
     }
 
@@ -975,7 +978,7 @@ t_CKBOOL KBHitManager::init()
 void KBHitManager::shutdown()
 {
     EM_log( CK_LOG_INFO, "shutting down KBHitManager..." );
-    SAFE_DELETE( the_buf );
+    CK_SAFE_DELETE( the_buf );
     kb_endwin();
 
     the_onoff = 0;
@@ -1221,7 +1224,7 @@ void le_cleanup()
     if( g_le_thread )
     {
         // cancel thread
-#if !defined(__PLATFORM_WIN32__) || defined(__WINDOWS_PTHREAD__)
+#if !defined(__PLATFORM_WINDOWS__) || defined(__WINDOWS_PTHREAD__)
         pthread_cancel( g_le_thread );
 #else
         CloseHandle( g_le_thread );
@@ -1245,7 +1248,7 @@ void * le_cb( void * p )
     {
         // wait
         while( g_le_wait )
-            usleep( 10000 );
+            ck_usleep( 10000 );
 
         // REFACTOR-2017: TODO Ge:
         // I removed the check here for if there are no more vms running
@@ -1285,7 +1288,7 @@ LineEvent::LineEvent( Chuck_Event * SELF )
     // launch the cb
     if( !g_le_launched )
     {
-#if !defined(__PLATFORM_WIN32__) || defined(__WINDOWS_PTHREAD__)
+#if !defined(__PLATFORM_WINDOWS__) || defined(__WINDOWS_PTHREAD__)
         pthread_create( &g_le_thread, NULL, le_cb, NULL );
 #else
         g_le_thread = CreateThread( NULL, 0, (LPTHREAD_START_ROUTINE)le_cb, NULL, 0, 0 );
@@ -1434,7 +1437,7 @@ StrTok::StrTok()
 
 StrTok::~StrTok()
 {
-    SAFE_DELETE( m_ss );
+    CK_SAFE_DELETE( m_ss );
 }
 
 void StrTok::set( const string & line )
@@ -1442,7 +1445,7 @@ void StrTok::set( const string & line )
     string s;
 
     // delete
-    SAFE_DELETE( m_ss );
+    CK_SAFE_DELETE( m_ss );
     // alloc
     m_ss = new istringstream( line );
     // read
@@ -1827,7 +1830,7 @@ CK_DLL_MFUN( VCR_name )
 }
 
 
-#ifdef __PLATFORM_WIN32__
+#ifdef __PLATFORM_WINDOWS__
 
 
 // jeff's cereal
