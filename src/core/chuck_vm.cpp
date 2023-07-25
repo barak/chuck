@@ -36,14 +36,15 @@
 #include "chuck_dl.h"
 #include "chuck_globals.h" // added 1.4.1.0 (jack)
 #include "chuck_errmsg.h"
+#include "chuck.h"
+#include "ugen_xxx.h"
+#include "util_buffers.h"
+#include "util_platforms.h"
 #include "util_string.h"
 
 #ifndef __DISABLE_SERIAL__
 #include "chuck_io.h"
 #endif
-
-#include "ugen_xxx.h"
-#include "util_buffers.h"
 
 #ifndef __DISABLE_HID__
 #include "hidio_sdl.h"  // 1.4.0.0
@@ -53,30 +54,24 @@
 #include "midiio_rtmidi.h"  // 1.4.1.0
 #endif
 
+#include <string>
 #include <algorithm>
 using namespace std;
 
-#if defined(__PLATFORM_WIN32__)
-  #ifndef __CHUNREAL_ENGINE__
-    #include <windows.h>
-  #else
-    // 1.5.0.0 (ge) | #chunreal
-    #include "Windows/MinWindows.h"
-  #endif // #ifndef __CHUNREAL_ENGINE__
-#else
-  #include <unistd.h>
-  #include <pthread.h>
-#endif // #if defined(__PLATFORM_WIN32__)
 
-// uncomment to compile VM debug messages
-#define CK_VM_DEBUG_ENABLE (0)
 
-#if CK_VM_DEBUG_ENABLE
-#define CK_VM_DEBUG(x) x
+
+//-----------------------------------------------------------------------------
+// uncomment AND set to 1 to compile VM stack debug messages
+//-----------------------------------------------------------------------------
+#define CK_VM_STACK_DEBUG_ENABLE 0
+// vm statck debug macros
+#if CK_VM_STACK_DEBUG_ENABLE
 #include <typeinfo>
+#define CK_VM_STACK_DEBUG(x) x
 #else
-#define CK_VM_DEBUG(x)
-#endif // CK_VM_DEBUG_ENABLE
+#define CK_VM_STACK_DEBUG(x)
+#endif
 
 
 
@@ -307,8 +302,7 @@ t_CKBOOL Chuck_VM::initialize_synthesis( )
     // log
     EM_log( CK_LOG_SEVERE, "initializing 'dac'..." );
     // allocate dac and adc (REFACTOR-2017: g_t_dac changed to env()->t_dac)
-    env()->t_dac->ugen_info->num_outs =
-        env()->t_dac->ugen_info->num_ins = m_num_dac_channels;
+    env()->t_dac->ugen_info->num_outs = env()->t_dac->ugen_info->num_ins = m_num_dac_channels;
     m_dac = (Chuck_UGen *)instantiate_and_initialize_object( env()->t_dac, this );
     // Chuck_DL_Api::Api::instance() added 1.3.0.0
     object_ctor( m_dac, NULL, this, NULL, Chuck_DL_Api::Api::instance() ); // TODO: this can't be the place to do this
@@ -321,8 +315,7 @@ t_CKBOOL Chuck_VM::initialize_synthesis( )
     // log
     EM_log( CK_LOG_SEVERE, "initializing 'adc'..." );
     // (REFACTOR-2017: g_t_adc changed to env()->t_adc)
-    env()->t_adc->ugen_info->num_ins =
-        env()->t_adc->ugen_info->num_outs = m_num_adc_channels;
+    env()->t_adc->ugen_info->num_ins = env()->t_adc->ugen_info->num_outs = m_num_adc_channels;
     m_adc = (Chuck_UGen *)instantiate_and_initialize_object( env()->t_adc, this );
     // Chuck_DL_Api::Api::instance() added 1.3.0.0
     object_ctor( m_adc, NULL, this, NULL, Chuck_DL_Api::Api::instance() ); // TODO: this can't be the place to do this
@@ -372,12 +365,12 @@ t_CKBOOL Chuck_VM::shutdown()
 
     // REFACTOR-2017: clean up after my global variables
     m_globals_manager->cleanup_global_variables();
-    SAFE_DELETE( m_globals_manager );
+    CK_SAFE_DELETE( m_globals_manager );
 
     // log
     EM_log( CK_LOG_SYSTEM, "freeing shreduler..." );
     // free the shreduler
-    SAFE_DELETE( m_shreduler );
+    CK_SAFE_DELETE( m_shreduler );
 
     #ifndef __DISABLE_HID__
     // log
@@ -394,11 +387,11 @@ t_CKBOOL Chuck_VM::shutdown()
     // log
     EM_log( CK_LOG_SYSTEM, "freeing msg/reply/event buffers..." );
     // free the msg buffer
-    SAFE_DELETE( m_msg_buffer );
+    CK_SAFE_DELETE( m_msg_buffer );
     // free the reply buffer
-    SAFE_DELETE( m_reply_buffer );
+    CK_SAFE_DELETE( m_reply_buffer );
     // free the event buffer
-    SAFE_DELETE( m_event_buffer );
+    CK_SAFE_DELETE( m_event_buffer );
 
     // log
     EM_log( CK_LOG_SEVERE, "clearing shreds..." );
@@ -424,9 +417,9 @@ t_CKBOOL Chuck_VM::shutdown()
     // log
     EM_log( CK_LOG_SYSTEM, "freeing special ugens..." );
     // go
-    SAFE_RELEASE( m_dac );
-    SAFE_RELEASE( m_adc );
-    SAFE_RELEASE( m_bunghole );
+    CK_SAFE_RELEASE( m_dac );
+    CK_SAFE_RELEASE( m_adc );
+    CK_SAFE_RELEASE( m_bunghole );
 
     // set state
     m_init = FALSE;
@@ -583,7 +576,10 @@ t_CKBOOL Chuck_VM::compute()
 
 //-----------------------------------------------------------------------------
 // name: run()
-// desc: ...
+// desc: run VM and compute the next N frames of audio
+//       `N` : the number of audio frames to run
+//       `input`: the incoming input array of audio samples
+//       `output`: the outgoing output array of audio samples
 //-----------------------------------------------------------------------------
 t_CKBOOL Chuck_VM::run( t_CKINT N, const SAMPLE * input, SAMPLE * output )
 {
@@ -753,8 +749,7 @@ t_CKUINT Chuck_VM::process_msg( Chuck_Msg * msg )
         Chuck_VM_Shred * out = m_shreduler->lookup( msg->param );
         if( !out )
         {
-            EM_error3( "[chuck](VM): error replacing shred: no shred with id %i...",
-                       msg->param );
+            EM_print2orange( "(VM) replacing shred: no shred with id %i...", msg->param );
             retval = 0;
             goto done;
         }
@@ -786,8 +781,8 @@ t_CKUINT Chuck_VM::process_msg( Chuck_Msg * msg )
         // replace
         if( m_shreduler->remove( out ) && m_shreduler->shredule( shred ) )
         {
-            EM_error3( "[chuck](VM): replacing shred %i (%s) with %i (%s)...",
-                       out->xid, mini(out->name.c_str()), shred->xid, mini(shred->name.c_str()) );
+            EM_print2blue( "(VM) replacing shred %i (%s) with %i (%s)...",
+                            out->xid, mini(out->name.c_str()), shred->xid, mini(shred->name.c_str()) );
             this->free( out, TRUE, FALSE );
             retval = shred->xid;
 
@@ -798,8 +793,7 @@ t_CKUINT Chuck_VM::process_msg( Chuck_Msg * msg )
         }
         else
         {
-            EM_error3( "[chuck](VM): shreduler ERROR replacing shred %i...",
-                       out->xid );
+            EM_print2blue( "(VM) shreduler replacing shred %i...", out->xid );
             shred->release();
             retval = 0;
             goto done;
@@ -811,7 +805,7 @@ t_CKUINT Chuck_VM::process_msg( Chuck_Msg * msg )
         {
             if( !this->m_num_shreds)
             {
-                EM_error3( "[chuck](VM): no shreds to remove..." );
+                EM_print2orange( "(VM) no shreds to remove..." );
                 retval = 0;
                 goto done;
             }
@@ -822,14 +816,14 @@ t_CKUINT Chuck_VM::process_msg( Chuck_Msg * msg )
                 xid--;
             if( xid >= 0 )
             {
-                EM_error3( "[chuck](VM): removing recent shred: %i (%s)...",
-                           xid, mini(shred->name.c_str()) );
+                EM_print2orange( "(VM) removing recent shred: %i (%s)...",
+                                xid, mini(shred->name.c_str()) );
                 this->free( shred, TRUE );
                 retval = xid;
             }
             else
             {
-                EM_error3( "[chuck](VM): no shreds removed..." );
+                EM_print2orange( "(VM) no shreds removed..." );
                 retval = 0;
                 goto done;
             }
@@ -839,20 +833,17 @@ t_CKUINT Chuck_VM::process_msg( Chuck_Msg * msg )
             Chuck_VM_Shred * shred = m_shreduler->lookup( msg->param );
             if( !shred )
             {
-                EM_error3( "[chuck](VM): cannot remove: no shred with id %i...",
-                           msg->param );
+                EM_print2orange( "(VM) cannot remove: no shred with id %i...", msg->param );
                 retval = 0;
                 goto done;
             }
             if( shred != m_shreduler->m_current_shred && !m_shreduler->remove( shred ) )  // was lookup
             {
-                EM_error3( "[chuck](VM): shreduler: cannot remove shred %i...",
-                           msg->param );
+                EM_print2orange( "(VM) shreduler: cannot remove shred %i...", msg->param );
                 retval = 0;
                 goto done;
             }
-            EM_error3( "[chuck](VM): removing shred: %i (%s)...",
-                       msg->param, mini(shred->name.c_str()) );
+            EM_print2orange( "(VM) removing shred: %i (%s)...", msg->param, mini(shred->name.c_str()) );
             this->free( shred, TRUE );
             retval = msg->param;
         }
@@ -860,14 +851,14 @@ t_CKUINT Chuck_VM::process_msg( Chuck_Msg * msg )
     else if( msg->type == MSG_REMOVEALL )
     {
         // print
-        EM_error3( "[chuck](VM): removing all (%i) shreds...", m_num_shreds );
+        EM_print2magenta( "(VM) removing all (%i) shreds...", m_num_shreds );
         // remove all shreds
         this->removeAll();
     }
     else if( msg->type == MSG_CLEARVM ) // added 1.3.2.0
     {
         // print
-        EM_error3( "[chuck](VM): removing all shreds and resetting type system" );
+        EM_print2magenta( "(VM) removing all shreds and resetting type system" );
         // first, remove all shreds
         this->removeAll();
         // next, clear user type system
@@ -890,13 +881,13 @@ t_CKUINT Chuck_VM::process_msg( Chuck_Msg * msg )
         if( msg->args ) shred->args = *(msg->args);
 
         const char * s = ( msg->shred ? msg->shred->name.c_str() : msg->code->name.c_str() );
-        EM_error3( "[chuck](VM): sporking incoming shred: %i (%s)...", xid, mini(s) );
+        EM_print2green( "(VM) sporking incoming shred: %i (%s)...", xid, mini(s) );
         retval = xid;
         goto done;
     }
-    else if( msg->type == MSG_KILL )
+    else if( msg->type == MSG_EXIT )
     {
-        EM_error3( "[chuck](VM): KILL received...." );
+        EM_print2magenta( "(VM) EXIT received...." );
         // close file handles and clean up
         // REFACTOR-2017: TODO all_detach function
         // all_detach();
@@ -925,19 +916,19 @@ t_CKUINT Chuck_VM::process_msg( Chuck_Msg * msg )
     else if( msg->type == MSG_TIME )
     {
         float srate = m_srate; // 1.3.5.3; was: (float)Digitalio::sampling_rate();
-        CK_FPRINTF_STDOUT( "[chuck](VM): earth time: %s\n", timestamp_formatted().c_str() );
-        CK_FPRINTF_STDERR( "[chuck](VM): chuck time: %.0f::samp (now)\n", m_shreduler->now_system );
-        CK_FPRINTF_STDERR( "%22.6f::second since VM start\n", m_shreduler->now_system / srate );
-        CK_FPRINTF_STDERR( "%22.6f::minute\n", m_shreduler->now_system / srate / 60.0f );
-        CK_FPRINTF_STDERR( "%22.6f::hour\n", m_shreduler->now_system / srate / 60.0f / 60.0f );
-        CK_FPRINTF_STDERR( "%22.6f::day\n", m_shreduler->now_system / srate / 60.0f / 60.0f / 24.0f );
-        CK_FPRINTF_STDERR( "%22.6f::week\n", m_shreduler->now_system / srate / 60.0f / 60.0f / 24.0f / 7.0f );
+        EM_print2magenta  ( "(VM) earth time: %s", timestamp_formatted().c_str() );
+        EM_print2magenta  ( "(VM) chuck time: %.0f::samp (now)", m_shreduler->now_system );
+        EM_print2vanilla( "%22.6f::second since VM start", m_shreduler->now_system / srate );
+        EM_print2vanilla( "%22.6f::minute", m_shreduler->now_system / srate / 60.0f );
+        EM_print2vanilla( "%22.6f::hour", m_shreduler->now_system / srate / 60.0f / 60.0f );
+        EM_print2vanilla( "%22.6f::day", m_shreduler->now_system / srate / 60.0f / 60.0f / 24.0f );
+        EM_print2vanilla( "%22.6f::week", m_shreduler->now_system / srate / 60.0f / 60.0f / 24.0f / 7.0f );
     }
     else if( msg->type == MSG_RESET_ID )
     {
         t_CKUINT n = m_shreduler->highest();
         m_shred_id = n;
-        CK_FPRINTF_STDERR( "[chuck](VM): -- resetting shred id to %lu...\n", m_shred_id + 1 );
+        EM_print2blue( "(VM) -- resetting shred id to %lu...", m_shred_id + 1 );
     }
 
 done:
@@ -948,7 +939,7 @@ done:
         m_reply_buffer->put( &msg, 1 );
     }
     else
-        SAFE_DELETE(msg);
+        CK_SAFE_DELETE(msg);
 
     return retval;
 }
@@ -1084,8 +1075,6 @@ void Chuck_VM::removeAll()
 {
     // get list of active shreds
     std::vector<Chuck_VM_Shred *> shreds;
-    // shred pointer
-    Chuck_VM_Shred * shred = NULL;
 
     // get list from shreduler
     m_shreduler->get_active_shreds( shreds );
@@ -1155,7 +1144,7 @@ t_CKBOOL Chuck_VM::free( Chuck_VM_Shred * shred, t_CKBOOL cascade, t_CKBOOL dec 
     // TODO: remove shred from event, with synchronization (still necessary with dump?)
     // if( shred->event ) shred->event->remove( shred );
     // OLD: shred->release();
-    this->dump( shred );
+    this->dump_shred( shred );
     shred = NULL;
     if( dec ) m_num_shreds--;
     if( !m_num_shreds ) m_shred_id = 0;
@@ -1196,10 +1185,10 @@ t_CKBOOL Chuck_VM::abort_current_shred( )
 
 
 //-----------------------------------------------------------------------------
-// name: dump()
+// name: dump_shred()
 // desc: place a shred into the "dump" to be later released
 //-----------------------------------------------------------------------------
-void Chuck_VM::dump( Chuck_VM_Shred * shred )
+void Chuck_VM::dump_shred( Chuck_VM_Shred * shred )
 {
     // log
     EM_log( CK_LOG_FINER, "dumping shred (id==%d | ptr==%p)", shred->xid,
@@ -1230,7 +1219,7 @@ void Chuck_VM::release_dump( )
 
     // iterate through dump
     for( t_CKUINT i = 0; i < m_shred_dump.size(); i++ )
-        SAFE_RELEASE( m_shred_dump[i] );
+        CK_SAFE_RELEASE( m_shred_dump[i] );
 
     // clear the dump
     m_shred_dump.clear();
@@ -1299,7 +1288,7 @@ Chuck_VM_Code::~Chuck_VM_Code()
             delete instr[i];
 
         // free the array
-        SAFE_DELETE_ARRAY( instr );
+        CK_SAFE_DELETE_ARRAY( instr );
     }
 
     num_instr = 0;
@@ -1343,8 +1332,7 @@ t_CKBOOL Chuck_VM_Stack::initialize( t_CKUINT size )
 out_of_memory:
 
     // we have a problem
-    CK_FPRINTF_STDERR(
-        "[chuck](VM): OutOfMemory: while allocating stack\n" );
+    EM_error2( 0, "(VM) OutOfMemory: while allocating stack" );
 
     // return FALSE
     return FALSE;
@@ -1364,7 +1352,7 @@ t_CKBOOL Chuck_VM_Stack::shutdown()
 
     // free the stack
     stack -= VM_STACK_OFFSET;
-    SAFE_DELETE_ARRAY( stack );
+    CK_SAFE_DELETE_ARRAY( stack );
     sp = sp_max = NULL;
 
     // set the flag to false
@@ -1526,12 +1514,12 @@ t_CKBOOL Chuck_VM_Shred::shutdown()
     m_parent_objects.clear();
 
     // reclaim the stacks
-    SAFE_DELETE( mem );
-    SAFE_DELETE( reg );
+    CK_SAFE_DELETE( mem );
+    CK_SAFE_DELETE( reg );
     base_ref = NULL;
 
     // delete temp pointer space
-    // SAFE_DELETE_ARRAY( obj_array );
+    // CK_SAFE_DELETE_ARRAY( obj_array );
     // obj_array_size = 0;
 
     // TODO: is this right?
@@ -1551,7 +1539,7 @@ t_CKBOOL Chuck_VM_Shred::shutdown()
         }
 
         m_serials->clear();
-        SAFE_DELETE(m_serials);
+        CK_SAFE_DELETE(m_serials);
     }
     #endif
 
@@ -1647,20 +1635,20 @@ t_CKBOOL Chuck_VM_Shred::run( Chuck_VM * vm )
     while( is_running && *loop_running && !is_abort )
     {
 //-----------------------------------------------------------------------------
-CK_VM_DEBUG( CK_FPRINTF_STDERR( "CK_VM_DEBUG =--------------------------------=\n" ) );
-CK_VM_DEBUG( CK_FPRINTF_STDERR( "CK_VM_DEBUG shred %04lu code %s pc %04lu %s( %s )\n",
-             this->xid, this->code->name.c_str(), this->pc, instr[pc]->name(),
-             instr[pc]->params() ) );
-CK_VM_DEBUG( t_CKBYTE * t_mem_sp = this->mem->sp );
-CK_VM_DEBUG( t_CKBYTE * t_reg_sp = this->mem->sp );
+CK_VM_STACK_DEBUG( CK_FPRINTF_STDERR( "CK_VM_DEBUG =--------------------------------=\n" ) );
+CK_VM_STACK_DEBUG( CK_FPRINTF_STDERR( "CK_VM_DEBUG shred %04lu code %s pc %04lu %s( %s )\n",
+                   this->xid, this->code->name.c_str(), this->pc, instr[pc]->name(),
+                   instr[pc]->params() ) );
+CK_VM_STACK_DEBUG( t_CKBYTE * t_mem_sp = this->mem->sp );
+CK_VM_STACK_DEBUG( t_CKBYTE * t_reg_sp = this->reg->sp );
 //-----------------------------------------------------------------------------
         // execute the instruction
         instr[pc]->execute( vm, this );
 //-----------------------------------------------------------------------------
-CK_VM_DEBUG(CK_FPRINTF_STDERR( "CK_VM_DEBUG mem sp in: 0x%08lx out: 0x%08lx\n",
-                    (unsigned long) t_mem_sp, (unsigned long) this->mem->sp ));
-CK_VM_DEBUG(CK_FPRINTF_STDERR( "CK_VM_DEBUG reg sp in: 0x%08lx out: 0x%08lx\n",
-                    (unsigned long) t_reg_sp, (unsigned long) this->reg->sp ));
+CK_VM_STACK_DEBUG( CK_FPRINTF_STDERR( "CK_VM_DEBUG mem sp in: 0x%08lx out: 0x%08lx\n",
+                   (unsigned long)t_mem_sp, (unsigned long)this->mem->sp ) );
+CK_VM_STACK_DEBUG( CK_FPRINTF_STDERR( "CK_VM_DEBUG reg sp in: 0x%08lx out: 0x%08lx\n",
+                   (unsigned long)t_reg_sp, (unsigned long)this->reg->sp ) );
 //-----------------------------------------------------------------------------
         // set to next_pc;
         pc = next_pc;
@@ -1681,6 +1669,28 @@ CK_VM_DEBUG(CK_FPRINTF_STDERR( "CK_VM_DEBUG reg sp in: 0x%08lx out: 0x%08lx\n",
 
     // is the shred finished
     return !is_done;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: yield() | 1.5.0.5 (ge) made this a function from scattered code
+// desc: yield the shred in vm (without advancing time, politely yield to run
+//       all other shreds waiting to run at the current
+//       same in effect as 0::second +=> now;
+//-----------------------------------------------------------------------------
+t_CKBOOL Chuck_VM_Shred::yield()
+{
+    // need a VM to yield on
+    if( !this->vm_ref ) return FALSE;
+
+    // suspend this shred
+    this->is_running = FALSE;
+    // reshredule this at the current time
+    vm_ref->shreduler()->shredule( this, this->now );
+    // done
+    return TRUE;
 }
 
 
@@ -1880,7 +1890,7 @@ t_CKBOOL Chuck_VM_Shreduler::remove_blocked( Chuck_VM_Shred * shred )
         shred->event->remove( shred );
         // but, we still have to release the event afterward
         // to signify that the shred is done using the event
-        SAFE_RELEASE( event_to_release );
+        CK_SAFE_RELEASE( event_to_release );
     }
 
     return TRUE;
@@ -1913,8 +1923,8 @@ t_CKBOOL Chuck_VM_Shreduler::shredule( Chuck_VM_Shred * shred,
     {
         // something is really wrong here - no shred can be
         // shreduled more than once
-        EM_error3( "[chuck](VM): internal sanity check failed in shredule()" );
-        EM_error3( "[chuck](VM): (shred shreduled while shreduled)" );
+        EM_error2( 0, "(VM) internal consistency check failed in shredule()" );
+        EM_error2( 0, "(VM)  |- (shred shreduled while shreduled)" );
 
         return FALSE;
     }
@@ -1923,8 +1933,8 @@ t_CKBOOL Chuck_VM_Shreduler::shredule( Chuck_VM_Shred * shred,
     if( wake_time < (this->now_system - .5) )
     {
         // trying to enqueue on a time that is less than now
-        EM_error3( "[chuck](VM): internal sanity check failed in shredule()" );
-        EM_error3( "[chuck](VM): (wake time is past) - %f : %f", wake_time, this->now_system );
+        EM_error2( 0, "(VM) internal consistency check failed in shredule()" );
+        EM_error2( 0, "(VM)  |- (wake time is past) - %f : %f", wake_time, this->now_system );
 
         return FALSE;
     }
@@ -2433,24 +2443,22 @@ void Chuck_VM_Shreduler::status()
     t_CKUINT h = m_status.t_hour;
     t_CKUINT m = m_status.t_minute;
     t_CKUINT sec = m_status.t_second;
-    CK_FPRINTF_STDOUT( "[chuck](VM): status | # of shreds in VM: %ld\n", m_status.list.size() );
-    CK_FPRINTF_STDOUT( "             earth time: %s\n",
-                       timestamp_formatted().c_str() );
-    CK_FPRINTF_STDOUT( "             chuck time: %.0f::samp (%ldh%ldm%lds)\n",
-                      m_status.now_system, h, m, sec );
+    EM_print2magenta( "(VM) status | # of shreds in VM: %ld", m_status.list.size() );
+    EM_print2vanilla( "             earth time: %s", timestamp_formatted().c_str() );
+    EM_print2vanilla( "             chuck time: %.0f::samp (%ldh%ldm%lds)", m_status.now_system, h, m, sec );
 
     // print status
-    if( m_status.list.size() ) CK_FPRINTF_STDOUT( "             --------\n" );
+    if( m_status.list.size() ) EM_print2vanilla( "             --------" );
     for( t_CKUINT i = 0; i < m_status.list.size(); i++ )
     {
         shred = m_status.list[i];
-        CK_FPRINTF_STDOUT(
-            "    [shred id]: %ld [source]: %s [spork time]: %.2fs ago%s\n",
+        EM_print2vanilla(
+            "    [shred id]: %ld [source]: %s [spork time]: %.2fs ago%s",
             shred->xid, mini( shred->name.c_str() ),
             (m_status.now_system - shred->start) / m_status.srate,
             shred->has_event ? " (blocked)" : "" );
     }
-    if( m_status.list.size() ) CK_FPRINTF_STDOUT( "             --------\n" );
+    if( m_status.list.size() ) EM_print2vanilla( "             --------" );
 }
 
 
@@ -2490,8 +2498,446 @@ void Chuck_VM_Status::clear()
 {
     for( t_CKUINT i = 0; i < list.size(); i++ )
     {
-        SAFE_DELETE( list[i] );
+        CK_SAFE_DELETE( list[i] );
     }
 
     list.clear();
 }
+
+
+
+
+// begin CK_VM_DEBUG implementation
+//-----------------------------------------------------------------------------
+#if CK_VM_DEBUG_ENABLE
+//-----------------------------------------------------------------------------
+// Chuck_VM_Debug implementation | 1.5.0.5 (ge) added
+//-----------------------------------------------------------------------------
+// static member
+Chuck_VM_Debug * Chuck_VM_Debug::our_instance = NULL;
+// internal macro | automatically use our log level
+#define DEBUG_LOG( ... ) do{ CK_LOG( m_log_level, __VA_ARGS__ ); } while(0)
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: info_backtrace()
+// desc: get call stack as string
+//-----------------------------------------------------------------------------
+std::string Chuck_VM_Debug::info_backtrace()
+{
+    // return ck_backtrace();
+    return "[not available]";
+}
+
+
+//-----------------------------------------------------------------------------
+// name: backtrace()
+// desc: print call stack as string
+//-----------------------------------------------------------------------------
+void Chuck_VM_Debug::backtrace( const std::string & note )
+{
+    CK_FPRINTF_STDERR( "---- stack trace (%s) ----\n", note.c_str() );
+    CK_FPRINTF_STDERR( "%s", info_backtrace().c_str() );
+    CK_FPRINTF_STDERR( "--------------------------\n" );
+}
+
+
+//-----------------------------------------------------------------------------
+// name: Chuck_VM_Debug()
+// desc: constructor
+//-----------------------------------------------------------------------------
+Chuck_VM_Debug::Chuck_VM_Debug()
+{
+    // default log level
+    m_log_level = CK_LOG_DEBUG;
+
+    // stats
+    reset_stats();
+}
+
+
+//-----------------------------------------------------------------------------
+// name: ~Chuck_VM_Debug()
+// desc: destructor
+//-----------------------------------------------------------------------------
+Chuck_VM_Debug::~Chuck_VM_Debug()
+{
+    // TODO clean up map
+}
+
+
+//-----------------------------------------------------------------------------
+// name: instance()
+// desc: return static instance
+//-----------------------------------------------------------------------------
+Chuck_VM_Debug * Chuck_VM_Debug::instance()
+{
+    // if no instance
+    if( !our_instance )
+    {
+        // allocate
+        our_instance = new Chuck_VM_Debug();
+    }
+
+    return our_instance;
+}
+
+
+//-----------------------------------------------------------------------------
+// call this right after instantiation (tracking)
+//-----------------------------------------------------------------------------
+void Chuck_VM_Debug::construct( Chuck_VM_Object * obj, const std::string & note )
+{
+    // check
+    if( !obj )
+    {
+        DEBUG_LOG( "CONSTRUCT(%s): *** NULL OBJECT ***" );
+        return;
+    }
+
+    // log it
+    DEBUG_LOG( "%s(%s): %s", TC::color(TC::FG_MAGENTA,"CONSTRUCT",true).c_str(), note.c_str(), this->info(obj).c_str() );
+    // count
+    m_numConstructed++;
+    // FYI not adding to map here, constructor won't have type info beyond Chuck_VM_Object
+}
+
+
+//-----------------------------------------------------------------------------
+// call this right before destruct (tracking)
+//-----------------------------------------------------------------------------
+void Chuck_VM_Debug::destruct( Chuck_VM_Object * obj, const std::string & note )
+{
+    // check
+    if( !obj )
+    {
+        DEBUG_LOG( "DESTRUCT(%s): *** NULL OBJECT ***" );
+        return;
+    }
+
+    // log it
+    DEBUG_LOG( "%s(%s): %s", TC::color(TC::FG_YELLOW,"DESTRUCT",true).c_str(), note.c_str(), this->info(obj).c_str() );
+    // count
+    m_numDestructed++;
+    // remove it from map
+    remove( obj );
+}
+
+
+//-----------------------------------------------------------------------------
+// name: add_ref()
+// desc: add reference
+//-----------------------------------------------------------------------------
+void Chuck_VM_Debug::add_ref( Chuck_VM_Object * obj, const std::string & note )
+{
+    // check
+    if( !obj )
+    {
+        DEBUG_LOG( "ADD_REF(%s): *** NULL OBJECT ***" );
+        return;
+    }
+
+    // log it
+    DEBUG_LOG( "%s(%s): %s", TC::green("ADD_REF",true).c_str(), note.c_str(), this->info(obj).c_str() );
+    // count
+    m_numAddRefs++;
+    // add it to map (constructor won't have type info beyond Chuck_VM_Object)
+    insert( obj );
+}
+
+
+//-----------------------------------------------------------------------------
+// name: release()
+// desc: release reference
+//-----------------------------------------------------------------------------
+void Chuck_VM_Debug::release( Chuck_VM_Object * obj, const std::string & note )
+{
+    // check
+    if( !obj )
+    {
+        DEBUG_LOG( "RELEASE(%s): *** NULL OBJECT ***" );
+        return;
+    }
+
+    DEBUG_LOG( "%s(%s): %s", TC::orange("RELEASE",true).c_str(), note.c_str(), this->info(obj).c_str() );
+    // count
+    m_numReleases++;
+}
+
+
+//-----------------------------------------------------------------------------
+// print stats
+//-----------------------------------------------------------------------------
+void Chuck_VM_Debug::print_stats()
+{
+    DEBUG_LOG( TC::blue("VM DEBUG: total constructed: %ld",true).c_str(), m_numConstructed );
+    DEBUG_LOG( TC::blue("VM DEBUG: total destructed: %ld",true).c_str(), m_numDestructed );
+    DEBUG_LOG( TC::blue("VM DEBUG: total add refs: %ld",true).c_str(), m_numAddRefs );
+    DEBUG_LOG( TC::blue("VM DEBUG: total release refs: %ld",true).c_str(), m_numReleases );
+}
+
+
+//-----------------------------------------------------------------------------
+// reset stats
+//-----------------------------------------------------------------------------
+void Chuck_VM_Debug::reset_stats()
+{
+    // stats
+    m_numConstructed = 0;
+    m_numDestructed = 0;
+    m_numAddRefs = 0;
+    m_numReleases = 0;
+}
+
+
+//-----------------------------------------------------------------------------
+// set log level to print to
+//-----------------------------------------------------------------------------
+void Chuck_VM_Debug::set_log_evel( t_CKUINT level )
+{
+    m_log_level = level;
+}
+
+
+//-----------------------------------------------------------------------------
+// one func to try to print them all
+//-----------------------------------------------------------------------------
+void Chuck_VM_Debug::print( Chuck_VM_Object * obj, const std::string & note )
+{
+    DEBUG_LOG( "%s%s", (note != "" ? note +" " : " ").c_str(), info(obj).c_str() );
+}
+
+
+//-----------------------------------------------------------------------------
+// one func to get info using runtime types
+//-----------------------------------------------------------------------------
+std::string Chuck_VM_Debug::info( Chuck_VM_Object * obj )
+{
+    // check
+    if( !obj ) return "[NULL info]";
+
+    // get the type
+    string type = mini_type(typeid(*obj).name());
+    // info str [POINTER:REFCOUNT](TYPE)
+    string ret = string("[") + ptoa(obj) + ":" + TC::blue(itoa(obj->refcount()),true) + "](" + TC::green(type,true) + "): ";
+
+    // match on type name
+    if( type == "Chuck_Object" ) ret += info_obj( (Chuck_Object *)obj );
+    else if( type == "Chuck_Type" ) ret += info_type( (Chuck_Type *)obj );
+    else if( type == "Chuck_Func") ret += info_func( (Chuck_Func *)obj );
+    else if( type == "Chuck_Value") ret += info_value( (Chuck_Value *)obj );
+    else if( type == "Chuck_Namespace") ret += info_namespace( (Chuck_Namespace *)obj );
+    else if( type == "Chuck_Context") ret += info_context( (Chuck_Context *)obj );
+    else if( type == "Chuck_Env") ret += info_env( (Chuck_Env *)obj );
+    else if( type == "Chuck_UGen_Info") ret += info_ugen_info( (Chuck_UGen_Info *)obj );
+    else if( type == "Chuck_VM_Code") ret += info_code( (Chuck_VM_Code *)obj );
+    else if( type == "Chuck_VM_Shred") ret += info_shred( (Chuck_VM_Shred *)obj );
+    else if( type == "Chuck_VM") ret += info_vm( (Chuck_VM *)obj );
+
+    // no match
+    return ret;
+}
+
+
+//-----------------------------------------------------------------------------
+// info by type
+//-----------------------------------------------------------------------------
+std::string Chuck_VM_Debug::info_obj( Chuck_Object * obj )
+{
+    if( !obj ) return "[NULL obj]";
+    return string("Object of type:") + info_type(obj->type_ref);
+}
+
+std::string Chuck_VM_Debug::info_type( Chuck_Type * type )
+{
+    if( !type ) return "[NULL type]";
+
+    // construct value string
+    string s = string("'") + type->str() + "'";
+
+    // namescpace
+    // if( type->owner ) s += info_namespace( type->owner ) + " ";
+    // function?
+    if( type->func ) s += info_func( type->func );
+
+    // backtrace();
+    return s;
+}
+
+std::string Chuck_VM_Debug::info_func( Chuck_Func * func )
+{
+    if( !func ) return "[NULL func]";
+    return func->base_name + "() " + "symbol: '" + func->name + "'";
+}
+
+std::string Chuck_VM_Debug::info_value( Chuck_Value * v )
+{
+    // check
+    if( !v ) return "[NULL value]";
+    // construct value string
+    string s;
+
+    // type
+    s += info_type(v->type) + " ";
+    // name space
+    if( v->owner ) s += info_namespace(v->owner) + ".";
+    // value name
+    s += v->name + "; ";
+    // part of a class?
+    // if( v->owner_class ) s += info_type(v->owner_class);
+
+    return s;
+}
+
+std::string Chuck_VM_Debug::info_namespace( Chuck_Namespace * nspc )
+{
+    if( !nspc ) return "[NULL namespace]";
+    return nspc->name;
+}
+
+std::string Chuck_VM_Debug::info_context( Chuck_Context * context )
+{
+    if( !context ) return "[NULL context]";
+
+    // return string
+    string s = string("'") + context->filename + "' ";
+    // public class def set?
+    s += string("public-class-def: ") + (context->public_class_def ? "SET" : "EMPTY");
+
+    return s;
+
+}
+
+std::string Chuck_VM_Debug::info_env( Chuck_Env * env )
+{
+    if( !env ) return "[NULL env]";
+    return "";
+}
+
+std::string Chuck_VM_Debug::info_ugen_info( Chuck_UGen_Info * ug )
+{
+    if( !ug ) return "[NULL ugen_info]";
+    return "";
+}
+
+std::string Chuck_VM_Debug::info_code( Chuck_VM_Code * code )
+{
+    if( !code ) return "[NULL code]";
+    return code->name;
+
+}
+
+std::string Chuck_VM_Debug::info_shred( Chuck_VM_Shred * shred )
+{
+    if( !shred ) return "[NULL shred]";
+    return shred->name;
+}
+
+std::string Chuck_VM_Debug::info_vm( Chuck_VM * vm )
+{
+    if( !vm ) return "[NULL vm]";
+    return "";
+}
+
+// insert into object map
+void Chuck_VM_Debug::insert( Chuck_VM_Object * obj )
+{
+    // map key
+    string key = mini_type(typeid(*obj).name());
+
+    // insert
+    m_objects_map[key][obj] = obj;
+}
+
+// remove from object map
+void Chuck_VM_Debug::remove( Chuck_VM_Object * obj )
+{
+    // map key
+    string key = mini_type(typeid(*obj).name());
+    // check
+    if( !contains(obj) ) return;
+    // remove
+    m_objects_map[key].erase( obj );
+}
+
+// is present?
+t_CKBOOL Chuck_VM_Debug::contains( Chuck_VM_Object * obj )
+{
+    // map key
+    string key = mini_type(typeid(*obj).name());
+    // find it
+    return m_objects_map.find( key ) != m_objects_map.end() &&
+           m_objects_map[key].find(obj) != m_objects_map[key].end();
+}
+
+//-----------------------------------------------------------------------------
+// number of objects being tracked
+//-----------------------------------------------------------------------------
+t_CKUINT Chuck_VM_Debug::num_objects()
+{
+    // outer iter
+    std::map< std::string, std::map<Chuck_VM_Object *, Chuck_VM_Object *> >::iterator maps = m_objects_map.begin();
+    // count
+    t_CKUINT count = 0;
+
+    // iterate
+    for( ; maps != m_objects_map.end(); maps++ )
+    {
+        // count
+        count += maps->second.size();
+    }
+
+    return count;
+}
+
+//-----------------------------------------------------------------------------
+// compare functin for Chuck_VM_Object *
+//-----------------------------------------------------------------------------
+bool vm_obj_cmp( Chuck_VM_Object * lhs, Chuck_VM_Object * rhs )
+{
+    if( !lhs || !rhs ) return false;
+    return lhs->refcount() > rhs->refcount();
+}
+
+//-----------------------------------------------------------------------------
+// print all objects being tracked
+//-----------------------------------------------------------------------------
+void Chuck_VM_Debug::print_all_objects()
+{
+    // outer iter
+    std::map< std::string, std::map<Chuck_VM_Object *, Chuck_VM_Object *> >::iterator maps = m_objects_map.begin();
+    // vector
+    vector<Chuck_VM_Object *> vec;
+
+    // iterate
+    for( ; maps != m_objects_map.end(); maps++ )
+    {
+        // print
+        DEBUG_LOG( "%s (%d)", TC::blue(maps->first.c_str(),true).c_str(), maps->second.size() );
+        // push
+        EM_pushlog();
+        // inner
+        std::map<Chuck_VM_Object *, Chuck_VM_Object *>::iterator objs = maps->second.begin();
+        // clear
+        vec.clear();
+        // iterate
+        for( ; objs != maps->second.end(); objs++ )
+        {
+            // push vector
+            vec.push_back( objs->second );
+        }
+        // sort
+        sort( vec.begin(), vec.end(), vm_obj_cmp );
+        // print
+        for( t_CKINT i = 0; i < vec.size(); i++ )
+        {
+            print( vec[i] );
+        }
+        // pop
+        EM_poplog();
+    }
+}
+
+#endif // #if CK_VM_DEBUG_ENABLE

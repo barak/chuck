@@ -20,7 +20,7 @@ def handle_directory(dir, exe):
 
     global successes
 
-    for filename in os.listdir(dir):
+    for filename in sorted(os.listdir(dir)):
         path = os.path.join(dir, filename)
         # 1.4.1.1 (added) nshaheed
         # split path into its components and then rejoin cast as a posix path
@@ -45,6 +45,14 @@ def run_test(exe, path, filename, attempt):
         return
 
     try:
+        # NOTE: each command line argument is a new arg to check_output
+        # e.g., chuck_output([exe, "--silent", "--disable-error-show-code", ...
+        # NOTE: use --disable-error-show-code to not showing code on error
+        # NOTE: use --no-color to explicitly disable ANSI escape codes (e.g.,
+        # for color terminal text) from showing up in chuck output;
+        # FYI chuck implicitly checks for TTY; if not will disable printing
+        # escape codes; but leaving this note here FYI
+        "--disable-error-show-code"
         result = subprocess.check_output([exe, "--silent", "%s" % path], stderr=subprocess.STDOUT).decode("utf-8")
 
         if result.strip().endswith(("\"success\" :(string)",)):
