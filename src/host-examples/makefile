@@ -1,6 +1,11 @@
 ############################# COMPILER CONFIGURATION ###################################
-# what to build
-HOST_EXES=example-1-minimal example-2-audio example-3-globals
+# what to build (add additional examples here)
+HOST_EXES= \
+	example-1-minimal \
+	example-2-audio \
+	example-3-globals \
+	example-4-shreds
+
 # where to find top-level chuck
 CHUCK_DIR=../../../chuck
 
@@ -19,7 +24,7 @@ CXX=g++
 LD=g++
 
 # compiler flags
-CFLAGS+=-I. -I$(CHUCK_CORE_DIR) -I$(CHUCK_CORE_DIR)/lo
+CFLAGS+=-I. -I$(CHUCK_CORE_DIR) -I$(CHUCK_CORE_DIR)/lo -O3
 
 
 ########################## DEFAULT MAKE TARGET #################################

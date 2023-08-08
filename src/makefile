@@ -16,7 +16,7 @@ CK_HOST_DIR=host
 # where to find RtAudio
 RTAUDIO_DIR=RtAudio
 # chuck version
-CK_VERSION=1.5.0.7
+CK_VERSION=1.5.0.8
 
 
 ########################## DEFAULT MAKE TARGET ################################
@@ -309,5 +309,6 @@ clean:
 	$(OBJS) $(patsubst %.o,%.d,$(OBJS))*~ $(CK_CORE_DIR)/chuck.output \
 	$(CK_CORE_DIR)/chuck.tab.h $(CK_CORE_DIR)/chuck.tab.c $(CK_CORE_DIR)/chuck.yy.c \
 	$(DIST_ROOT)/$(DIST_DIR) $(DIST_ROOT)/$(DIST_DIR){,.tgz,.zip} \
+	host-web/webchuck/js/webchuck.js host-web/webchuck/js/webchuck.wasm \
 	Release Debug
 

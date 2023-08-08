@@ -1,32 +1,34 @@
+//-----------------------------------------------------------------------------
+// name: chuck_emscripten.cpp
+// desc: emscripten binding agent for web assembly compilation
+//       e.g., used for WebChucK and Chunity web target
 //
-//  chuck_emscripten.cpp
-//  AudioPluginDemo
-//
-//  Created by Jack Atherton on 4/19/17.
-//
-//
-
-
+// author: Jack Atherton
+// date: created 4/19/17
+//-----------------------------------------------------------------------------
 #include "chuck_emscripten.h"
 #include "chuck_globals.h"
 
 #include <iostream>
 #include <map>
-#ifndef WIN32
-#include <unistd.h>
-#endif
 
+// #ifndef __PLATFORM_WINDOWS__
+// #include <unistd.h>
+// #endif
+
+// c linkage
 extern "C"
 {
-    
+    // chuck instances
     std::map< unsigned int, ChucK * > chuck_instances;
+    // global data dir
     std::string chuck_global_data_dir;
 
+    // something to do nothing
     void dummyFunction()
-    {
-        
-    }
-    
+    { }
+
+    // a call to do nothing
     void EMSCRIPTEN_KEEPALIVE dummyCall()
     {
         // call dummy function so Browser is included
@@ -37,85 +39,89 @@ extern "C"
     // C# "string" corresponds to passing char *
     t_CKUINT EMSCRIPTEN_KEEPALIVE runChuckCode( unsigned int chuckID, const char * code )
     {
-        if( chuck_instances.count( chuckID ) == 0 ) { return -1; }
+        // check to see id has instances
+        if( chuck_instances.count(chuckID) == 0 )
+        { return 0; } // 1.5.0.8 (ge) | was: { return -1; }
 
         // don't want to replace dac
         // (a safeguard in case compiler got interrupted while replacing dac)
         chuck_instances[chuckID]->compiler()->setReplaceDac( FALSE, "" );
 
         // compile it!
-        if( chuck_instances[chuckID]->compileCode(
-            std::string( code ), std::string("") ) )
+        // 1.5.0.8 (ge) explicitly set count=1, immediate=TRUE
+        if( chuck_instances[chuckID]->compileCode( code, "", 1, TRUE ) )
         {
             // last shred shredded
             return chuck_instances[chuckID]->vm()->last_id();
-            
         }
+
         // failure to compile
         return 0;
     }
-    
-    
-    
+
+
+    // run code with dac replacement
     t_CKUINT EMSCRIPTEN_KEEPALIVE runChuckCodeWithReplacementDac(
         unsigned int chuckID, const char * code, const char * replacement_dac )
     {
-        if( chuck_instances.count( chuckID ) == 0 ) { return -1; }
+        // check to see id has instances
+        if( chuck_instances.count(chuckID) == 0 )
+        { return 0; } // 1.5.0.8 (ge) | was: { return -1; }
 
         // replace dac
         chuck_instances[chuckID]->compiler()->setReplaceDac( TRUE,
             std::string( replacement_dac ) );
-        
         // compile it!
-        bool result = chuck_instances[chuckID]->compileCode(
-            std::string( code ), std::string("") );
-        
+        // 1.5.0.8 (ge) explicitly set count=1, immediate=TRUE
+        t_CKBOOL result = chuck_instances[chuckID]->compileCode( code, "", 1, TRUE );
         // don't replace dac for future compilations
         chuck_instances[chuckID]->compiler()->setReplaceDac( FALSE, "" );
-        
-        if( result )
-        {
+
+        // check result
+        if( result ) {
             // last shred shredded
             return chuck_instances[chuckID]->vm()->last_id();
         }
+
         // failure to compile
         return 0;
     }
-    
-    
-    
-    t_CKUINT EMSCRIPTEN_KEEPALIVE runChuckFile( unsigned int chuckID,
-        const char * filename )
+
+
+    // run chuck from file
+    t_CKUINT EMSCRIPTEN_KEEPALIVE runChuckFile( unsigned int chuckID, const char * filename )
     {
         // run with empty args
         return runChuckFileWithArgs( chuckID, filename, "" );
     }
-    
-    
-    
+
+
+    // run chuck from file with args
     t_CKUINT EMSCRIPTEN_KEEPALIVE runChuckFileWithArgs( unsigned int chuckID,
         const char * filename, const char * args )
     {
-        if( chuck_instances.count( chuckID ) == 0 ) { return -1; }
+        // check to see id has instances
+        if( chuck_instances.count(chuckID) == 0 )
+        { return 0; } // 1.5.0.8 (ge) | was: { return -1; }
 
         // don't want to replace dac
         // (a safeguard in case compiler got interrupted while replacing dac)
         chuck_instances[chuckID]->compiler()->setReplaceDac( FALSE, "" );
 
         // compile it!
-        if( chuck_instances[chuckID]->compileFile(
-            std::string( filename ), std::string( args ) ) )
+        // 1.5.0.8 (ge) explicitly set count=1, immediate=TRUE
+        if( chuck_instances[chuckID]->compileFile( filename, args, 1, TRUE ) )
         {
             // last shred shredded
             return chuck_instances[chuckID]->vm()->last_id();
-            
         }
+
         // failure to compile
         return 0;
     }
-    
-    
-    
+
+
+    // run chuck from file with replacement dac
     t_CKUINT EMSCRIPTEN_KEEPALIVE runChuckFileWithReplacementDac(
         unsigned int chuckID, const char * filename,
         const char * replacement_dac )
@@ -125,125 +131,129 @@ extern "C"
             chuckID, filename, "", replacement_dac
         );
     }
-    
-    
-    
+
+
+    // run chuck from file with replacement dac with args
     t_CKUINT EMSCRIPTEN_KEEPALIVE runChuckFileWithArgsWithReplacementDac(
         unsigned int chuckID, const char * filename, const char * args,
         const char * replacement_dac )
     {
-        if( chuck_instances.count( chuckID ) == 0 ) { return -1; }
+        // check to see id has instances
+        if( chuck_instances.count(chuckID) == 0 )
+        { return 0; } // 1.5.0.8 (ge) | was: { return -1; }
 
         // replace dac
         chuck_instances[chuckID]->compiler()->setReplaceDac( TRUE,
             std::string( replacement_dac ) );
-        
         // compile it!
-        bool result = chuck_instances[chuckID]->compileFile(
-            std::string( filename ), std::string( args )
-        );
-        
+        // 1.5.0.8 (ge) explicitly set count=1, immediate=TRUE
+        t_CKBOOL result = chuck_instances[chuckID]->compileFile( filename, args, 1, TRUE );
         // don't replace dac for future compilations
         chuck_instances[chuckID]->compiler()->setReplaceDac( FALSE, "" );
-        
-        if( result )
-        {
+
+        // check result
+        if( result ) {
             // last shred shredded
             return chuck_instances[chuckID]->vm()->last_id();
-            
         }
+
         // failure to compile
         return 0;
     }
-    
 
 
-    t_CKUINT replaceCode( ChucK * chuck, t_CKUINT shredID,
-        std::vector<std::string> * args )
+    // replace code given a chuck instance
+    t_CKUINT replaceCode( ChucK * chuck, t_CKUINT shredID, std::vector<std::string> * args )
     {
         Chuck_Msg * msg = new Chuck_Msg;
-        msg->type = MSG_REPLACE;
+        msg->type = CK_MSG_REPLACE;
         msg->code = chuck->compiler()->output();
         msg->param = shredID;
-        // null reply so that VM will delete for us when it's done
-        msg->reply = ( ck_msg_func )NULL;
-        msg->args = args;
-        
+        // set so that VM will delete for us when it's done
+        msg->reply_queue = FALSE;
+        // 1.5.0.8 use set for proper memory management
+        msg->set( args ); // msg->args = args;
+
         // call the process_msg directly: we need to know the shred ID
         // and it's JS so we won't be pre-empted
         // also: return value is the shred ID!
         return chuck->vm()->process_msg( msg );
     }
 
-    
-    
+
+    // replace chuck code
     t_CKUINT EMSCRIPTEN_KEEPALIVE replaceChuckCode( unsigned int chuckID, unsigned int shredID, const char * code )
     {
-        if( chuck_instances.count( chuckID ) == 0 ) { return -1; }
+        // check to see id has instances
+        if( chuck_instances.count(chuckID) == 0 )
+        { return 0; } // 1.5.0.8 (ge) | was: { return -1; }
 
         // don't want to replace dac
         // (a safeguard in case compiler got interrupted while replacing dac)
         chuck_instances[chuckID]->compiler()->setReplaceDac( FALSE, "" );
 
-        // compile it! and spork 0 times. (ONLY compile)
-        if( chuck_instances[chuckID]->compileCode(
-            std::string( code ), std::string(""), 0 ) )
+        // compile it! and spork 0 times (ONLY compile)
+        if( chuck_instances[chuckID]->compileCode( code, "", 0 ) )
         {
             // replace code
             return replaceCode( chuck_instances[chuckID], shredID, NULL );
         }
+
         // failure to compile
         return 0;
     }
-    
-    
-    
-    t_CKUINT EMSCRIPTEN_KEEPALIVE replaceChuckCodeWithReplacementDac( unsigned int chuckID, unsigned int shredID, const char * code, const char * replacement_dac )
+
+
+    // replace chuck code with replacement dac
+    t_CKUINT EMSCRIPTEN_KEEPALIVE replaceChuckCodeWithReplacementDac( unsigned int chuckID, unsigned int shredID,
+                                                                      const char * code, const char * replacement_dac )
     {
-        if( chuck_instances.count( chuckID ) == 0 ) { return -1; }
+        // check to see id has instances
+        if( chuck_instances.count(chuckID) == 0 )
+        { return 0; } // 1.5.0.8 (ge) | was: { return -1; }
 
         // replace dac
-        chuck_instances[chuckID]->compiler()->setReplaceDac( TRUE,
-            std::string( replacement_dac ) );
-        
+        chuck_instances[chuckID]->compiler()->setReplaceDac( TRUE, replacement_dac );
         // compile it! and spork 0 times. (ONLY compile)
-        bool result = chuck_instances[chuckID]->compileCode(
-            std::string( code ), std::string(""), 0 );
-        
+        t_CKBOOL result = chuck_instances[chuckID]->compileCode( code, "", 0 );
         // don't replace dac for future compilations
         chuck_instances[chuckID]->compiler()->setReplaceDac( FALSE, "" );
-        
+        // check result
         if( result )
         {
             // replace code
             return replaceCode( chuck_instances[chuckID], shredID, NULL );
         }
+
         // failure to compile
         return 0;
     }
-    
-    
-    
+
+
+    // replace chuck file
     t_CKUINT EMSCRIPTEN_KEEPALIVE replaceChuckFile( unsigned int chuckID, unsigned int shredID, const char * filename )
     {
         // replace with empty args
         return replaceChuckFileWithArgs( chuckID, shredID, filename, "" );
     }
-    
-    
-    
-    t_CKUINT EMSCRIPTEN_KEEPALIVE replaceChuckFileWithReplacementDac( unsigned int chuckID, unsigned int shredID, const char * filename, const char * replacement_dac )
+
+
+    // replace chuck file with replacement dac
+    t_CKUINT EMSCRIPTEN_KEEPALIVE replaceChuckFileWithReplacementDac( unsigned int chuckID, unsigned int shredID,
+                                                                      const char * filename, const char * replacement_dac )
     {
         // replace with empty args
-        return replaceChuckFileWithArgsWithReplacementDac( chuckID, shredID,
-            filename, "", replacement_dac );
+        return replaceChuckFileWithArgsWithReplacementDac( chuckID, shredID, filename, "", replacement_dac );
     }
-    
-    
-    
-    t_CKUINT EMSCRIPTEN_KEEPALIVE replaceChuckFileWithArgs( unsigned int chuckID, unsigned int shredID, const char * filename, const char * args )
+
+
+    // replace chuck file with args
+    t_CKUINT EMSCRIPTEN_KEEPALIVE replaceChuckFileWithArgs( unsigned int chuckID, unsigned int shredID,
+                                                            const char * filename, const char * args )
     {
-        if( chuck_instances.count( chuckID ) == 0 ) { return -1; }
+        // check to see id has instances
+        if( chuck_instances.count(chuckID) == 0 )
+        { return 0; } // 1.5.0.8 (ge) | was: { return -1; }
 
         // don't want to replace dac
         // (a safeguard in case compiler got interrupted while replacing dac)
@@ -252,7 +262,7 @@ extern "C"
         std::string filenameS( filename );
         std::string argsS( args );
 
-        // compile it! and spork 0 times. (ONLY compile)
+        // compile it! and spork 0 times (ONLY compile)
         if( chuck_instances[chuckID]->compileFile( filenameS, argsS, 0 ) )
         {
             // find args
@@ -269,31 +279,36 @@ extern "C"
             }
             
             // replace code
-            return replaceCode( chuck_instances[chuckID], shredID, & found_args );
+            return replaceCode( chuck_instances[chuckID], shredID, &found_args );
         }
+
         // failure to compile
         return 0;
     }
-    
-    
-    
-    t_CKUINT EMSCRIPTEN_KEEPALIVE replaceChuckFileWithArgsWithReplacementDac( unsigned int chuckID, unsigned int shredID, const char * filename, const char * args, const char * replacement_dac )
+
+
+    // replace chuck by file with args and with replacement dac
+    t_CKUINT EMSCRIPTEN_KEEPALIVE replaceChuckFileWithArgsWithReplacementDac(
+        unsigned int chuckID, unsigned int shredID, const char * filename,
+        const char * args, const char * replacement_dac )
     {
-        if( chuck_instances.count( chuckID ) == 0 ) { return -1; }
+        // check to see id has instances
+        if( chuck_instances.count(chuckID) == 0 )
+        { return 0; } // 1.5.0.8 (ge) | was: { return -1; }
 
         // replace dac
-        chuck_instances[chuckID]->compiler()->setReplaceDac( TRUE,
-            std::string( replacement_dac ) );
-        
+        chuck_instances[chuckID]->compiler()->setReplaceDac( TRUE, replacement_dac );
+
+        // file name
         std::string filenameS( filename );
+        // args
         std::string argsS( args );
-        
-        // compile it! and spork 0 times. (ONLY compile)
-        bool result = chuck_instances[chuckID]->compileFile( filenameS, argsS, 0 );
-        
+        // compile it! and spork 0 times (ONLY compile)
+        t_CKBOOL result = chuck_instances[chuckID]->compileFile( filenameS, argsS, 0 );
+
         // don't replace dac for future compilations
         chuck_instances[chuckID]->compiler()->setReplaceDac( FALSE, "" );
-        
+        // check result
         if( result )
         {
             // find args
@@ -310,351 +325,374 @@ extern "C"
             }
             
             // replace code
-            return replaceCode( chuck_instances[chuckID], shredID, & found_args );
-            
+            return replaceCode( chuck_instances[chuckID], shredID, &found_args );
         }
+
         // failure to compile
         return 0;
     }
-    
-    
-    
+
+
+    // is shred alive
     bool EMSCRIPTEN_KEEPALIVE isShredActive( unsigned int chuckID, unsigned int shredID )
     {
+        // check if chuck id has instances
         if( chuck_instances.count( chuckID ) == 0 ) { return false; }
-        
-        Chuck_VM_Shred * shred = chuck_instances[chuckID]->vm()->shreduler()->lookup( shredID );
-        return ( shred != NULL );
+        // look up shred by id
+        Chuck_VM_Shred * shred = chuck_instances[chuckID]->vm()->shreduler()->lookup(shredID);
+        // return
+        return (shred != NULL);
     }
-    
-    
-    
+
+
+    // remove shred
     bool EMSCRIPTEN_KEEPALIVE removeShred( unsigned int chuckID, unsigned int shredID )
     {
-        if( chuck_instances.count( chuckID ) == 0 ||
-            !isShredActive( chuckID, shredID ) )
-        {
-            return false;
-        }
+        // check for chuck and shred id
+        if( chuck_instances.count( chuckID ) == 0 || !isShredActive( chuckID, shredID ) )
+        { return false; }
         
         // the chuck to clear
         ChucK * chuck = chuck_instances[chuckID];
     
         // create a msg asking to remove the shred
         Chuck_Msg * msg = new Chuck_Msg;
-        msg->type = MSG_REMOVE;
+        msg->type = CK_MSG_REMOVE;
         msg->param = shredID;
-    
-        // null reply so that VM will delete for us when it's done
-        msg->reply = ( ck_msg_func )NULL;
-    
+        // set so that VM will delete for us when it's done
+        msg->reply_queue = FALSE;
+
         // tell the VM to clear
         chuck->globals()->execute_chuck_msg_with_globals( msg );
     
         return true;
     }
-    
-    
-    
+
+
+    // set chuck global int
     bool EMSCRIPTEN_KEEPALIVE setChuckInt( unsigned int chuckID, const char * name, t_CKINT val )
     {
+        // check if chuck id has instances
         if( chuck_instances.count( chuckID ) == 0 ) { return false; }
-
+        // set global int value
         return chuck_instances[chuckID]->globals()->setGlobalInt( name, val );
     }
-    
-    
-    
+
+
+    // get chuck global int
     t_CKINT EMSCRIPTEN_KEEPALIVE getChuckInt( unsigned int chuckID, const char * name )
     {
-        if( chuck_instances.count( chuckID ) == 0 ) { return false; }
-
-        return chuck_instances[chuckID]->globals()->get_global_int_value( std::string( name ) );
+        // check if chuck id has instances
+        if( chuck_instances.count(chuckID) == 0 ) { return false; }
+        // set global value
+        return chuck_instances[chuckID]->globals()->get_global_int_value(name);
     }
-    
-    
-    
+
+
+    // set chuck global float
     bool EMSCRIPTEN_KEEPALIVE setChuckFloat( unsigned int chuckID, const char * name, t_CKFLOAT val )
     {
+        // check if chuck id has instances
         if( chuck_instances.count( chuckID ) == 0 ) { return false; }
-
+        // set global value
         return chuck_instances[chuckID]->globals()->setGlobalFloat( name, val );
     }
-    
-    
-    
+
+
+    // get chuck global float
     t_CKFLOAT EMSCRIPTEN_KEEPALIVE getChuckFloat( unsigned int chuckID, const char * name )
     {
+        // check if chuck id has instances
         if( chuck_instances.count( chuckID ) == 0 ) { return false; }
-
-        return chuck_instances[chuckID]->globals()->get_global_float_value( std::string( name ) );
+        // get global value
+        return chuck_instances[chuckID]->globals()->get_global_float_value( name );
     }
-    
-    
-    
+
+
+    // set chuck global string
     bool EMSCRIPTEN_KEEPALIVE setChuckString( unsigned int chuckID, const char * name, const char * val )
     {
+        // check if chuck id has instances
         if( chuck_instances.count( chuckID ) == 0 ) { return false; }
-
+        // set global val
         return chuck_instances[chuckID]->globals()->setGlobalString( name, val );
     }
-    
-    
-    
+
+
+    // get chuck global string by callbackk
     bool EMSCRIPTEN_KEEPALIVE getChuckString( unsigned int chuckID, const char * name, void (* callback)(const char *) )
     {
+        // check if chuck id has instances
         if( chuck_instances.count( chuckID ) == 0 ) { return false; }
-
+        // get global val via callback
         return chuck_instances[chuckID]->globals()->getGlobalString( name, callback );
     }
-    
-    
-    
+
+
+    // signal chuck event
     bool EMSCRIPTEN_KEEPALIVE signalChuckEvent( unsigned int chuckID, const char * name )
     {
+        // check if chuck id has instances
         if( chuck_instances.count( chuckID ) == 0 ) { return false; }
-
+        // signal global event
         return chuck_instances[chuckID]->globals()->signalGlobalEvent( name );
     }
-    
-    
-    
+
+
+    // broadcast chuck event
     bool EMSCRIPTEN_KEEPALIVE broadcastChuckEvent( unsigned int chuckID, const char * name )
     {
+        // check if chuck id has instances
         if( chuck_instances.count( chuckID ) == 0 ) { return false; }
-
+        // broadcast global event
         return chuck_instances[chuckID]->globals()->broadcastGlobalEvent( name );
     }
-    
-    
-    
+
+
+    // listen for chuck event once
     bool EMSCRIPTEN_KEEPALIVE listenForChuckEventOnce( unsigned int chuckID, const char * name, void (* callback)(void) )
     {
+        // check if chuck id has instances
         if( chuck_instances.count( chuckID ) == 0 ) { return false; }
-        
-        return chuck_instances[chuckID]->globals()->listenForGlobalEvent(
-            name, callback, FALSE );
+        // listen for global event
+        return chuck_instances[chuckID]->globals()->listenForGlobalEvent( name, callback, FALSE );
     }
-    
-    
-    
+
+
+    // start listening for chuck event
     bool EMSCRIPTEN_KEEPALIVE startListeningForChuckEvent( unsigned int chuckID, const char * name, void (* callback)(void) )
     {
+        // check if chuck id has instances
         if( chuck_instances.count( chuckID ) == 0 ) { return false; }
-        
-        return chuck_instances[chuckID]->globals()->listenForGlobalEvent(
-            name, callback, TRUE );
+        // listen for global event
+        return chuck_instances[chuckID]->globals()->listenForGlobalEvent( name, callback, TRUE );
     }
-    
-    
-    
+
+
+    // stop listening for chuck event
     bool EMSCRIPTEN_KEEPALIVE stopListeningForChuckEvent( unsigned int chuckID, const char * name, void (* callback)(void) )
     {
+        // check if chuck id has instances
         if( chuck_instances.count( chuckID ) == 0 ) { return false; }
-        
-        return chuck_instances[chuckID]->globals()->stopListeningForGlobalEvent(
-            name, callback );
+        // stop listening for event
+        return chuck_instances[chuckID]->globals()->stopListeningForGlobalEvent( name, callback );
     }
     
-    
+
+    // get global ugen samples
     bool EMSCRIPTEN_KEEPALIVE getGlobalUGenSamples( unsigned int chuckID,
         const char * name, SAMPLE * buffer, int numSamples )
     {
+        // check if chuck id has instances
         if( chuck_instances.count( chuckID ) == 0 ) { return false; }
-        
-        if( !chuck_instances[chuckID]->globals()->getGlobalUGenSamples(
-            name, buffer, numSamples ) )
+        // get global ugen samples
+        if( !chuck_instances[chuckID]->globals()->getGlobalUGenSamples( name, buffer, numSamples ) )
         {
-            // failed. fill with zeroes.
+            // failed; fill with zeroes
             memset( buffer, 0, sizeof( SAMPLE ) * numSamples );
             return false;
         }
-        
         return true;
     }
-    
-    
-    
+
+
     // int array methods
     bool EMSCRIPTEN_KEEPALIVE setGlobalIntArray( unsigned int chuckID,
         const char * name, t_CKINT arrayValues[], unsigned int numValues )
     {
+        // check if chuck id has instances
         if( chuck_instances.count( chuckID ) == 0 ) { return false; }
-        
+        // set global int array
         return chuck_instances[chuckID]->globals()->setGlobalIntArray(
             name, arrayValues, numValues );
     }
-    
-    
-    
+
+
+    // get global int array
     bool EMSCRIPTEN_KEEPALIVE getGlobalIntArray( unsigned int chuckID,
         const char * name, void (* callback)(t_CKINT[], t_CKUINT))
     {
+        // check if chuck id has instances
         if( chuck_instances.count( chuckID ) == 0 ) { return false; }
-        
+        // get global int array
         return chuck_instances[chuckID]->globals()->getGlobalIntArray(
             name, callback );
     }
-    
-    
-    
+
+
+    // set global int array
     bool EMSCRIPTEN_KEEPALIVE setGlobalIntArrayValue( unsigned int chuckID,
         const char * name, unsigned int index, t_CKINT value )
     {
+        // check if chuck id has instances
         if( chuck_instances.count( chuckID ) == 0 ) { return false; }
-        
+        // set global int array
         return chuck_instances[chuckID]->globals()->setGlobalIntArrayValue(
             name, index, value );
     }
-    
-    
-    
+
+
+    // get global int array
     t_CKINT EMSCRIPTEN_KEEPALIVE getGlobalIntArrayValue( unsigned int chuckID,
         const char * name, unsigned int index )
     {
+        // check if chuck id has instances
         if( chuck_instances.count( chuckID ) == 0 ) { return false; }
-        
-        
+        // get global int array
         return chuck_instances[chuckID]->globals()->get_global_int_array_value(
-            std::string( name ), index );
+            name, index );
     }
-    
-    
-    
+
+
+    // set global associative int array
     bool EMSCRIPTEN_KEEPALIVE setGlobalAssociativeIntArrayValue(
         unsigned int chuckID, const char * name, char * key, t_CKINT value )
     {
+        // check if chuck id has instances
         if( chuck_instances.count( chuckID ) == 0 ) { return false; }
-        
+        // set global associative int array
         return chuck_instances[chuckID]->globals()->setGlobalAssociativeIntArrayValue(
             name, key, value );
     }
-    
-    
-    
+
+
+    // get global associative int array
     t_CKINT EMSCRIPTEN_KEEPALIVE getGlobalAssociativeIntArrayValue(
         unsigned int chuckID, const char * name, char * key )
     {
+        // check if chuck id has instances
         if( chuck_instances.count( chuckID ) == 0 ) { return false; }
-        
+        // get global associative int array
         return chuck_instances[chuckID]->globals()->get_global_associative_int_array_value(
             std::string( name ), std::string( key ) );
     }
-    
-    
-    
-    // float array methods
+
+
+    // set float array methods
     bool EMSCRIPTEN_KEEPALIVE setGlobalFloatArray( unsigned int chuckID,
         const char * name, t_CKFLOAT arrayValues[], unsigned int numValues )
     {
+        // check if chuck id has instances
         if( chuck_instances.count( chuckID ) == 0 ) { return false; }
-        
+        // set global float array
         return chuck_instances[chuckID]->globals()->setGlobalFloatArray(
             name, arrayValues, numValues );
     }
-    
-    
-    
+
+
+    // get global float array
     bool EMSCRIPTEN_KEEPALIVE getGlobalFloatArray( unsigned int chuckID,
         const char * name, void (* callback)(t_CKFLOAT[], t_CKUINT))
     {
-        if( chuck_instances.count( chuckID ) == 0 ) { return false; }
-        
+        // check if chuck id has instances
+        if( chuck_instances.count(chuckID) == 0 ) { return false; }
+        // get global float array
         return chuck_instances[chuckID]->globals()->getGlobalFloatArray(
             name, callback );
     }
-    
-    
-    
+
+
+    // set global float array
     bool EMSCRIPTEN_KEEPALIVE setGlobalFloatArrayValue( unsigned int chuckID,
         const char * name, unsigned int index, t_CKFLOAT value )
     {
+        // check if chuck id has instances
         if( chuck_instances.count( chuckID ) == 0 ) { return false; }
-        
+        // set global float array
         return chuck_instances[chuckID]->globals()->setGlobalFloatArrayValue(
             name, index, value );
     }
-    
-    
-    
+
+
+    // get global float array
     t_CKFLOAT EMSCRIPTEN_KEEPALIVE getGlobalFloatArrayValue( unsigned int chuckID,
         const char * name, unsigned int index )
     {
+        // check if chuck id has instances
         if( chuck_instances.count( chuckID ) == 0 ) { return false; }
-        
+        // get global float array
         return chuck_instances[chuckID]->globals()->get_global_float_array_value(
-            std::string( name ), index );
+            name, index );
     }
-    
-    
-    
+
+
+    // set global associative float array
     bool EMSCRIPTEN_KEEPALIVE setGlobalAssociativeFloatArrayValue(
         unsigned int chuckID, const char * name, char * key, t_CKFLOAT value )
     {
+        // check if chuck id has instances
         if( chuck_instances.count( chuckID ) == 0 ) { return false; }
-        
+        // set global associative float array
         return chuck_instances[chuckID]->globals()->setGlobalAssociativeFloatArrayValue(
             name, key, value );
     }
-    
-    
-    
+
+
+    // get global associative float array
     t_CKFLOAT EMSCRIPTEN_KEEPALIVE getGlobalAssociativeFloatArrayValue(
         unsigned int chuckID, const char * name, char * key )
     {
+        // check if chuck id has instances
         if( chuck_instances.count( chuckID ) == 0 ) { return false; }
-        
+        // get global associative float array
         return chuck_instances[chuckID]->globals()->get_global_associative_float_array_value(
             std::string( name) , std::string( key ) );
     }
-    
-    
-    
+
+
+    // set chout callback
     bool EMSCRIPTEN_KEEPALIVE setChoutCallback( unsigned int chuckID, void (* callback)(const char *) )
     {
+        // set
         return chuck_instances[chuckID]->setChoutCallback( callback );
     }
 
 
-
+    // set cherr callback
     bool EMSCRIPTEN_KEEPALIVE setCherrCallback( unsigned int chuckID, void (* callback)(const char *) )
     {
+        // set
         return chuck_instances[chuckID]->setCherrCallback( callback );
     }
-    
-    
-    
+
+
+    // set stdout callback
     bool EMSCRIPTEN_KEEPALIVE setStdoutCallback( void (* callback)(const char *) )
     {
+        // set
         return ChucK::setStdoutCallback( callback );
     }
 
 
-
+    // set stderr callback
     bool EMSCRIPTEN_KEEPALIVE setStderrCallback( void (* callback)(const char *) )
     {
+        // set
         return ChucK::setStderrCallback( callback );
     }
-    
-    
-    
+
+
+    // set data dir
     bool EMSCRIPTEN_KEEPALIVE setDataDir( const char * dir )
     {
-        chuck_global_data_dir = std::string( dir );
+        // set
+        chuck_global_data_dir = dir;
         return true;
     }
-    
-    
-    
+
+
+    // set log level
     bool EMSCRIPTEN_KEEPALIVE setLogLevel( unsigned int level )
     {
+        // set log
         EM_setlog( level );
         return true;
     }
-    
-    
-    
-    bool EMSCRIPTEN_KEEPALIVE initChuckInstance( unsigned int chuckID, unsigned int sampleRate, unsigned int inChannels, unsigned int outChannels )
+
+
+    // init chuck instance
+    bool EMSCRIPTEN_KEEPALIVE initChuckInstance( unsigned int chuckID, unsigned int sampleRate,
+                                                 unsigned int inChannels, unsigned int outChannels )
     {
         // proceed as normal
         if( chuck_instances.count( chuckID ) == 0 )
@@ -680,36 +718,38 @@ extern "C"
 
             // default real-time audio is true | chuck-1.4.2.1 (ge) added
             // set hint, so internally can advise things like async data writes etc.
-            chuck->setParam( CHUCK_PARAM_HINT_IS_REALTIME_AUDIO, (t_CKINT)TRUE );
+            chuck->setParam( CHUCK_PARAM_IS_REALTIME_AUDIO_HINT, (t_CKINT)TRUE );
             
             // initialize and start
             chuck->init();
             chuck->start();
-            
+
+            // put into map
             chuck_instances[chuckID] = chuck;
         }
+
         return true;
     }
 
 
-
+    // clear chuck instance
     bool EMSCRIPTEN_KEEPALIVE clearChuckInstance( unsigned int chuckID )
     {
-        if( chuck_instances.count( chuckID ) > 0 )
+        // check
+        if( chuck_instances.count(chuckID) > 0 )
         {
             // the chuck to clear
             ChucK * chuck = chuck_instances[chuckID];
-            
+
             // create a msg asking to clear the VM
             Chuck_Msg * msg = new Chuck_Msg;
-            msg->type = MSG_CLEARVM;
-            
-            // null reply so that VM will delete for us when it's done
-            msg->reply = ( ck_msg_func )NULL;
-            
+            // set message type
+            msg->type = CK_MSG_CLEARVM;
+            // set so that VM will delete for us when it's done
+            msg->reply_queue = FALSE;
             // tell the VM to clear
             chuck->vm()->globals_manager()->execute_chuck_msg_with_globals( msg );
-            
+
             return true;
         }
         
@@ -717,9 +757,10 @@ extern "C"
     }
 
 
-
+    // clear globals
     bool EMSCRIPTEN_KEEPALIVE clearGlobals( unsigned int chuckID )
     {
+        // check
         if( chuck_instances.count( chuckID ) > 0 )
         {
             // the chuck to clear
@@ -727,42 +768,45 @@ extern "C"
             
             // create a msg asking to clear the globals
             Chuck_Msg * msg = new Chuck_Msg;
-            msg->type = MSG_CLEARGLOBALS;
-            
-            // null reply so that VM will delete for us when it's done
-            msg->reply = ( ck_msg_func )NULL;
-            
+            // set message type
+            msg->type = CK_MSG_CLEARGLOBALS;
+            // set so that VM will delete for us when it's done
+            msg->reply_queue = FALSE;
             // tell the VM to clear
             chuck->vm()->globals_manager()->execute_chuck_msg_with_globals( msg );
-            
+
             return true;
         }
-        
+
         return false;
     }
 
 
+    // clean up chuck instance
     bool EMSCRIPTEN_KEEPALIVE cleanupChuckInstance( unsigned int chuckID )
     {
+        // check
         if( chuck_instances.count( chuckID ) > 0 )
         {
+            // get
             ChucK * chuck = chuck_instances[chuckID];
-            
             // don't track it anymore
             chuck_instances.erase( chuckID );
 
             // cleanup this chuck early
-            delete chuck;
-
+            CK_SAFE_DELETE( chuck );
         }
 
         return true;
     }
-    
-    
-    
-    bool EMSCRIPTEN_KEEPALIVE chuckManualAudioCallback( unsigned int chuckID, float * inBuffer, float * outBuffer, unsigned int numFrames, unsigned int inChannels, unsigned int outChannels )
+
+
+    // chuck manual audio callback
+    bool EMSCRIPTEN_KEEPALIVE chuckManualAudioCallback( unsigned int chuckID,
+        float * inBuffer, float * outBuffer, unsigned int numFrames,
+        unsigned int inChannels, unsigned int outChannels )
     {
+        // check
         if( chuck_instances.count( chuckID ) > 0 )
         {
             // zero out the output buffer, in case chuck isn't running
@@ -774,32 +818,116 @@ extern "C"
             // call callback
             // TODO: check inChannels, outChannels
             chuck_instances[chuckID]->run( inBuffer, outBuffer, numFrames );
-            
         }
         
         return true;
     }
 
 
-
     // on launch, reset all ids (necessary when relaunching a lot in unity editor)
-    void EMSCRIPTEN_KEEPALIVE cleanRegisteredChucks() {
+    void EMSCRIPTEN_KEEPALIVE cleanRegisteredChucks()
+    {
         // delete chucks
         for( std::map< unsigned int, ChucK * >::iterator it =
              chuck_instances.begin(); it != chuck_instances.end(); it++ )
         {
             ChucK * chuck = it->second;
-            delete chuck;
+            CK_SAFE_DELETE( chuck );
         }
-        
+
         // delete stored chuck pointers
         chuck_instances.clear();
-        
+
         // clear out callbacks also
         setStdoutCallback( NULL );
         setStderrCallback( NULL );
     }
 
-    
 
-}
+    // set param
+    bool EMSCRIPTEN_KEEPALIVE setParamInt( unsigned int chuckID, const char * key, t_CKINT val )
+    {
+        // check
+        if( chuck_instances.count( chuckID ) > 0 )
+        {
+            // call
+            return chuck_instances[chuckID]->setParam( key, val );
+        }
+
+        return false;
+    }
+
+    bool EMSCRIPTEN_KEEPALIVE setParamFloat( unsigned int chuckID, const char * key, t_CKFLOAT val )
+    {
+        // check
+        if( chuck_instances.count( chuckID ) > 0 )
+        {
+            // call
+            return chuck_instances[chuckID]->setParam( key, val );
+        }
+        return false;
+    }
+
+    bool EMSCRIPTEN_KEEPALIVE setParamString( unsigned int chuckID, const char * key, const char * val )
+    {
+        // check
+        if( chuck_instances.count( chuckID ) > 0 )
+        {
+            // call
+            return chuck_instances[chuckID]->setParam( key, val );
+        }
+        return false;
+    }
+
+    // get param
+    t_CKINT EMSCRIPTEN_KEEPALIVE getParamInt( unsigned int chuckID, const char * key )
+    {
+        // check
+        if( chuck_instances.count( chuckID ) > 0 )
+        {
+            // call
+            return chuck_instances[chuckID]->getParamInt( key );
+        }
+        return false;
+    }
+
+    t_CKFLOAT EMSCRIPTEN_KEEPALIVE getParamFloat( unsigned int chuckID, const char * key )
+    {
+        // check
+        if( chuck_instances.count( chuckID ) > 0 )
+        {
+            // call
+            return chuck_instances[chuckID]->getParamFloat( key );
+        }
+        return false;
+    }
+
+    const char * EMSCRIPTEN_KEEPALIVE getParamString( unsigned int chuckID, const char * key )
+    {
+        // hopefully this is ok | assume not reentrant code
+        static std::string theStr;
+
+        // check
+        if( chuck_instances.count( chuckID ) > 0 )
+        {
+            // call
+            theStr = chuck_instances[chuckID]->getParamString( key );
+            // return persistent storage | the recipient should not hold on to the char *
+            return theStr.c_str();
+        }
+        return "";
+    }
+
+    // get chuck time
+    t_CKTIME EMSCRIPTEN_KEEPALIVE getChuckNow( unsigned int chuckID )
+    {
+        // check
+        if( chuck_instances.count( chuckID ) > 0 )
+        {
+            // call
+            return chuck_instances[chuckID]->now();
+        }
+        return 0;
+    }
+
+} // extern "C"

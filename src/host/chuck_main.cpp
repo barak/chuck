@@ -973,7 +973,7 @@ t_CKBOOL go( int argc, const char ** argv )
     ChucK::enableSystemCall = g_enable_system_cmd;
 
     // check buffer size
-    buffer_size = ensurepow2( buffer_size );
+    buffer_size = ck_ensurepow2( buffer_size );
     // check mode and blocking
     if( !g_enable_realtime_audio && !block ) block = TRUE;
     // audio, boost 1.4.1.0 (ge) commented out
@@ -1143,7 +1143,7 @@ t_CKBOOL go( int argc, const char ** argv )
     the_chuck->setParam( CHUCK_PARAM_AUTO_DEPEND, (t_CKINT)auto_depend );
     the_chuck->setParam( CHUCK_PARAM_DEPRECATE_LEVEL, deprecate_level );
     // set hint, so internally can advise things like async data writes etc.
-    the_chuck->setParam( CHUCK_PARAM_HINT_IS_REALTIME_AUDIO, g_enable_realtime_audio );
+    the_chuck->setParam( CHUCK_PARAM_IS_REALTIME_AUDIO_HINT, g_enable_realtime_audio );
     // enable or disable highlighting code on compiler error
     the_chuck->setParam( CHUCK_PARAM_COMPILER_HIGHLIGHT_ON_ERROR, (t_CKINT)!suppress_error_quote );
 
