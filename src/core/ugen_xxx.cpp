@@ -269,9 +269,9 @@ DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
     //---------------------------------------------------------------------
     // init as base class: dac
     //---------------------------------------------------------------------
-    env->t_dac = type_engine_import_ugen_begin( env, "DAC", "UGen_Stereo", env->global(),
+    env->ckt_dac = type_engine_import_ugen_begin( env, "DAC", "UGen_Stereo", env->global(),
                                                 NULL, NULL, NULL, NULL, 2, 2 );
-    if( !env->t_dac )
+    if( !env->ckt_dac )
         return FALSE;
 
     // end import
@@ -284,10 +284,10 @@ DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
     //---------------------------------------------------------------------
     // init as base class: adc
     //---------------------------------------------------------------------
-    env->t_adc = type_engine_import_ugen_begin( env, "ADC", "UGen_Stereo", env->global(),
+    env->ckt_adc = type_engine_import_ugen_begin( env, "ADC", "UGen_Stereo", env->global(),
                                                 (f_ctor)NULL, (f_dtor)NULL, (f_tick)NULL,
                                                 (f_pmsg)NULL, 0, 2 );
-    if( !env->t_adc )
+    if( !env->ckt_adc )
         return FALSE;
 
     // end import
@@ -700,6 +700,12 @@ DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
         return FALSE;
 
     if( !type_engine_import_add_ex( env, "basic/sndbuf.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "basic/doh.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "basic/valueat.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "otf_01.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "otf_02.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "otf_03.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "otf_04.ck" ) ) goto error;
 
     // add member variable
     sndbuf_offset_data = type_engine_import_mvar( env, "int", "@sndbuf_data", FALSE );
@@ -1553,11 +1559,11 @@ CK_DLL_CTOR( foogen_ctor )
            // ensure has one argument
            func->def()->arg_list != NULL &&
            // ensure first argument is float
-           func->def()->arg_list->type == SHRED->vm_ref->env()->t_float &&
+           func->def()->arg_list->type == SHRED->vm_ref->env()->ckt_float &&
            // ensure has only one argument
            func->def()->arg_list->next == NULL &&
            // ensure returns float
-           func->def()->ret_type == SHRED->vm_ref->env()->t_float )
+           func->def()->ret_type == SHRED->vm_ref->env()->ckt_float )
         {
             tick_fun_index = i;
             break;
@@ -1606,7 +1612,7 @@ CK_DLL_CTOR( foogen_ctor )
     {
         // SPENCERTODO: warn on Chugen definition instead of instantiation?
         EM_log(CK_LOG_WARNING, "ChuGen '%s' does not define a suitable tick function",
-               ugen->type_ref->name.c_str());
+               ugen->type_ref->base_name.c_str());
     }
 }
 
@@ -3423,7 +3429,7 @@ CK_DLL_CTRL( sndbuf_ctrl_read )
         else if( strstr(filename, "special:britestk") ) {
             rawsize = britestk_size; rawdata = britestk_data;
         }
-        else if( strstr(filename, "special:dope") ) {
+        else if( strstr(filename, "special:doh") || strstr(filename, "special:dope") ) {
             rawsize = dope_size; rawdata = dope_data;
         }
         else if( strstr(filename, "special:eee") ) {

@@ -3261,6 +3261,10 @@ by Perry R. Cook and Gary P. Scavone, 1995 - 2002.";
         HnkyTonk_ctor, HnkyTonk_dtor,
         HnkyTonk_tick, HnkyTonk_pmsg, doc.c_str() ) ) return FALSE;
 
+    // add examples
+    if( !type_engine_import_add_ex( env, "stk/honkeytonk-algo1.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "stk/honkeytonk-algo3.ck" ) ) goto error;
+
     // end the class import
     type_engine_import_class_end( env );
 
@@ -18171,7 +18175,7 @@ void WvIn :: openFile( const char *fileName, bool raw, bool doNormalize, bool ge
             else if( strstr(fileName, "special:britestk") ) {
                 rawsize = britestk_size; rawdata = britestk_data;
             }
-            else if( strstr(fileName, "special:dope") ) {
+            else if( strstr(fileName, "special:doh") || strstr(fileName, "special:dope") ) {
                 rawsize = dope_size; rawdata = dope_data;
             }
             else if( strstr(fileName, "special:eee") ) {
@@ -20366,7 +20370,7 @@ ck_domidi ( Instrmnt * inst, unsigned char status, unsigned char data1, unsigned
     unsigned char type = status && 0xf0;
     switch ( type ) {
     case __SK_NoteOn_:
-      inst->noteOn( mtof ( (float)data1 ), ((float)data2) / 128.0 );
+      inst->noteOn( ck_mtof ( (float)data1 ), ((float)data2) / 128.0 );
       break;
     case __SK_NoteOff_:
       inst->noteOff( ((float)data2) / 128.0 );
@@ -26448,7 +26452,7 @@ CK_DLL_CGET( Mandolin_cget_bodyIR )
 {
     Mandolin * m = (Mandolin *)OBJ_MEMBER_UINT(SELF, Instrmnt_offset_data);
     // instantiate | 1.5.0.0 (ge) added to dynamic allocate chuck string
-    Chuck_String * str = (Chuck_String *)instantiate_and_initialize_object( SHRED->vm_ref->env()->t_string, SHRED );
+    Chuck_String * str = (Chuck_String *)instantiate_and_initialize_object( SHRED->vm_ref->env()->ckt_string, SHRED );
     str->set( m->soundfile[0]->str_filename );
     RETURN->v_string = str;
 }
@@ -27206,7 +27210,7 @@ CK_DLL_CTRL( Shakers_ctrl_freq )
 {
     Shakers * s = (Shakers *)OBJ_MEMBER_UINT(SELF, Instrmnt_offset_data);
     s->freq = GET_NEXT_FLOAT(ARGS);
-    s->controlChange( __SK_ModWheel_, ftom(s->freq) );
+    s->controlChange( __SK_ModWheel_, ck_ftom(s->freq) );
     RETURN->v_float = (t_CKFLOAT)s->freq;
 }
 
@@ -27411,7 +27415,7 @@ CK_DLL_CGET( VoicForm_cget_phoneme )
 {
     VoicForm * v = (VoicForm *)OBJ_MEMBER_UINT(SELF, Instrmnt_offset_data);
     // instantiate | 1.5.0.0 (ge) added to dynamic allocate chuck string
-    Chuck_String * str = (Chuck_String *)instantiate_and_initialize_object( SHRED->vm_ref->env()->t_string, SHRED );
+    Chuck_String * str = (Chuck_String *)instantiate_and_initialize_object( SHRED->vm_ref->env()->ckt_string, SHRED );
     // set
     str->set( v->str_phoneme );
     RETURN->v_string = str;
@@ -27722,7 +27726,7 @@ CK_DLL_CGET( WvIn_cget_path )
 {
     WvIn * w = (WvIn *)OBJ_MEMBER_UINT(SELF, WvIn_offset_data);
     // instantiate | 1.5.0.0 (ge) added to dynamic allocate chuck string
-    Chuck_String * str = (Chuck_String *)instantiate_and_initialize_object( SHRED->vm_ref->env()->t_string, SHRED );
+    Chuck_String * str = (Chuck_String *)instantiate_and_initialize_object( SHRED->vm_ref->env()->ckt_string, SHRED );
     str->set( w->str_filename );
     // return value
     RETURN->v_string = str;
@@ -28307,7 +28311,7 @@ CK_DLL_CGET( WvOut_cget_filename )
     WvOut * w = (WvOut *)OBJ_MEMBER_UINT(SELF, WvOut_offset_data);
 
     // instantiate | 1.5.0.0 (ge) added to dynamic allocate chuck string
-    Chuck_String * str = (Chuck_String *)instantiate_and_initialize_object( SHRED->vm_ref->env()->t_string, SHRED );
+    Chuck_String * str = (Chuck_String *)instantiate_and_initialize_object( SHRED->vm_ref->env()->ckt_string, SHRED );
     str->set( w->str_filename );
 
     RETURN->v_string = str;
@@ -28389,7 +28393,7 @@ CK_DLL_CGET( WvOut_cget_autoPrefix )
 {
     WvOut * w = (WvOut *)OBJ_MEMBER_UINT(SELF, WvOut_offset_data);
     // instantiate | 1.5.0.0 (ge) added to dynamic allocate chuck string
-    Chuck_String * str = (Chuck_String *)instantiate_and_initialize_object( SHRED->vm_ref->env()->t_string, SHRED );
+    Chuck_String * str = (Chuck_String *)instantiate_and_initialize_object( SHRED->vm_ref->env()->ckt_string, SHRED );
     str->set( w->autoPrefix );
     // return value
     RETURN->v_string = str;

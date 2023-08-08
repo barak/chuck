@@ -96,8 +96,6 @@ void error_cb( RtAudioErrorType type, const std::string & errorText )
 }
 
 
-
-
 //-----------------------------------------------------------------------------
 // host program entry point
 //-----------------------------------------------------------------------------
@@ -118,10 +116,14 @@ int main( int argc, char ** argv )
     // whether to halt the VM when there is no more shred running
     the_chuck->setParam( CHUCK_PARAM_VM_HALT, TRUE );
     // set hint so internally can advise things like async data writes etc.
-    the_chuck->setParam( CHUCK_PARAM_HINT_IS_REALTIME_AUDIO, TRUE );
+    the_chuck->setParam( CHUCK_PARAM_IS_REALTIME_AUDIO_HINT, TRUE );
     // turn on logging to see what ChucK is up to; higher == more info
-    // chuck->setLogLevel( 3 );
+    // the_chuck->setLogLevel( 3 );
     
+    // debug print -- uncomment to see flow
+    // cerr << "[example-2-audio]: initializing real-time audio..." << endl;
+    // cerr << "[example-2-audio]: (will use default audio devices)" << endl;
+
     // initialize real-time audio
     if( !init_realtime_audio( the_chuck->getParamInt( CHUCK_PARAM_SAMPLE_RATE ),
                               the_chuck->getParamInt( CHUCK_PARAM_INPUT_CHANNELS ),
@@ -145,6 +147,9 @@ int main( int argc, char ** argv )
         goto done;
     }
     
+    // print out the last VM shred id (should be the shred we just compiled)
+    // cerr << "VM: latest shred ID: " << the_chuck->vm()->last_id() << endl;
+
     // start real-time audio
     if( !start_realtime_audio() )
     { goto cleanup; }
@@ -189,7 +194,7 @@ t_CKBOOL init_realtime_audio( t_CKINT sampleRate,
         cerr << "[real-time audio]: no audio device found!" << endl;
         return FALSE;
     }
-    
+
     // set error callback
     the_rtaudio->setErrorCallback( error_cb );
 

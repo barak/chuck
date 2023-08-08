@@ -997,7 +997,7 @@ t_CKBOOL Chuck_Globals_Manager::init_global_string( const std::string & name )
         m_global_strings[name] = new Chuck_Global_String_Container;
         // init
         m_global_strings[name]->val = (Chuck_String *)
-        instantiate_and_initialize_object( m_vm->env()->t_string, m_vm );
+        instantiate_and_initialize_object( m_vm->env()->ckt_string, m_vm );
 
         // add reference to prevent deletion
         m_global_strings[name]->val->add_ref();
@@ -1280,7 +1280,7 @@ t_CKBOOL Chuck_Globals_Manager::init_global_event( const std::string & name,
         m_global_events[name]->type = type;
     }
     // already exists. check if there's a type mismatch.
-    else if( type->name != m_global_events[name]->type->name )
+    else if( type->base_name != m_global_events[name]->type->base_name )
     {
         return FALSE;
     }
@@ -1362,7 +1362,7 @@ t_CKBOOL Chuck_Globals_Manager::init_global_ugen( const std::string & name,
         m_global_ugens[name]->type = type;
     }
     // already exists. check if there's a type mismatch.
-    else if( type->name != m_global_ugens[name]->type->name )
+    else if( type->base_name != m_global_ugens[name]->type->base_name )
     {
         return FALSE;
     }
@@ -2277,7 +2277,7 @@ t_CKBOOL Chuck_Globals_Manager::init_global_object( const std::string & name,
         m_global_objects[name]->type = type;
     }
     // already exists. check if there's a type mismatch.
-    else if( type->name != m_global_objects[name]->type->name )
+    else if( type->base_name != m_global_objects[name]->type->base_name )
     {
         return FALSE;
     }
