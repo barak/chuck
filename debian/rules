@@ -11,8 +11,9 @@ export CFLAGS:=$(CPPFLAGS) $(CFLAGS)
 
 # The build targets "linux" generates a single chuck executable with
 # support for multiple sound systems: alsa, pulse, and jack.
+# The CHUCK_DEBUG=y was causing a compilation failure, so removed.
 override_dh_auto_build:
-	dh_auto_build -- CHUCK_STRICT=1 CHUCK_DEBUG=y linux
+	dh_auto_build -- CHUCK_STRICT=1 linux
 	docbook-to-man debian/chuck.sgml > debian/chuck.1
 
 override_dh_installchangelogs:

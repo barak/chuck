@@ -10,7 +10,7 @@ Address two issues in the test target in src/makefile:
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/src/makefile b/src/makefile
-index b2edeb6..7f990ce 100644
+index a72edac..27375ba 100644
 --- a/src/makefile
 +++ b/src/makefile
 @@ -261,7 +261,7 @@ $(CXXOBJS_HOST): %.o: %.cpp
