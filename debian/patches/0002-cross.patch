@@ -7,7 +7,7 @@ Subject: cross
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/src/makefile b/src/makefile
-index 85e1a18..a72edac 100644
+index 69f6d09..d74a9a1 100644
 --- a/src/makefile
 +++ b/src/makefile
 @@ -89,7 +89,7 @@ CC=gcc
