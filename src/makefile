@@ -16,7 +16,7 @@ CK_HOST_DIR=host
 # where to find RtAudio
 RTAUDIO_DIR=RtAudio
 # chuck version
-CK_VERSION=1.5.1.0
+CK_VERSION=1.5.1.1
 
 
 ########################## DEFAULT MAKE TARGET ################################
@@ -261,7 +261,7 @@ $(CXXOBJS_HOST): %.o: %.cpp
 
 ############################## RUN UNIT TEST ##################################
 test:
-	pushd test; ./test.py ../chuck .; popd
+	(cd test && ./test.py ../chuck .)
 
 
 ############################### DISTRIBUTION ##################################
