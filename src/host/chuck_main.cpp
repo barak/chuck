@@ -34,6 +34,7 @@
 #include "chuck.h"
 #include "chuck_audio.h"
 #include "chuck_console.h"
+#include "chuck_otf.h"
 #include "util_platforms.h"
 #include "util_string.h"
 #include <signal.h>
@@ -64,8 +65,8 @@ void all_detach();
 void usage();
 void uh();
 t_CKBOOL get_count( const char * arg, t_CKUINT * out );
-void cb( SAMPLE * in, SAMPLE * out, t_CKUINT numFrames,
-         t_CKUINT numInChans, t_CKUINT numOutChans, void * data );
+static void audio_cb( SAMPLE * in, SAMPLE * out, t_CKUINT numFrames,
+                      t_CKUINT numInChans, t_CKUINT numOutChans, void * data );
 
 // C functions
 extern "C" void signal_int( int sig_num );
@@ -150,14 +151,15 @@ int chuck_main( int argc, const char ** argv )
 
 
 //-----------------------------------------------------------------------------
-// name: cb()
-// desc: audio callback
+// name: audio_cb()
+// desc: audio callback; on audio thread, called through RtAudio;
+//       in turn, this function calls up to chuck to compute next chunk
 //-----------------------------------------------------------------------------
-void cb( SAMPLE * in, SAMPLE * out, t_CKUINT numFrames,
-         t_CKUINT numInChans, t_CKUINT numOutChans, void * data )
+static void audio_cb( SAMPLE * in, SAMPLE * out, t_CKUINT numFrames,
+                      t_CKUINT numInChans, t_CKUINT numOutChans, void * data )
 {
     // TODO: check channel numbers
-    
+
     // call up to ChucK
     the_chuck->run( in, out, numFrames );
 }
@@ -485,7 +487,9 @@ void all_stop()
 {
     if( g_enable_realtime_audio )
     {
-        ChuckAudio::shutdown();
+        // argument is time to wait in ms | 1.5.1.3 (ge)
+        // this also seems to get rid of audio stutter on some macOS audio devices
+        ChuckAudio::shutdown( 100 );
     }
     // REFACTOR-2017: TODO: other things? le_cb?
 }
@@ -1217,7 +1221,7 @@ t_CKBOOL go( int argc, const char ** argv )
     {
         // initialize real-time audio
         t_CKBOOL retval = ChuckAudio::initialize( dac, adc, dac_chans, adc_chans,
-            srate, buffer_size, num_buffers, cb, (void *)the_chuck, force_srate, audio_driver.c_str() );
+            srate, buffer_size, num_buffers, audio_cb, (void *)the_chuck, force_srate, audio_driver.c_str() );
         // check return code
         if( !retval )
         {
