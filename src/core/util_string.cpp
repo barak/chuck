@@ -54,10 +54,10 @@ using namespace std;
 
 
 //-----------------------------------------------------------------------------
-// name: itoa()
+// name: ck_itoa()
 // desc: int to ascii
 //-----------------------------------------------------------------------------
-string itoa( t_CKINT val )
+string ck_itoa( t_CKINT val )
 {
     char buffer[128];
 #ifdef _WIN64
@@ -72,10 +72,10 @@ string itoa( t_CKINT val )
 
 
 //-----------------------------------------------------------------------------
-// name: ftoa()
+// name: ck_ftoa()
 // desc: float to ascii
 //-----------------------------------------------------------------------------
-string ftoa( t_CKFLOAT val, t_CKUINT precision )
+string ck_ftoa( t_CKFLOAT val, t_CKUINT precision )
 {
     char str[32];
     char buffer[128];
@@ -83,6 +83,29 @@ string ftoa( t_CKFLOAT val, t_CKUINT precision )
     snprintf( str, 32, "%%.%lif", (long)precision );
     snprintf( buffer, 128, str, val );
     return string(buffer);
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: ck_atoul()
+// desc: ascii to unsigned long
+//-----------------------------------------------------------------------------
+unsigned long ck_atoul( const std::string & s, int base )
+{
+    return strtoul( s.c_str(), NULL, base );
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// ascii to signed long
+//-----------------------------------------------------------------------------
+long ck_atol( const std::string & s, int base )
+{
+    return strtol( s.c_str(), NULL, base );
 }
 
 
@@ -1049,6 +1072,29 @@ std::string timestamp_formatted()
 
 
 
+
+//-----------------------------------------------------------------------------
+// name: autoFilename()
+// desc: generate auto filename | 1.5.0.0 (ge) refactored into this function
+//-----------------------------------------------------------------------------
+std::string autoFilename( const std::string & prefix, const std::string & fileExt )
+{
+    char buffer[1024];
+    time_t t; time(&t);
+    strcpy( buffer, prefix.c_str() );
+    strcat( buffer, "(" );
+    strncat( buffer, ctime(&t), 24 );
+    buffer[strlen(prefix.c_str())+14] = 'h';
+    buffer[strlen(prefix.c_str())+17] = 'm';
+    strcat( buffer, ")." );
+    strcat( buffer, fileExt.c_str() );
+    // return
+    return buffer;
+}
+
+
+
+
 static t_CKBOOL str_contains( const string & s, char c )
 { return s.find( c ) != string::npos; }
 
@@ -1204,14 +1250,14 @@ std::string TC::set_blue( t_CKBOOL bold )
 std::string TC::set( TerminalCode code )
 {
     if( globalBypass || !isEnabled ) return "";
-    return std::string("\033[") + itoa(code) + "m";
+    return std::string("\033[") + ck_itoa(code) + "m";
 }
 
 // set using an integer
 std::string TC::seti( t_CKUINT code )
 {
     if( globalBypass || !isEnabled ) return "";
-    return std::string("\033[") + itoa(code) + "m";
+    return std::string("\033[") + ck_itoa(code) + "m";
 }
 
 // set foreground default color
