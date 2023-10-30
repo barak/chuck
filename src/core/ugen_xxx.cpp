@@ -851,7 +851,7 @@ DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
     // add cget: valueAt
     func = make_new_mfun( "float", "valueAt", sndbuf_cget_valueAt );
     func->add_arg( "int", "pos" );
-    func->doc = "get sample value at given position (in samples). ";
+    func->doc = "get sample value at given position (in samples).";
     if( !type_engine_import_mfun( env, func ) ) goto error;
 
     // end import
@@ -883,9 +883,9 @@ DLL_QUERY xxx_query( Chuck_DL_Query * QUERY )
                                         dyno_ctor, dyno_dtor, dyno_tick, NULL, doc.c_str() ) )
         return FALSE;
 
-    if( !type_engine_import_add_ex( env, "Dyno-compress.ck" ) ) goto error;
-    if( !type_engine_import_add_ex( env, "Dyno-duck.ck" ) ) goto error;
-    if( !type_engine_import_add_ex( env, "Dyno-limit.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "special/Dyno-compress.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "special/Dyno-duck.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "special/Dyno-limit.ck" ) ) goto error;
 
     // add member variable
     dyno_offset_data = type_engine_import_mvar( env, "int", "@dyno_data", FALSE );
@@ -1091,7 +1091,7 @@ DLL_QUERY lisa_query( Chuck_DL_Query * QUERY )
     if( !type_engine_import_add_ex( env, "special/LiSa-munger1.ck" ) ) goto error;
     if( !type_engine_import_add_ex( env, "special/LiSa-munger2.ck" ) ) goto error;
     if( !type_engine_import_add_ex( env, "special/LiSa-munger3.ck" ) ) goto error;
-    if( !type_engine_import_add_ex( env, "special/LiSa-load.ck.ck" ) ) goto error;
+    if( !type_engine_import_add_ex( env, "special/LiSa-load.ck" ) ) goto error;
     if( !type_engine_import_add_ex( env, "special/LiSa-simplelooping.ck" ) ) goto error;
     if( !type_engine_import_add_ex( env, "special/LiSa-trigger.ck" ) ) goto error;
     if( !type_engine_import_add_ex( env, "special/LiSa-track1.ck" ) ) goto error;
