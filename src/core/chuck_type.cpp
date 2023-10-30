@@ -706,13 +706,17 @@ t_CKBOOL type_engine_init( Chuck_Carrier * carrier )
 void type_engine_shutdown( Chuck_Carrier * carrier )
 {
     // log
-    EM_log( CK_LOG_SEVERE, "shutting down type checker..." );
+    EM_log( CK_LOG_SEVERE, "shutting down type system..." );
+    // push
+    EM_pushlog();
 
     // shut it down; this is system cleanup -- delete instead of release
     CK_SAFE_DELETE( carrier->env );
 
     // log
-    EM_log( CK_LOG_SEVERE, "type checker shutdown complete." );
+    EM_log( CK_LOG_SEVERE, "type system shutdown complete." );
+    // pop
+    EM_poplog();
 }
 
 
@@ -2467,6 +2471,15 @@ t_CKTYPE type_engine_check_op_overload_binary( Chuck_Env * env, ae_Operator op,
         return NULL;
     }
 
+    // get return type | 1.5.1.8 (ge & andrew) we are back
+    Chuck_Type * rtype  = binary->ck_overload_func->type();
+    // check if return type is an Obj
+    if( rtype && isobj( env, rtype ) && env->stmt_stack.size() )
+    {
+        // increment # of objects in this stmt that needs release
+        env->stmt_stack.back()->numObjsToRelease++;
+    }
+
     // the return type
     return binary->ck_overload_func->type();
 }
@@ -2502,6 +2515,15 @@ t_CKTYPE type_engine_check_op_overload_unary( Chuck_Env * env, ae_Operator op,
         return NULL;
     }
 
+    // get return type | 1.5.1.8 (ge & andrew) we are back
+    Chuck_Type * rtype  = unary->ck_overload_func->type();
+    // check if return type is an Obj
+    if( rtype && isobj( env, rtype ) && env->stmt_stack.size() )
+    {
+        // increment # of objects in this stmt that needs release
+        env->stmt_stack.back()->numObjsToRelease++;
+    }
+
     // the return type
     return unary->ck_overload_func->type();
 }
@@ -2535,6 +2557,15 @@ t_CKTYPE type_engine_check_op_overload_postfix( Chuck_Env * env, Chuck_Type * lh
             op2str( op ), lhs->c_name() );
         // done
         return NULL;
+    }
+
+    // get return type | 1.5.1.8 (ge & andrew) we are back
+    Chuck_Type * rtype  = postfix->ck_overload_func->type();
+    // check if return type is an Obj
+    if( rtype && isobj( env, rtype ) && env->stmt_stack.size() )
+    {
+        // increment # of objects in this stmt that needs release
+        env->stmt_stack.back()->numObjsToRelease++;
     }
 
     // the return type
@@ -3134,6 +3165,13 @@ t_CKTYPE type_engine_check_exp_unary( Chuck_Env * env, a_Exp_Unary unary )
                 EM_error2( unary->where,
                     "cannot use 'new' on an individual object reference (@)" );
                 return NULL;
+            }
+
+            // check if return type is an Obj | 1.5.1.8
+            if( isobj( env, t ) && env->stmt_stack.size() )
+            {
+                // increment # of objects in this stmt that needs release
+                env->stmt_stack.back()->numObjsToRelease++;
             }
 
             // return the type
@@ -5450,7 +5488,7 @@ t_CKBOOL operator <=( const Chuck_Type & lhs, const Chuck_Type & rhs )
     }
 
     // if lhs is null and rhs is a object | removed 1.5.1.7?
-    if( (lhs == *(lhs.env_ref->ckt_null)) && (rhs <= *(rhs.env_ref->ckt_object)) ) return TRUE;
+    if( (lhs == *(lhs.env()->ckt_null)) && (rhs <= *(rhs.env()->ckt_object)) ) return TRUE;
 
     return FALSE;
 }
@@ -8205,16 +8243,16 @@ static t_CKBOOL g_escape_ready = FALSE;
 void escape_table( )
 {
     // escape
-    g_escape['\''] = '\'';
-    g_escape['"'] = '"';
-    g_escape['\\'] = '\\';
-    g_escape['a'] = (char)7; // audible bell
-    g_escape['b'] = (char)8; // back space
-    g_escape['f'] = (char)12; // form feed
-    g_escape['n'] = (char)10; // new line
-    g_escape['r'] = (char)13; // carriage return
-    g_escape['t'] = (char)9; // horizontal tab
-    g_escape['v'] = (char)11; // vertical tab
+    g_escape[(t_CKUINT)'\''] = '\'';
+    g_escape[(t_CKUINT)'"'] = '"';
+    g_escape[(t_CKUINT)'\\'] = '\\';
+    g_escape[(t_CKUINT)'a'] = (char)7; // audible bell
+    g_escape[(t_CKUINT)'b'] = (char)8; // back space
+    g_escape[(t_CKUINT)'f'] = (char)12; // form feed
+    g_escape[(t_CKUINT)'n'] = (char)10; // new line
+    g_escape[(t_CKUINT)'r'] = (char)13; // carriage return
+    g_escape[(t_CKUINT)'t'] = (char)9; // horizontal tab
+    g_escape[(t_CKUINT)'v'] = (char)11; // vertical tab
 
     // done
     g_escape_ready = TRUE;
@@ -9048,6 +9086,33 @@ Chuck_Type * Chuck_Type::copy( Chuck_Env * env, Chuck_Context * context ) const
 
     // return new instance
     return n;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: env() | 1.5.1.8 (ge) added method, avoid direct variable access
+// desc: get env reference that contains this type
+//-----------------------------------------------------------------------------
+Chuck_Env * Chuck_Type::env() const
+{
+    return env_ref;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: vm() | 1.5.1.8 (ge) added method, avoid direct variable access
+// desc: get VM reference associated with this type (via the env)
+//-----------------------------------------------------------------------------
+Chuck_VM * Chuck_Type::vm() const
+{
+    // no env ref, no vm ref
+    if( !env_ref ) return NULL;
+    // return env vm ref
+    return env_ref->vm();
 }
 
 

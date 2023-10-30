@@ -861,7 +861,7 @@ t_CKBOOL Chuck_DLL::load( const char * filename, const char * func, t_CKBOOL laz
 t_CKBOOL Chuck_DLL::load( f_ck_query query_func, t_CKBOOL lazy )
 {
     m_query_func = query_func;
-    m_version_func = ck_builtin_declversion;
+    m_api_version_func = ck_builtin_declversion;
     m_done_query = FALSE;
     m_func = "ck_query";
 
@@ -904,25 +904,25 @@ const Chuck_DL_Query * Chuck_DLL::query()
         return &m_query;
 
     // get the address of the DL version function from the DLL
-    if( !m_version_func )
-        m_version_func = (f_ck_declversion)this->get_addr( CK_DECLVERSION_FUNC );
-    if( !m_version_func )
-        m_version_func = (f_ck_declversion)this->get_addr( (string("_")+CK_DECLVERSION_FUNC).c_str() );
-    if( !m_version_func )
+    if( !m_api_version_func )
+        m_api_version_func = (f_ck_declversion)this->get_addr( CK_DECLVERSION_FUNC );
+    if( !m_api_version_func )
+        m_api_version_func = (f_ck_declversion)this->get_addr( (string("_")+CK_DECLVERSION_FUNC).c_str() );
+    if( !m_api_version_func )
     {
         m_last_error = string("no version function found in dll '") + m_filename + string("'");
         return NULL;
     }
 
     // check version
-    t_CKUINT dll_version = m_version_func();
+    t_CKUINT dll_version = m_api_version_func();
     // get major and minor version numbers
-    m_versionMajor = CK_DLL_VERSION_GETMAJOR(dll_version);
-    m_versionMinor = CK_DLL_VERSION_GETMINOR(dll_version);
+    m_apiVersionMajor = CK_DLL_VERSION_GETMAJOR(dll_version);
+    m_apiVersionMinor = CK_DLL_VERSION_GETMINOR(dll_version);
     // is version ok
     t_CKBOOL version_ok = FALSE;
     // major version must be same; minor version must less than or equal
-    if( m_versionMajor == CK_DLL_VERSION_MAJOR && m_versionMinor <= CK_DLL_VERSION_MINOR)
+    if( m_apiVersionMajor == CK_DLL_VERSION_MAJOR && m_apiVersionMinor <= CK_DLL_VERSION_MINOR)
         version_ok = TRUE;
 
     // if version not okay
@@ -930,10 +930,10 @@ const Chuck_DL_Query * Chuck_DLL::query()
     {
         // construct error string
         ostringstream oss;
-        oss << "chugin version incompatible..." << endl
+        oss << "chugin API version incompatible..." << endl
             << "chugin path: '" << m_filename << "'" << endl
-            << "chugin version: " << m_versionMajor << "." << m_versionMinor
-            << " VS host version: " << CK_DLL_VERSION_MAJOR << "." << CK_DLL_VERSION_MINOR;
+            << "chugin API version: " << m_apiVersionMajor << "." << m_apiVersionMinor
+            << " VS host API version: " << CK_DLL_VERSION_MAJOR << "." << CK_DLL_VERSION_MINOR;
         m_last_error = oss.str();
         return NULL;
     }
@@ -1069,21 +1069,21 @@ t_CKBOOL Chuck_DLL::probe()
     }
 
     // get the address of the DL version function from the DLL
-    if( !m_version_func )
-        m_version_func = (f_ck_declversion)this->get_addr( CK_DECLVERSION_FUNC );
-    if( !m_version_func )
-        m_version_func = (f_ck_declversion)this->get_addr( (string("_")+CK_DECLVERSION_FUNC).c_str() );
-    if( !m_version_func )
+    if( !m_api_version_func )
+        m_api_version_func = (f_ck_declversion)this->get_addr( CK_DECLVERSION_FUNC );
+    if( !m_api_version_func )
+        m_api_version_func = (f_ck_declversion)this->get_addr( (string("_")+CK_DECLVERSION_FUNC).c_str() );
+    if( !m_api_version_func )
     {
         m_last_error = string("no version function found in dll '") + m_filename + string("'");
         return FALSE;
     }
 
     // check version
-    t_CKUINT dll_version = m_version_func();
+    t_CKUINT dll_version = m_api_version_func();
     // get major and minor version numbers
-    m_versionMajor = CK_DLL_VERSION_GETMAJOR(dll_version);
-    m_versionMinor = CK_DLL_VERSION_GETMINOR(dll_version);
+    m_apiVersionMajor = CK_DLL_VERSION_GETMAJOR(dll_version);
+    m_apiVersionMinor = CK_DLL_VERSION_GETMINOR(dll_version);
 
     return TRUE;
 }
@@ -1182,7 +1182,7 @@ t_CKUINT Chuck_DLL::versionMajor()
     // probe dll
     if( !this->probe() ) return 0;
     // return
-    return m_versionMajor;
+    return m_apiVersionMajor;
 }
 
 
@@ -1197,7 +1197,7 @@ t_CKUINT Chuck_DLL::versionMinor()
     // probe dll
     if( !this->probe() ) return 0;
     // return
-    return m_versionMinor;
+    return m_apiVersionMinor;
 }
 
 
@@ -1213,11 +1213,14 @@ t_CKBOOL Chuck_DLL::compatible()
     if( !this->probe() ) return FALSE;
     // major version must be same between chugin and host
     // chugin minor version must less than or equal host minor version
-    if( m_versionMajor == CK_DLL_VERSION_MAJOR && m_versionMinor <= CK_DLL_VERSION_MINOR )
+    if( m_apiVersionMajor == CK_DLL_VERSION_MAJOR && m_apiVersionMinor <= CK_DLL_VERSION_MINOR )
     { return TRUE; }
     else {
-        m_last_error = string("version incompatible with host ") +
-                       ck_itoa(CK_DLL_VERSION_MAJOR) + "." + ck_itoa(CK_DLL_VERSION_MINOR);
+        m_last_error = string("incompatible API version: chugin (")
+                       + ck_itoa(m_apiVersionMajor) + "." + ck_itoa(m_apiVersionMinor)
+                       + string(") vs. host (")
+                       + ck_itoa(CK_DLL_VERSION_MAJOR) + "." + ck_itoa(CK_DLL_VERSION_MINOR)
+                       + ")";
         return FALSE;
     }
 }
@@ -1538,7 +1541,7 @@ static Chuck_DL_Api::Object CK_DLL_CALL ck_create_without_shred( Chuck_VM * vm, 
     if( t == NULL )
     {
         // print error message
-        EM_error2( 0, "DL_Api:object:ck_create_no_shred: NULL object reference." );
+        EM_error2( 0, "DL_Api:object:ck_create_without_shred: NULL object reference." );
         // done
         return NULL;
     }
@@ -1928,6 +1931,80 @@ static t_CKBOOL CK_DLL_CALL ck_array_int_get_key( Chuck_DL_Api::ArrayInt a, cons
 
 
 //-----------------------------------------------------------------------------
+// name: ck_array_float_size()
+// desc: get size of an array | 1.5.1.8 (nshaheed) added
+//-----------------------------------------------------------------------------
+static t_CKBOOL CK_DLL_CALL ck_array_float_size( Chuck_DL_Api::ArrayFloat a, t_CKINT & value )
+{
+    // default value
+    value = 0;
+    // check
+    if( a == NULL ) return FALSE;
+
+    // cast to array_float
+    Chuck_ArrayFloat * array = (Chuck_ArrayFloat *)a;
+
+    value = array->size();
+    return TRUE;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: ck_array_float_push_back()
+// desc: push back an element into an array | 1.5.1.8 (nshaheed) added
+//-----------------------------------------------------------------------------
+static t_CKBOOL CK_DLL_CALL ck_array_float_push_back( Chuck_DL_Api::ArrayFloat a, t_CKFLOAT value )
+{
+    // check
+    if( a == NULL ) return FALSE;
+    // cast to array_float
+    Chuck_ArrayFloat * array = (Chuck_ArrayFloat *)a;
+    // action
+    array->push_back( value );
+    // done
+    return TRUE;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: ck_array_float_get_idx()
+// desc: get an indexed element from an array | 1.5.1.8 (nshaheed) added
+//-----------------------------------------------------------------------------
+static t_CKBOOL CK_DLL_CALL ck_array_float_get_idx( Chuck_DL_Api::ArrayFloat a, t_CKINT idx, t_CKFLOAT & value )
+{
+    // check
+    if( a == NULL ) return FALSE;
+    // cast to array_float
+    Chuck_ArrayFloat * array = (Chuck_ArrayFloat *)a;
+    // action
+    return array->get( idx, &value );
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: ck_array_float_get()
+// desc: get a keyed element from an array | 1.5.1.8 (nshaheed) added
+//-----------------------------------------------------------------------------
+static t_CKBOOL CK_DLL_CALL ck_array_float_get_key( Chuck_DL_Api::ArrayFloat a, const std::string& key, t_CKFLOAT & value )
+{
+    // check
+    if( a == NULL ) return FALSE;
+    // cast to array_float
+    Chuck_ArrayFloat * array = (Chuck_ArrayFloat *)a;
+    // action
+    return array->get( key, &value );
+}
+
+
+
+
+//-----------------------------------------------------------------------------
 // constructor for the VMApi; connects function pointers to host-side impl
 //-----------------------------------------------------------------------------
 Chuck_DL_Api::VMApi::VMApi() :
@@ -1949,11 +2026,11 @@ remove_all_shreds(ck_remove_all_shreds)
 //-----------------------------------------------------------------------------
 Chuck_DL_Api::ObjectApi::ObjectApi() :
 get_type(ck_get_type),
-create(ck_create_with_shred),
-create_without_shred(ck_create_without_shred),
 add_ref(ck_add_ref),
 release(ck_release),
 refcount(ck_refcount),
+create(ck_create_with_shred),
+create_without_shred(ck_create_without_shred),
 create_string(ck_create_string),
 get_origin_shred(ck_get_origin_shred),
 set_origin_shred(ck_set_origin_shred),
@@ -1967,7 +2044,11 @@ set_string(ck_set_string),
 array_int_size(ck_array_int_size),
 array_int_push_back(ck_array_int_push_back),
 array_int_get_idx(ck_array_int_get_idx),
-array_int_get_key(ck_array_int_get_key)
+array_int_get_key(ck_array_int_get_key),
+array_float_size(ck_array_float_size),
+array_float_push_back(ck_array_float_push_back),
+array_float_get_idx(ck_array_float_get_idx),
+array_float_get_key(ck_array_float_get_key)
 { }
 
 
@@ -2033,7 +2114,7 @@ Chuck_DL_Return CK_DLL_CALL ck_invoke_mfun_immediate_mode( Chuck_Object * obj, t
         // iterate over c-style array
         for( t_CKUINT i = 0; i < numArgs; i++ ) args_vector.push_back(args_list[i]);
         // invoke the invoker
-        func->invoker_mfun->invoke( obj, args_vector );
+        func->invoker_mfun->invoke( obj, args_vector, caller_shred );
     }
 
     // return it
