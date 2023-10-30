@@ -535,7 +535,7 @@ t_CKBOOL ChucK::initVM()
 
     // instantiate VM
     m_carrier->vm = new Chuck_VM();
-    // add reference (this will be released on shtudwon
+    // add reference (this will be released on shutdown)
     CK_SAFE_ADD_REF( m_carrier->vm );
     // reference back to carrier
     m_carrier->vm->setCarrier( m_carrier );
@@ -713,7 +713,7 @@ t_CKBOOL ChucK::initChugins()
 
         EM_pushlog();
         // print host version
-        EM_log( CK_LOG_SEVERE, TC::green("host version: %d.%d", true).c_str(), CK_DLL_VERSION_MAJOR, CK_DLL_VERSION_MINOR );
+        EM_log( CK_LOG_SEVERE, TC::green("host API version: %d.%d", true).c_str(), CK_DLL_VERSION_MAJOR, CK_DLL_VERSION_MINOR );
         EM_poplog();
 
         //---------------------------------------------------------------------
@@ -825,7 +825,7 @@ void ChucK::probeChugins()
     // print whether chugins enabled
     EM_log( CK_LOG_SYSTEM, "chugin system: %s", getParamInt( CHUCK_PARAM_CHUGIN_ENABLE ) ? "ON" : "OFF" );
     // print host version
-    EM_log( CK_LOG_SYSTEM, TC::green("host version: %d.%d", true).c_str(), CK_DLL_VERSION_MAJOR, CK_DLL_VERSION_MINOR );
+    EM_log( CK_LOG_SYSTEM, TC::green("host API version: %d.%d", true).c_str(), CK_DLL_VERSION_MAJOR, CK_DLL_VERSION_MINOR );
     // push
     EM_pushlog();
     // print host version
@@ -1036,12 +1036,14 @@ t_CKBOOL ChucK::shutdown()
     // ensure we have a carrier
     if( m_carrier != NULL )
     {
-        // clean up vm, compiler
+        // initiate VM shutdown but don't delete VM yet
+        if( m_carrier->vm ) m_carrier->vm->shutdown();
+        // delete compiler, including type system (m_carrier->env)
         CK_SAFE_DELETE( m_carrier->compiler );
-        // release VM (which is itself a Chuck_Obj)
+        // verify the env pointer is NULL
+        assert( m_carrier->env == NULL );
+        // release VM (itself an Object)
         CK_SAFE_RELEASE( m_carrier->vm );
-        // zero the env out (cleaned up in compiler)
-        m_carrier->env = NULL;
     }
 
     // clear flag
