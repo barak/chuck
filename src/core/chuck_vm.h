@@ -1,8 +1,8 @@
 /*----------------------------------------------------------------------------
-  ChucK Concurrent, On-the-fly Audio Programming Language
+  ChucK Strongly-timed Audio Programming Language
     Compiler and Virtual Machine
 
-  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+  Copyright (c) 2003 Ge Wang and Perry R. Cook. All rights reserved.
     http://chuck.stanford.edu/
     http://chuck.cs.princeton.edu/
 
@@ -143,14 +143,11 @@ public:
     t_CKBOOL is_static; // 1.4.1.0
     // native
     t_CKUINT native_func;
-    // is ctor?
-    t_CKUINT native_func_type;
+    // what kind of native func?
+    ae_FuncPointerKind native_func_kind;
 
     // filename this code came from (added 1.3.0.0)
     std::string filename;
-
-    // native func types
-    enum { NATIVE_UNKNOWN, NATIVE_CTOR, NATIVE_DTOR, NATIVE_MFUN, NATIVE_SFUN };
 };
 
 
@@ -182,18 +179,26 @@ public:
     // yield the shred in vm (without advancing time, politely yield to run
     // all other shreds waiting to run at the current (i.e., 0::second +=> now;)
     t_CKBOOL yield(); // 1.5.0.5 (ge) made this a function from scattered code
+    // add parent object reference (added 1.3.1.2)
+    t_CKVOID add_parent_ref( Chuck_Object * obj );
+    // add get shred id | 1.5.0.8 (ge)
+    t_CKUINT get_id() const { return this->xid; }
+
+public:
     // associate ugen with shred
     t_CKBOOL add( Chuck_UGen * ugen );
     // unassociate ugen with shred
     t_CKBOOL remove( Chuck_UGen * ugen );
     // detach all associate ugens | 1.5.1.5 (ge) added
     void detach_ugens();
+    // clean up ugens | 1.5.2.0 (ge) added
+    void prune_ugens();
 
-    // add parent object reference (added 1.3.1.2)
-    t_CKVOID add_parent_ref( Chuck_Object * obj );
-    // add get shred id | 1.5.0.8 (ge)
-    t_CKUINT get_id() const { return this->xid; }
-
+public:
+    // manually trigger a per-shred garbage collection pass | 1.5.2.0 (ge) added
+    void gc();
+    // acrue towards a GC pass
+    void gc_inc( t_CKDUR inc );
     // affects children shreds sporked from this one
     // mem is memory / call stack (for local vars)
     t_CKINT childSetMemSize( t_CKINT sizeInBytes );
@@ -257,11 +262,6 @@ public:
 
     // event shred is waiting on
     Chuck_Event * event;
-    // map of ugens for the shred
-    std::map<Chuck_UGen *, Chuck_UGen *> m_ugen_map;
-    // references kept by the shred itself (e.g., when sporking member functions)
-    // to be released when shred is done -- added 1.3.1.2
-    std::vector<Chuck_Object *> m_parent_objects;
 
 public: // id
     t_CKUINT xid;
@@ -273,8 +273,16 @@ public:
     Chuck_VM_Shred * prev;
     Chuck_VM_Shred * next;
 
+public:
     // tracking
     CK_TRACK( Shred_Stat * stat );
+
+public:
+    // map of ugens for the shred
+    std::map<Chuck_UGen *, Chuck_UGen *> m_ugen_map;
+    // references kept by the shred itself (e.g., when sporking member functions)
+    // to be released when shred is done -- added 1.3.1.2
+    std::vector<Chuck_Object *> m_parent_objects;
 
 public: // ge: 1.3.5.3
     // make and push new loop counter
@@ -309,6 +317,10 @@ public: // immediate mode temporal restriction | 1.5.1.5 (ge)
 protected:
     t_CKBOOL is_immediate_mode;
     t_CKBOOL is_immediate_mode_violation;
+
+protected:
+    t_CKDUR m_gc_inc; // current GC increment (in samps)
+    t_CKDUR m_gc_threshold; // threshold (in samps) beyond which will trigger a gc()
 
 #ifndef __DISABLE_SERIAL__
 private:
@@ -599,8 +611,8 @@ public: // invoke functions
     t_CKBOOL invoke_static( Chuck_VM_Shred * shred );
 
 public: // garbage collection
+    // manually trigger a VM-level garbage collection pass | 1.5.2.0 (ge) added
     void gc();
-    void gc( t_CKUINT amount );
 
 public: // VM message queue
     // queue message to process at next VM compute block (thread-safe but not synchronous)
@@ -640,7 +652,7 @@ public:
     // subscribe shreds watcher callback | 1.5.1.5
     void subscribe_watcher( f_shreds_watcher cb, t_CKUINT options, void * userdata = NULL );
     // notify watchers | 1.5.1.5
-    void notify_watchers( ckvmShredsWatcherFlag which, Chuck_VM_Shred * shred,
+    void notify_watchers( ckvm_ShredsWatcherFlag which, Chuck_VM_Shred * shred,
                           std::list<Chuck_VM_Shreds_Watcher> & v );
     // remove shreds watcher callback | 1.5.1.5
     void remove_watcher( f_shreds_watcher cb );
@@ -826,7 +838,7 @@ struct Chuck_Msg
 
 //-----------------------------------------------------------------------------
 // name: struct Chuck_VM_MFunInvoker | 1.5.1.5 (ge)
-// desc: construct for calling chuck-defined member functions from c++,
+// desc: aparatus for calling chuck-defined member functions from c++,
 //       either from VM execution or outside the VM execution context
 //-----------------------------------------------------------------------------
 struct Chuck_VM_MFunInvoker
@@ -857,6 +869,37 @@ public:
     Chuck_Instr_Reg_Push_Imm * instr_pushThis;
     // instruction to update on invoke: pushing the var to receive return
     Chuck_Instr_Reg_Push_Imm * instr_pushReturnVar;
+};
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: struct Chuck_VM_DtorInvoker | 1.5.2.0 (ge)
+// desc: aparatus for calling chuck-defined @destruct from c++,
+//       typically called for Object cleanup
+//-----------------------------------------------------------------------------
+struct Chuck_VM_DtorInvoker
+{
+public:
+    // constructor
+    Chuck_VM_DtorInvoker();
+    // destructor
+    ~Chuck_VM_DtorInvoker();
+
+public:
+    // set up the invoker; needed before invoke()
+    t_CKBOOL setup( Chuck_Func * func, Chuck_VM * vm );
+    // invoke the member function
+    void invoke( Chuck_Object * obj, Chuck_VM_Shred * parent_shred = NULL );
+    // clean up
+    void cleanup();
+
+public:
+    // dedicated shred to call the dtor on, since this could be running "outside of chuck time"
+    Chuck_VM_Shred * invoker_shred;
+    // instruction to update on invoke: pushing this pointer
+    Chuck_Instr_Reg_Push_Imm * instr_pushThis;
 };
 
 

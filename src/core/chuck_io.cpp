@@ -1,8 +1,8 @@
 /*----------------------------------------------------------------------------
-  ChucK Concurrent, On-the-fly Audio Programming Language
+  ChucK Strongly-timed Audio Programming Language
     Compiler and Virtual Machine
 
-  Copyright (c) 2004 Ge Wang and Perry R. Cook.  All rights reserved.
+  Copyright (c) 2003 Ge Wang and Perry R. Cook. All rights reserved.
     http://chuck.stanford.edu/
     http://chuck.cs.princeton.edu/
 
@@ -2040,7 +2040,7 @@ CK_DLL_MFUN( fileio_writefloatflags )
 CK_DLL_MFUN( chout_close )
 {
     // problem
-    CK_FPRINTF_STDERR( "[chuck]: cannot close 'chout'...\n" );
+    // CK_FPRINTF_STDERR( "[chuck]: cannot close 'chout'...\n" );
     Chuck_IO_Chout * c = SHRED->vm_ref->chout();
     c->close();
 }
@@ -2162,7 +2162,7 @@ CK_DLL_MFUN( chout_writefloat )
 CK_DLL_MFUN( cherr_close )
 {
     // problem
-    CK_FPRINTF_STDERR( "[chuck]: cannot close 'cherr'...\n" );
+    // CK_FPRINTF_STDERR( "[chuck]: cannot close 'cherr'...\n" );
     Chuck_IO_Cherr * c = SHRED->vm_ref->cherr();
     c->close();
 }
