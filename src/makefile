@@ -16,7 +16,7 @@ CK_HOST_DIR=host
 # where to find RtAudio
 RTAUDIO_DIR=RtAudio
 # chuck version
-CK_VERSION=1.5.1.8
+CK_VERSION=1.5.2.0
 
 
 ########################## DEFAULT MAKE TARGET ################################
@@ -36,8 +36,8 @@ EMSCRIPTENSRCS=host-web/chuck_emscripten.cpp \
     core/chuck_instr.cpp core/chuck_io.cpp core/chuck_lang.cpp \
     core/chuck_oo.cpp core/chuck_parse.cpp core/chuck_scan.cpp \
     core/chuck_stats.cpp core/chuck_symbol.cpp core/chuck_table.cpp \
-    core/chuck_type.cpp core/chuck_ugen.cpp core/chuck_utils.cpp \
-    core/chuck_vm.cpp core/uana_extract.cpp core/uana_xform.cpp \
+    core/chuck_type.cpp core/chuck_ugen.cpp core/chuck_vm.cpp \
+    core/uana_extract.cpp core/uana_xform.cpp \
     core/ugen_filter.cpp core/ugen_osc.cpp core/ugen_stk.cpp \
     core/ugen_xxx.cpp core/ulib_ai.cpp core/ulib_doc.cpp \
     core/ulib_machine.cpp core/ulib_math.cpp core/ulib_std.cpp \
@@ -45,24 +45,27 @@ EMSCRIPTENSRCS=host-web/chuck_emscripten.cpp \
     core/util_raw.c core/util_string.cpp core/util_xforms.c \
     core/chuck_yacc.c core/util_sndfile.c
 
+EMSCRIPTEN_POSTJS=host-web/chucknode-postjs.js
+
 # make targets
 .PHONY: emscripten web
 emscripten: host-web/webchuck/js/webchuck.js
 web: host-web/webchuck/js/webchuck.js
 # recipe
-host-web/webchuck/js/webchuck.js: $(EMSCRIPTENSRCS)
-	emcc -O3 -s DISABLE_EXCEPTION_CATCHING=0 -Icore \
+host-web/webchuck/js/webchuck.js: $(EMSCRIPTENSRCS) $(EMSCRIPTEN_POSTJS)
+	emcc -O3 -s MAIN_MODULE=1 -s DISABLE_EXCEPTION_CATCHING=0 -Icore \
 	-D__DISABLE_MIDI__ -D__DISABLE_WATCHDOG__ -D__DISABLE_NETWORK__ \
 	-D__DISABLE_OTF_SERVER__ -D__ALTER_HID__ -D__DISABLE_HID__ \
 	-D__DISABLE_SERIAL__ -D__DISABLE_ASYNCH_IO__ -D__DISABLE_THREADS__ \
 	-D__DISABLE_KBHIT__ -D__DISABLE_PROMPTER__ -D__DISABLE_SHELL__ \
 	-D__CHUCK_USE_PLANAR_BUFFERS__ -D__OLDSCHOOL_RANDOM__ \
 	-Wformat=0 $(EMSCRIPTENSRCS) -o host-web/webchuck/js/webchuck.js \
+	-s EXPORTED_FUNCTIONS="['_malloc']" \
 	-s EXPORTED_RUNTIME_METHODS='["ccall", "cwrap", "getValue", "setValue", "addFunction", "removeFunction", "UTF8ToString", "stringToUTF8"]' \
-	-s LINKABLE=1 -s MODULARIZE=1 -s 'EXPORT_NAME="ChucK"' \
-	-s ALLOW_MEMORY_GROWTH=1 \
-	-s --extern-post-js host-web/chucknode-postjs.js \
-	-s RESERVED_FUNCTION_POINTERS=50 -s FORCE_FILESYSTEM=1
+	-s MODULARIZE=1 -s ALLOW_MEMORY_GROWTH=1 \
+	-s RESERVED_FUNCTION_POINTERS=50 -s FORCE_FILESYSTEM=1 \
+	-s --extern-post-js $(EMSCRIPTEN_POSTJS) \
+	-s 'EXPORT_NAME="ChucK"' \
 
 
 ################################ PLATFORMS ####################################
@@ -159,7 +162,7 @@ endif
 
 ########################## CHUCK CORE LIB TARGETS #############################
 CXXOBJS_CORE+= chuck.o chuck_absyn.o chuck_parse.o chuck_errmsg.o \
-	chuck_frame.o chuck_symbol.o chuck_table.o chuck_utils.o \
+	chuck_frame.o chuck_symbol.o chuck_table.o \
 	chuck_vm.o chuck_instr.o chuck_scan.o chuck_type.o chuck_emit.o \
 	chuck_compile.o chuck_dl.o chuck_oo.o chuck_lang.o chuck_ugen.o \
 	chuck_otf.o chuck_stats.o chuck_shell.o chuck_io.o \
