@@ -2,6 +2,69 @@
 ChucK VERSIONS log
 ------------------
 
+1.5.3.2 (October 2024)
+=======
+*** ChuGL maintanance patch ***
+- (updated) backend WebGPU version to wgpu-22.1.0.5
+- (added) OpenGL fallback on machines where modern graphics APIs (vulkan, metal, direct3d)
+  are not supported
+- (fixed) shreds can now exit a GG.nextFrame() loop without hanging the window
+- (added) GG.unregisterShred() to manually unregister a graphics shred
+- (added) new examples
+  - deep/particles.ck : musical partical system
+  - deep/sprite_animation.ck : sprite animation via sprite sheets
+- (fixed) race condition on window resize
+*******************************
+- (added) MidiFileIn.bpm()
+    "Same as beatsPerMinute()."
+- (added) MidiFileIn.ticksPerQuarter();
+    "Get the ticks per quarter (TPQ) value from the MIDI file header."
+- (added) MidiFileIn.tpq();
+    "Same as ticksPerQuarter()."
+- (fixed) documentation for MidiMsg.when:
+    "Duration since the last MidiMsg (only valid for MidiFileIn)."
+- (fixed, windows) SndBuf issue when compiled with UNICODE (FYI SndBuf is still ANSI,
+    but this averts an error due to char width mismatch)
+- (changed, developer) chuck global manager getGlobalUGenSamples() now handles multi-channel
+    implications for Chunity support for stereo
+- (added) new examples (FM Synthesis)
+    examples/stk/jacobass-algo1.ck
+      (such groove, much Algorithm 1)
+    examples/stk/nylon-guitar-algo1.ck
+      (updated/renamed from honkeytonk-algo3.ck)
+
+
+1.5.3.1 (October 2024)
+=======
+*** ChuGL maintanance patch ***
+- (fixed) crash caused by calling UI functions before calling GG.nextFrame();
+    now prints a warning with a hint to call GG.nextFrame()
+- (fixed) CPU and memory spikes when minimizing a ChuGL window
+- (fixed) crash caused by immediately disconnecting GGen after -->
+*******************************
+- (fixed) ADSR constructors now work correctly
+- (fixed) compiler now reports line numbers and caret position correctly after
+    a multi-line string literal
+
+
+1.5.3.0 (September 2024)
+=======
+- (major update) ****** ChuGL.chug v0.2.0 (alpha) ******
+    * complete under-the-hood engine rewrite
+    * now uses WebGPU instead of OpenGL as the core graphic library
+    * some minor API changes, see: https://chuck.stanford.edu/chugl/api/
+    * new and updated examples, see: https://chuck.stanford.edu/chugl/examples/
+    * for more information, visit: https://chuck.stanford.edu/chugl/
+  *********************************************
+- (added, macOS and Linux) --chugin: and --chugin-path:
+    flags now expands '~' in filepath
+- (developer) fixed QUERY->getinfo(); previously the function pointer was
+    NULL and would caused a crash if called
+- (developer) updated set/getParam() key names:
+  was: CHUCK_PARAM_USER_CHUGINS now: CHUCK_PARAM_CHUGIN_LIST_USER
+  was: CHUCK_PARAM_USER_CHUGIN_DIRECTORIES now: CHUCK_PARAM_CHUGIN_LIST_USER_DIR
+
+
 1.5.2.5 (July 2024)
 =======
 - (updated) chugin API version from 10.1 to 10.2
