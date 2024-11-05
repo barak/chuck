@@ -1,7 +1,6 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: chuck
 Source: http://chuck.cs.princeton.edu
-Files-Excluded: ._* **/._*
 
 Files: *
 Copyright: 2004 Ge Wang and Perry R. Cook.  All rights reserved.
