@@ -16,7 +16,7 @@ CK_HOST_DIR=host
 # where to find RtAudio
 RTAUDIO_DIR=RtAudio
 # chuck version
-CK_VERSION=1.5.3.2
+CK_VERSION=1.5.4.1
 
 
 ########################## DEFAULT MAKE TARGET ################################
@@ -232,7 +232,7 @@ endif
 
 ############################ DISTRIBUTION INFO ################################
 # release notes
-NOTES=AUTHORS DEVELOPERS INSTALL LICENSE QUICKSTART README.md THANKS VERSIONS
+NOTES=AUTHORS DEVELOPERS INSTALL LICENSE.GPL LICENSE.MIT QUICKSTART README.md THANKS VERSIONS
 # where to put the newly constructed distribution
 DIST_DIR=chuck-$(CK_VERSION)
 # root directory where the above is found
