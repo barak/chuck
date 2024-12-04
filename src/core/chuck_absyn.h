@@ -336,7 +336,7 @@ struct a_Exp_Dur_ { a_Exp base; a_Exp unit; uint32_t line; uint32_t where; a_Exp
 struct a_Exp_Array_ { a_Exp base; a_Array_Sub indices; uint32_t line; uint32_t where; a_Exp self; };
 struct a_Exp_Func_Call_ { a_Exp func; a_Exp args; t_CKTYPE ret_type;
                           t_CKFUNC ck_func; t_CKVMCODE ck_vm_code; uint32_t line; uint32_t where; a_Exp self; };
-struct a_Exp_Dot_Member_ { a_Exp base; t_CKTYPE t_base; S_Symbol xid; uint32_t line; uint32_t where; a_Exp self; };
+struct a_Exp_Dot_Member_ { a_Exp base; t_CKTYPE t_base; S_Symbol xid; t_CKBOOL isSpecialPrimitiveFunc; uint32_t line; uint32_t where; a_Exp self; };
 struct a_Exp_If_ { a_Exp cond; a_Exp if_exp; a_Exp else_exp; uint32_t line; uint32_t where; a_Exp self; };
 struct a_Exp_Decl_ { a_Type_Decl type; a_Var_Decl_List var_decl_list; int num_var_decls; int is_static; int is_global;
                      int is_const; t_CKTYPE ck_type; int is_auto; uint32_t line; uint32_t where; a_Exp self; };
@@ -407,6 +407,11 @@ struct a_Exp_
     t_CKTYPE cast_to;
     t_CKUINT emit_var; // 1 = emit var, 2 = emit var and value
 
+    // assuming this Exp is a func, this will properly
+    // emit in preparation to be called | 1.5.4.3 (ge) added
+    // #2024-func-call-update
+    t_CKBOOL emit_as_funccall;
+
     union
     {
         struct a_Exp_Binary_ binary;
@@ -462,8 +467,11 @@ struct a_Stmt_
     ae_Stmt_Type s_type;
     // used to track control paths in non-void functions
     t_CKBOOL allControlPathsReturn; // 1.5.1.0 (ge) added
-    // number of obj refs that needs releasing after | 1.5.1.7
+    // number of obj refs that needs releasing after | 1.5.1.7 (ge) added
     t_CKUINT numObjsToRelease;
+    // does stmt have a static variable declaration | 1.5.4.3 (ge) added for #2024-static-init
+    // (used to mark a statement as part of static initializer for a class)
+    t_CKBOOL hasStaticDecl;
 
     // mushed into one!
     union

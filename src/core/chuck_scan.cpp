@@ -197,7 +197,8 @@ t_CKBOOL type_engine_scan0_prog( Chuck_Env * env, a_Program prog,
                 // NOTE: for legacy reasons, fallback to [global] if no [user] namespace
                 //   this fallback mechanism was moved out of env->user() to here for clarity in 1.5.4.0 (ge)
                 //   needs further verification, as this fallback may not be necessary
-                if( !prog->section->class_def->home ) prog->section->class_def->home = env->global();
+                if( !prog->section->class_def->home )
+                { prog->section->class_def->home = env->global(); }
                 // -----------------------------------------
             }
             // scan the class definition
@@ -296,17 +297,18 @@ t_CKBOOL type_engine_scan0_class_def( Chuck_Env * env, a_Class_Def class_def )
     if( the_class->is_public )
     { the_class->nspc->parent = env->context->nspc; }
     else { the_class->nspc->parent = env->curr; }
-    the_class->func = NULL;
+
     // 1.5.0.5 (ge) commented out; the AST is cleaned up after every compilation;
     // would need to make deep copy if want to keep around
     // the_class->def = class_def;
+
     // add code
     the_class->nspc->pre_ctor = new Chuck_VM_Code;
     CK_SAFE_ADD_REF( the_class->nspc->pre_ctor );
     // name | 1.5.2.0 (ge) added
     the_class->nspc->pre_ctor->name = string("class ") + the_class->base_name;
     // add to env
-    env->curr->type.add( the_class->base_name, the_class );  // URGENT: make this global
+    env->curr->add_type( the_class->base_name, the_class ); // URGENT: make this global
     // incomplete
     the_class->is_complete = FALSE;
 
@@ -363,13 +365,14 @@ t_CKBOOL type_engine_scan0_class_def( Chuck_Env * env, a_Class_Def class_def )
 
         // allocate value
         type = env->ckt_class->copy( env, env->context );
-        type->actual_type = the_class;
+        // 1.5.4.3 (ge) add reference count to actual_type | was: type->actual_type = the_class;
+        CK_SAFE_REF_ASSIGN(type->actual_type, the_class);
         value = env->context->new_Chuck_Value( type, the_class->base_name );
         value->owner = env->curr; CK_SAFE_ADD_REF(value->owner);
         value->is_const = TRUE;
         value->is_member = FALSE;
         // add to env
-        env->curr->value.add( the_class->base_name, value );
+        env->curr->add_value( the_class->base_name, value );
 
         // remember
         class_def->type = the_class;
@@ -2662,7 +2665,7 @@ t_CKBOOL type_engine_scan2_exp_decl_create( Chuck_Env * env, a_Exp_Decl decl )
         }
 
         // enter into value binding
-        env->curr->value.add( var_decl->xid,
+        env->curr->add_value( S_name(var_decl->xid),
             value = env->context->new_Chuck_Value( type, S_name(var_decl->xid) ) );
 
         // remember the owner
@@ -2953,7 +2956,7 @@ t_CKBOOL type_engine_scan2_class_def( Chuck_Env * env, a_Class_Def class_def )
     the_class = class_def->type;
 
     // set fields not set in scan
-    the_class->parent = t_parent; CK_SAFE_ADD_REF(t_parent);
+    the_class->parent_type = t_parent; CK_SAFE_ADD_REF(t_parent);
     // inherit ugen_info data from parent PLD
     the_class->ugen_info = t_parent->ugen_info; CK_SAFE_ADD_REF(t_parent->ugen_info);
 
@@ -3081,11 +3084,21 @@ t_CKBOOL type_engine_scan2_func_def( Chuck_Env * env, a_Func_Def f )
 
     // make a new type for the function
     type = env->context->new_Chuck_Type( env );
+    // type id
     type->xid = te_function;
-    type->base_name = "[function]";
-    type->parent = env->ckt_function; // TODO: reference count the parent
+    // type size
     type->size = sizeof(void *);
-    type->func = func;
+    // function type name; this will be updated later in this function once we have more info (e.g., value_ref)
+    type->base_name = "[fun]";
+    // 1.5.4.3 (ge) add ref; was: type->parent_type = env->ckt_function;
+    // part of #2024-func-call-update
+    CK_SAFE_REF_ASSIGN(type->parent_type, env->ckt_function);
+    // 1.5.4.3 (ge) add ref; was: type->func_bridge = func;
+    // part of #2024-func-call-update | TODO: break cycle?
+    CK_SAFE_REF_ASSIGN(type->func_bridge, func);
+    // 1.5.4.3 (ge) add func to type reference
+    // part of #2024-func-call-update | TODO: break cycle?
+    CK_SAFE_REF_ASSIGN(func->type_ref, type);
 
     // make new value, with potential overloaded name
     value = env->context->new_Chuck_Value( type, func_name );
@@ -3230,7 +3243,7 @@ t_CKBOOL type_engine_scan2_func_def( Chuck_Env * env, a_Func_Def f )
         // later: add as value
         // symbols.push_back( arg_list );
         // values.push_back( v );
-        // later: env->curr->value.add( arg_list->var_decl->xid, v );
+        // later: env->curr->add_value( arg_list->var_decl->xid, v );
 
         // stack
         v->offset = f->stack_depth;
@@ -3383,15 +3396,15 @@ t_CKBOOL type_engine_scan2_func_def( Chuck_Env * env, a_Func_Def f )
     }
 
     // add as value
-    env->curr->value.add( value->name, value );
+    env->curr->add_value( value->name, value );
     // enter the name into the function table
-    env->curr->func.add( func->name, func );
+    env->curr->add_func( func->name, func );
 
     // if not overload, add entries for orig name
     if( !overload )
     {
-        env->curr->value.add( orig_name, value );
-        env->curr->func.add( orig_name, func );
+        env->curr->add_value( orig_name, value );
+        env->curr->add_func( orig_name, func );
     }
 
     // set the current function to this
@@ -3403,9 +3416,12 @@ t_CKBOOL type_engine_scan2_func_def( Chuck_Env * env, a_Func_Def f )
     assert( f->code == NULL || f->code->s_type == ae_stmt_code );
     if( f->code && !type_engine_scan2_code_segment( env, &f->code->stmt_code, FALSE ) )
     {
-        EM_error2( 0, "...in function '%s'", func->signature().c_str() ); // S_name(f->name) );
+        EM_error2( 0, "...in function '%s'", func->signature(FALSE,FALSE).c_str() ); // S_name(f->name) );
         goto error;
     }
+
+    // update the function-specific type's name | 1.5.4.3 (ge) added
+    type->base_name = "[fun]" + func->signature(FALSE,FALSE);
 
     // pop the value stack
     env->curr->value.pop();

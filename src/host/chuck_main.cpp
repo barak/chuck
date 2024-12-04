@@ -255,6 +255,8 @@ void usage()
 {
     // (note: optional colon added 1.3.0.0)
     CK_FPRINTF_STDERR( "%s", TC::reset().c_str() );
+    CK_FPRINTF_STDERR( "\n%s %s%s %s", TC::bold("ChucK").c_str(), TC::color(TC::FG_GREEN,"=",TRUE).c_str(),
+                      TC::color(TC::FG_LIGHT_GREEN,">",TRUE).c_str(), TC::bold("Music Programming Language").c_str() );
     CK_FPRINTF_STDERR( "\nusage: %s --[%s|%s] [%s] file1 file2 ...\n\n", "chuck", TC::orange("options").c_str(), TC::blue("commands").c_str(), TC::blue("+-=^").c_str() );
     CK_FPRINTF_STDERR( "%s", TC::set_orange().c_str() );
     CK_FPRINTF_STDERR( "    [options] = halt|loop|audio|silent|dump|nodump|about|probe\n" );
@@ -916,17 +918,24 @@ t_CKBOOL go( int argc, const char ** argv )
                     break;
                 }
             }
+            // add to system path(s); chugins in system paths are auto-loaded...
+            // .ck files can be @imported | 1.5.4.2 (ge) added
+            else if( !strncmp(argv[i], "--auto-load-chugin-path:", sizeof("--auto-load-chugin-path:")-1) )
+            {
+                // get the rest
+                dl_search_path_system.push_back( argv[i]+sizeof("--auto-load-chugin-path:")-1 );
+            }
             // (added 1.3.0.0)
             else if( !strncmp(argv[i], "--chugin-path:", sizeof("--chugin-path:")-1) )
             {
                 // get the rest
-                dl_search_path_system.push_back( argv[i]+sizeof("--chugin-path:")-1 );
+                dl_search_path_user.push_back( argv[i]+sizeof("--chugin-path:")-1 );
             }
             // (added 1.3.0.0)
             else if( !strncmp(argv[i], "-G", sizeof("-G")-1) )
             {
                 // get the rest
-                dl_search_path_system.push_back( argv[i]+sizeof("-G")-1 );
+                dl_search_path_user.push_back( argv[i]+sizeof("-G")-1 );
             }
             // (added 1.3.0.0)
             else if( !strncmp(argv[i], "--chugin:", sizeof("--chugin:")-1) )

@@ -287,10 +287,12 @@ struct Chuck_Type;
 struct Chuck_Value;
 struct Chuck_Func;
 struct Chuck_Multi;
+struct Chuck_Code; // 1.5.4.3
 struct Chuck_VM;
 struct Chuck_VM_Code;
 struct Chuck_VM_MFunInvoker;
 struct Chuck_VM_DtorInvoker;
+struct Chuck_VM_SInitInvoker;
 struct Chuck_DLL;
 // operator loading structs | 1.5.1.5
 struct Chuck_Op_Registry;
@@ -314,9 +316,13 @@ struct Chuck_Namespace : public Chuck_VM_Object
     // virtual table
     Chuck_VTable obj_v_table;
     // static data segment
-    t_CKBYTE * class_data;
+    t_CKBYTE * static_data;
     // static data segment size
-    t_CKUINT class_data_size;
+    t_CKUINT static_data_size;
+    // has static init been run?
+    t_CKBOOL static_is_init;
+    // static initializer (to be run once per class)
+    Chuck_VM_SInitInvoker * static_invoker;
 
     // name
     std::string name;
@@ -334,6 +340,11 @@ struct Chuck_Namespace : public Chuck_VM_Object
     // destructor
     virtual ~Chuck_Namespace();
 
+    // add type to name space
+    void add_type( const std::string & xid, Chuck_Type * target );
+    void add_value( const std::string & xid, Chuck_Value * target );
+    void add_func( const std::string & xid, Chuck_Func * target );
+
     // look up value
     Chuck_Value * lookup_value( const std::string & name, t_CKINT climb = 1, t_CKBOOL stayWithinClassDef = FALSE );
     Chuck_Value * lookup_value( S_Symbol name, t_CKINT climb = 1, t_CKBOOL stayWithinClassDef = FALSE );
@@ -346,13 +357,13 @@ struct Chuck_Namespace : public Chuck_VM_Object
 
     // commit the maps
     void commit() {
-        EM_log( CK_LOG_FINER, "committing namespace: '%s'...", name.c_str() );
+        EM_log( CK_LOG_DEBUG, "namespace: '%s' committing...", name.c_str() );
         type.commit(); value.commit(); func.commit();
     }
 
     // rollback the maps
     void rollback() {
-        EM_log( CK_LOG_FINER, "rolling back namespace: '%s'...", name.c_str() );
+        EM_log( CK_LOG_DEBUG, "namespace: '%s' rolling back...", name.c_str() );
         type.rollback(); value.rollback(); func.rollback();
     }
 
@@ -752,6 +763,10 @@ public:
     Chuck_Namespace * nspc_top();
     // get type at top of type stack
     Chuck_Type * class_top();
+    // commit namespaces
+    void commit_namespaces();
+    // rollback namespace
+    void rollback_namespaces();
 
 public:
     // REFACTOR-2017: carrier and accessors
@@ -772,10 +787,10 @@ protected:
     Chuck_Carrier * m_carrier;
 
 protected:
-    // global namespace
-    Chuck_Namespace * global_nspc;
     // global context
     Chuck_Context global_context;
+    // global namespace
+    Chuck_Namespace * global_nspc;
     // user-global namespace
     Chuck_Namespace * user_nspc;
     // cache of various array types, which are created as needed by the type system
@@ -989,7 +1004,7 @@ struct Chuck_Type : public Chuck_Object
     // type name (FYI use this->str() for full name including []s for array)
     std::string base_name;
     // type parent (could be NULL)
-    Chuck_Type * parent;
+    Chuck_Type * parent_type;
     // size (in bytes)
     t_CKUINT size;
     // owner of the type
@@ -1003,7 +1018,7 @@ struct Chuck_Type : public Chuck_Object
     // type info
     Chuck_Namespace * nspc;
     // func info
-    Chuck_Func * func;
+    Chuck_Func * func_bridge;
     // ugen
     Chuck_UGen_Info * ugen_info;
     // is public class | 1.5.4.0 (ge) added
@@ -1032,9 +1047,15 @@ struct Chuck_Type : public Chuck_Object
     // offsets of mvars that are Objects
     std::vector<t_CKUINT> obj_mvars_offsets;
 
+public:
+    // current static init code for emitter | 1.5.4.3 (ge) added #2024-static-init
+    Chuck_Code * static_code_emit;
+
+public:
     // (within-context, e.g., a ck file) dependency tracking | 1.5.0.8
     Chuck_Value_Dependency_Graph depends;
 
+public:
     // documentation
     std::string doc;
     // example files
@@ -1187,7 +1208,10 @@ public:
 // name: struct Chuck_Func
 // desc: function definition
 //-----------------------------------------------------------------------------
-struct Chuck_Func : public Chuck_VM_Object
+// 1.5.4.3 (ge) Chuck_VM_Object => Chuck_Object
+// since functions are emitted as values #2024-func-call-update
+//-----------------------------------------------------------------------------
+struct Chuck_Func : public Chuck_Object
 {
     // name (actual in VM name, e.g., "dump@0@Object")
     std::string name;
@@ -1401,7 +1425,9 @@ t_CKBOOL type_engine_check_primitive( Chuck_Env * env, Chuck_Type * type );
 t_CKBOOL type_engine_check_const( Chuck_Env * env, a_Exp e, int pos ); // TODO
 t_CKBOOL type_engine_compat_func( a_Func_Def lhs, a_Func_Def rhs, int pos, std::string & err, t_CKBOOL print = TRUE );
 t_CKBOOL type_engine_get_deprecate( Chuck_Env * env, const std::string & from, std::string & to );
-t_CKBOOL type_engine_is_base_static( Chuck_Env * env, Chuck_Type * baseType ); // 1.5.0.0 (ge) added
+t_CKBOOL type_engine_is_base_type_static( Chuck_Env * env, Chuck_Type * baseType ); // 1.5.0.0 (ge) added
+t_CKBOOL type_engine_is_base_exp_static( Chuck_Env * env, a_Exp_Dot_Member exp ); // 1.5.4.3 (ge) added #2024-static-init
+t_CKBOOL type_engine_binary_is_func_call( Chuck_Env * env, ae_Operator op, a_Exp lhs, a_Exp rhs ); // 1.5.4.3 (ge) added
 Chuck_Type  * type_engine_find_common_anc( Chuck_Type * lhs, Chuck_Type * rhs );
 Chuck_Type  * type_engine_find_type( Chuck_Env * env, a_Id_List path );
 Chuck_Type  * type_engine_find_type( Chuck_Env * env, const std::string & name ); // 1.5.0.0 (ge) added
