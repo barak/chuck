@@ -40,10 +40,11 @@
 #include "util_string.h" // added 1.5.0.5
 #include <sstream>
 #include <iostream>
-
 using namespace std;
 
 
+// forward references
+struct Chuck_FuncCall_Options;
 
 
 //-----------------------------------------------------------------------------
@@ -81,7 +82,8 @@ t_CKBOOL emit_engine_emit_exp_dur( Chuck_Emitter * emit, a_Exp_Dur dur );
 t_CKBOOL emit_engine_emit_exp_array( Chuck_Emitter * emit, a_Exp_Array array );
 t_CKBOOL emit_engine_emit_exp_func_call( Chuck_Emitter * emit, Chuck_Func * func,
                                          Chuck_Type * type, t_CKUINT line, t_CKUINT where,
-                                         t_CKBOOL spork = FALSE );
+                                         t_CKBOOL spork = FALSE,
+                                         Chuck_FuncCall_Options * options = NULL );
 t_CKBOOL emit_engine_emit_exp_func_call( Chuck_Emitter * emit, a_Exp_Func_Call func_call,
                                          t_CKBOOL spork = FALSE );
 t_CKBOOL emit_engine_emit_func_args( Chuck_Emitter * emit, a_Exp_Func_Call func_call );
@@ -104,7 +106,7 @@ t_CKBOOL emit_engine_emit_spork( Chuck_Emitter * emit, a_Exp_Func_Call exp );
 t_CKBOOL emit_engine_emit_cast( Chuck_Emitter * emit, Chuck_Type * to, Chuck_Type * from, uint32_t where );
 t_CKBOOL emit_engine_emit_symbol( Chuck_Emitter * emit, S_Symbol symbol,
                                   Chuck_Value * v, t_CKBOOL emit_var,
-                                  t_CKUINT line, t_CKUINT where );
+                                  t_CKUINT line, t_CKUINT where, a_Exp_Primary exp );
 Chuck_Instr_Stmt_Start * emit_engine_track_stmt_refs_start( Chuck_Emitter * emit, a_Stmt stmt );
 void emit_engine_track_stmt_refs_cleanup( Chuck_Emitter * emit, Chuck_Instr_Stmt_Start * start );
 // disabled until further notice (added 1.3.0.0)
@@ -267,10 +269,15 @@ Chuck_VM_Code * emit_engine_emit_prog( Chuck_Emitter * emit, a_Program prog,
     // check success code
     if( ret )
     {
+        // get next instruction index
+        t_CKUINT index = emit->next_index();
         // pop global scope (added 1.3.0.0)
         emit->pop_scope();
         // append end of code
         emit->append( new Chuck_Instr_EOC );
+        // add code str to whichever instruction began this section | 1.5.4.3 (ge) added
+        emit->code->code[index]->prepend_codestr( "/* end of code */" );
+
         // make sure
         assert( emit->context->nspc->pre_ctor == NULL );
         // converted to virtual machine code
@@ -443,6 +450,35 @@ t_CKBOOL emit_engine_emit_stmt( Chuck_Emitter * emit, a_Stmt stmt, t_CKBOOL pop 
     // empty stmt list
     if( !stmt )
         return TRUE;
+
+    // push stmt stack | 1.5.4.3 (ge) added to match the type system
+    // in order to do additional checks in the emitter #2024-static-init
+    emit->env->stmt_stack.push_back(stmt);
+
+    // static initialization / initializer statements | 1.5.4.3 (ge) added #2024-static-init
+    // FYI semantics for static initializer (within class def but outside function def):
+    // 0) a single statement CANNOT read member data/call member functions AND init static data
+    // 1) otherwise, a single statement can access both static and member data
+    // these semantic rules should have been enforced in the type checker before this point
+    // so these are pre-conditions should we reach this point
+    // RUNTIME checks:
+    // 3) static initializer statements will be run in immediate mode, meaning no time advances;
+    //    this is enforced at runtime; time advances will result in an exception
+
+    // check if statement is a static initializer statement | 1.5.4.3 (ge) added
+    if( stmt->hasStaticDecl )
+    {
+        // check pre-conditions
+        assert( emit->env->class_def != NULL );
+        assert( emit->env->class_def->static_code_emit != NULL );
+
+        // get associated class
+        Chuck_Type * type = emit->env->class_def;
+        // push the current code sequender
+        emit->code_stack.push_back( emit->code );
+        // set the static code sequencer as the current
+        emit->code = type->static_code_emit;
+    }
 
     // return
     t_CKBOOL ret = TRUE;
@@ -673,6 +709,18 @@ t_CKBOOL emit_engine_emit_stmt( Chuck_Emitter * emit, a_Stmt stmt, t_CKBOOL pop 
         // APPPEND closing
         emit->code->code[emit->next_index()-1]->append_codestr( codestr_close );
     }
+
+    // if static initializer statement, restore
+    if( stmt->hasStaticDecl )
+    {
+        // set the static code sequencer as the current
+        emit->code = emit->code_stack.back();
+        // push the current code sequender
+        emit->code_stack.pop_back();
+    }
+
+    // pop stmt stack | 1.5.4.3 (ge) added as part of #2024-static-init
+    emit->env->stmt_stack.pop_back();
 
     return ret;
 }
@@ -2043,12 +2091,19 @@ t_CKBOOL emit_engine_emit_exp_binary( Chuck_Emitter * emit, a_Exp_Binary binary 
     // whether to track object references on stack (added 1.3.0.2)
     t_CKBOOL doRefLeft = FALSE;
     t_CKBOOL doRefRight = FALSE;
+
     // check to see if this is a function call (added 1.3.0.2)
+    // i.e., does LHS => RHS resolve to function call RHS(LHS)?
     // added ae_op_chuck and make sure not null, latter has type-equivalence with object types in certain contexts | 1.5.1.7
-    if( binary->op == ae_op_chuck && isa( binary->rhs->type, emit->env->ckt_function ) && !isnull( emit->env, binary->rhs->type ) )
+    // if( binary->op == ae_op_chuck && isa( binary->rhs->type, emit->env->ckt_function ) && !isnull( emit->env, binary->rhs->type ) )
+    if( type_engine_binary_is_func_call( emit->env, binary->op, binary->lhs, binary->rhs ) )
     {
         // take care of objects in terms of reference counting
         doRefLeft = TRUE;
+
+        // need to know here so the RHS can properly emit
+        // 1.5.4.3 (ge) added as part of #2024-func-call-update
+        binary->rhs->emit_as_funccall = TRUE;
     }
     // check operator overload | 1.5.1.5 (ge)
     t_CKBOOL op_overload = (binary->ck_overload_func != NULL);
@@ -2066,11 +2121,11 @@ t_CKBOOL emit_engine_emit_exp_binary( Chuck_Emitter * emit, a_Exp_Binary binary 
 
     // emit (doRef added 1.3.0.2)
     left = emit_engine_emit_exp( emit, binary->lhs, doRefLeft );
+    if( !left ) return FALSE;
     right = emit_engine_emit_exp( emit, binary->rhs, doRefRight );
-
+    if( !right ) return FALSE;
     // check
-    if( !left || !right )
-        return FALSE;
+    // if( !left || !right ) return FALSE;
 
     // emit the op
     if( !emit_engine_emit_op( emit, binary->op, binary->lhs, binary->rhs, binary ) )
@@ -2116,57 +2171,6 @@ t_CKBOOL emit_engine_emit_op( Chuck_Emitter * emit, ae_Operator op, a_Exp lhs, a
         {
             emit->append( instr = new Chuck_Instr_Add_double );
         }
-        // string + string
-        else if( isa( t_left, emit->env->ckt_string ) && isa( t_right, emit->env->ckt_string ) )
-        {
-            // concatenate
-            emit->append( instr = new Chuck_Instr_Add_string );
-            instr->set_linepos( lhs->line );
-        }
-        // left: string
-        else if( isa( t_left, emit->env->ckt_string ) )
-        {
-            // + int
-            if( isa( t_right, emit->env->ckt_int ) )
-            {
-                emit->append( instr = new Chuck_Instr_Add_string_int );
-                instr->set_linepos( lhs->line );
-            }
-            else if( isa( t_right, emit->env->ckt_float ) )
-            {
-                emit->append( instr = new Chuck_Instr_Add_string_float );
-                instr->set_linepos( lhs->line );
-            }
-            else
-            {
-                EM_error2( lhs->where,
-                    "(emit): internal error: unhandled op '%s' %s '%s'",
-                    t_left->c_name(), op2str( op ), t_right->c_name() );
-                return FALSE;
-            }
-        }
-        // right: string
-        else if( isa( t_right, emit->env->ckt_string ) )
-        {
-            // + int
-            if( isa( t_left, emit->env->ckt_int ) )
-            {
-                emit->append( instr = new Chuck_Instr_Add_int_string );
-                instr->set_linepos( rhs->line );
-            }
-            else if( isa( t_left, emit->env->ckt_float ) )
-            {
-                emit->append( instr = new Chuck_Instr_Add_float_string );
-                instr->set_linepos( rhs->line );
-            }
-            else
-            {
-                EM_error2( lhs->where,
-                    "(emit): internal error: unhandled op '%s' %s '%s'",
-                    t_left->c_name(), op2str( op ), t_right->c_name() );
-                return FALSE;
-            }
-        }
         else // other types
         {
             switch( left )
@@ -2210,13 +2214,13 @@ t_CKBOOL emit_engine_emit_op( Chuck_Emitter * emit, ae_Operator op, a_Exp lhs, a
             emit->append( instr = new Chuck_Instr_Time_Advance );
             instr->set_linepos( lhs->line );
         }
-        // time + dur
+        // time +=> dur
         else if( ( left == te_dur && right == te_time ) ||
             ( left == te_time && right == te_dur ) )
         {
             emit->append( instr = new Chuck_Instr_Add_double_Assign );
         }
-        // string + string
+        // string +=> string
         else if( isa( t_left, emit->env->ckt_string ) && isa( t_right, emit->env->ckt_string ) )
         {
             // concatenate
@@ -2780,13 +2784,13 @@ t_CKBOOL emit_engine_emit_op( Chuck_Emitter * emit, ae_Operator op, a_Exp lhs, a
 
     // -------------------------------- bool -----------------------------------
     case ae_op_eq:
-        if( isa( t_left, emit->env->ckt_string ) && isa( t_right, emit->env->ckt_string )
-            && !isa( t_left, emit->env->ckt_null ) && !isa( t_right, emit->env->ckt_null ) ) // !null
-        {
-            emit->append( instr = new Chuck_Instr_Op_string( op ) );
-            instr->set_linepos( lhs->line );
-        }
-        else if( ( isa( t_left, emit->env->ckt_object ) && isa( t_right, emit->env->ckt_object ) ) ||
+        // if( isa( t_left, emit->env->ckt_string ) && isa( t_right, emit->env->ckt_string )
+        //     && !isa( t_left, emit->env->ckt_null ) && !isa( t_right, emit->env->ckt_null ) ) // !null
+        // {
+        //     emit->append( instr = new Chuck_Instr_Op_string( op ) );
+        //     instr->set_linepos( lhs->line );
+        // } else
+        if( ( isa( t_left, emit->env->ckt_object ) && isa( t_right, emit->env->ckt_object ) ) ||
                  ( isa( t_left, emit->env->ckt_object ) && isnull( emit->env, t_right ) ) ||
                  ( isnull( emit->env,t_left ) && isa( t_right, emit->env->ckt_object ) ) ||
                  ( isnull( emit->env,t_left ) && isnull( emit->env, t_right ) ) )
@@ -2826,14 +2830,14 @@ t_CKBOOL emit_engine_emit_op( Chuck_Emitter * emit, ae_Operator op, a_Exp lhs, a
         break;
 
     case ae_op_neq:
-        if( isa( t_left, emit->env->ckt_string ) && isa( t_right, emit->env->ckt_string )
-            && !isa( t_left, emit->env->ckt_null ) && !isa( t_right, emit->env->ckt_null ) ) // !null
-            // added 1.3.2.0 (spencer)
-        {
-            emit->append( instr = new Chuck_Instr_Op_string( op ) );
-            instr->set_linepos( lhs->line );
-        }
-        else if( ( isa( t_left, emit->env->ckt_object ) && isa( t_right, emit->env->ckt_object ) ) ||
+        // if( isa( t_left, emit->env->ckt_string ) && isa( t_right, emit->env->ckt_string )
+        //     && !isa( t_left, emit->env->ckt_null ) && !isa( t_right, emit->env->ckt_null ) ) // !null
+        //     // added 1.3.2.0 (spencer)
+        // {
+        //     emit->append( instr = new Chuck_Instr_Op_string( op ) );
+        //     instr->set_linepos( lhs->line );
+        // } else
+        if( ( isa( t_left, emit->env->ckt_object ) && isa( t_right, emit->env->ckt_object ) ) ||
                  ( isa( t_left, emit->env->ckt_object ) && isnull( emit->env, t_right ) ) ||
                  ( isnull( emit->env,t_left ) && isa( t_right, emit->env->ckt_object ) ) ||
                  ( isnull( emit->env,t_left ) && isnull( emit->env, t_right ) ) )
@@ -2884,11 +2888,11 @@ t_CKBOOL emit_engine_emit_op( Chuck_Emitter * emit, ae_Operator op, a_Exp lhs, a
             break;
 
         default:
-            if( isa( t_left, emit->env->ckt_string ) && isa( t_right, emit->env->ckt_string ) )
-            {
-                emit->append( instr = new Chuck_Instr_Op_string( op ) );
-                instr->set_linepos( lhs->line );
-            }
+        // if( isa( t_left, emit->env->ckt_string ) && isa( t_right, emit->env->ckt_string ) )
+        // {
+        //     emit->append( instr = new Chuck_Instr_Op_string( op ) );
+        //     instr->set_linepos( lhs->line );
+        // }
             break;
         }
         break;
@@ -2906,12 +2910,12 @@ t_CKBOOL emit_engine_emit_op( Chuck_Emitter * emit, ae_Operator op, a_Exp lhs, a
             break;
 
         default:
-            if( isa( t_left, emit->env->ckt_string ) && isa( t_right, emit->env->ckt_string ) )
-            {
-                emit->append( instr = new Chuck_Instr_Op_string( op ) );
-                instr->set_linepos( lhs->line );
-            }
-            else if( isa( t_left, emit->env->ckt_io ) )
+            // if( isa( t_left, emit->env->ckt_string ) && isa( t_right, emit->env->ckt_string ) )
+            // {
+            //     emit->append( instr = new Chuck_Instr_Op_string( op ) );
+            //     instr->set_linepos( lhs->line );
+            // } else
+            if( isa( t_left, emit->env->ckt_io ) )
             {
                 // output
                 if( isa( t_right, emit->env->ckt_int ) )
@@ -2972,11 +2976,11 @@ t_CKBOOL emit_engine_emit_op( Chuck_Emitter * emit, ae_Operator op, a_Exp lhs, a
             break;
 
         default:
-            if( isa( t_left, emit->env->ckt_string ) && isa( t_right, emit->env->ckt_string ) )
-            {
-                emit->append( instr = new Chuck_Instr_Op_string( op ) );
-                instr->set_linepos( lhs->line );
-            }
+            // if( isa( t_left, emit->env->ckt_string ) && isa( t_right, emit->env->ckt_string ) )
+            // {
+            //     emit->append( instr = new Chuck_Instr_Op_string( op ) );
+            //     instr->set_linepos( lhs->line );
+            // }
             break;
         }
         break;
@@ -2994,11 +2998,11 @@ t_CKBOOL emit_engine_emit_op( Chuck_Emitter * emit, ae_Operator op, a_Exp lhs, a
             break;
 
         default:
-            if( isa( t_left, emit->env->ckt_string ) && isa( t_right, emit->env->ckt_string ) )
-            {
-                emit->append( instr = new Chuck_Instr_Op_string( op ) );
-                instr->set_linepos( lhs->line );
-            }
+            // if( isa( t_left, emit->env->ckt_string ) && isa( t_right, emit->env->ckt_string ) )
+            // {
+            //     emit->append( instr = new Chuck_Instr_Op_string( op ) );
+            //     instr->set_linepos( lhs->line );
+            // }
             break;
         }
         break;
@@ -3202,6 +3206,9 @@ t_CKBOOL emit_engine_emit_op_overload_postfix( Chuck_Emitter * emit, a_Exp_Postf
 //-----------------------------------------------------------------------------
 t_CKBOOL emit_engine_emit_op_chuck( Chuck_Emitter * emit, a_Exp lhs, a_Exp rhs, a_Exp_Binary binary )
 {
+    // consistency check | 1.5.4.3 (ge) added
+    assert( binary->op == ae_op_chuck );
+
     // any implicit cast happens before this
     Chuck_Type * left = lhs->cast_to ? lhs->cast_to : lhs->type;
     Chuck_Type * right = rhs->cast_to ? rhs->cast_to : rhs->type;
@@ -3287,7 +3294,8 @@ t_CKBOOL emit_engine_emit_op_chuck( Chuck_Emitter * emit, a_Exp lhs, a_Exp rhs, 
 
     // func call
     // make sure not 'null' which also looks like any object | 1.5.1.7
-    if( isa( right, emit->env->ckt_function ) && !isnull(emit->env,right) )
+    // if( isa( right, emit->env->ckt_function ) && !isnull(emit->env,right) )
+    if( type_engine_binary_is_func_call( emit->env, binary->op, lhs, rhs ) )
     {
         assert( binary->ck_func != NULL );
 
@@ -3784,7 +3792,7 @@ t_CKBOOL emit_engine_emit_exp_primary( Chuck_Emitter * emit, a_Exp_Primary exp )
         {
             // emit the symbol
             return emit_engine_emit_symbol(
-                emit, exp->var, exp->value, exp->self->emit_var, exp->line, exp->where );
+                emit, exp->var, exp->value, exp->self->emit_var, exp->line, exp->where, exp );
         }
         break;
 
@@ -4260,20 +4268,128 @@ t_CKBOOL emit_engine_emit_exp_array( Chuck_Emitter * emit, a_Exp_Array array )
 
 
 //-----------------------------------------------------------------------------
-// name: emit_engine_emit_exp_func_call()
+// name: struct Chuck_FuncCall_Options | 1.5.4.2 (ge) added
+// desc: a struct containing func call options, usually for specific cases
+//-----------------------------------------------------------------------------
+struct Chuck_FuncCall_Options
+{
+    // set this to true ONLY for specific cases of...
+    // 1) a special primitive (e.g., vec2/3/4)...
+    // 2) calls one of its "member" functions (e.g., magnitude())
+    // 3) not from a variable but from a literal value (e.g., @(1,2,3).magnitude())
+    // in these cases, a special Chuck_Instr_Reg_Transmute_Value_To_Pointer
+    // must have been emitted prior to the member function call
+    // NOTE: in effect, this option tells the member function call to
+    // clean up the trasmuted THIS pointer before returning
+    // NOTE: part of #special-primitive-member-func-from-literal
+    t_CKBOOL transmutingSpecialPrimitiveForMemberFunc;
+
+    // constructor
+    Chuck_FuncCall_Options( t_CKBOOL transmuting = FALSE )
+    {
+        // defaults
+        transmutingSpecialPrimitiveForMemberFunc = transmuting;
+    }
+};
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: emit_engine_emit_func_args()
 // desc: ...
+//-----------------------------------------------------------------------------
+t_CKBOOL emit_engine_emit_func_args( Chuck_Emitter * emit,
+                                     a_Exp_Func_Call func_call )
+{
+    // emit the args (TRUE for doAddRef added 1.3.0.0)
+    if( !emit_engine_emit_exp( emit, func_call->args, TRUE ) )
+    {
+        EM_error2( func_call->where,
+                   "(emit): internal error in emitting function call arguments..." );
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: emit_engine_emit_exp_func_call()
+// desc: emit function call from a_Exp_Func_Call
+//-----------------------------------------------------------------------------
+t_CKBOOL emit_engine_emit_exp_func_call( Chuck_Emitter * emit,
+                                         a_Exp_Func_Call func_call,
+                                         t_CKBOOL spork )
+{
+    // note: spork situations are now taken care in exp_spork...
+    // please look at that one before modifying this one!
+
+    // make sure there are args, and not sporking
+    if( func_call->args && !spork )
+    {
+        if( !emit_engine_emit_func_args( emit, func_call ) )
+            return FALSE;
+    }
+
+    // need to know here so the func can properly emit
+    // 1.5.4.3 (ge) added as part of #2024-func-call-update
+    func_call->func->emit_as_funccall = TRUE;
+
+    // emit func
+    if( !emit_engine_emit_exp( emit, func_call->func ) )
+    {
+        // 1.5.4.3 (ge) no longer necessarily an internal error #2024-static-init
+        // EM_error2( func_call->where,
+        //            "(emit): internal error in evaluating function call..." );
+        return FALSE;
+    }
+
+    // line and pos
+    t_CKUINT line = func_call->line;
+    t_CKUINT where = func_call->where;
+    // additional func call options | 1.5.4.2 (ge) added
+    Chuck_FuncCall_Options options;
+
+    // check if func is a dot_member
+    if( func_call->func->s_type == ae_exp_dot_member )
+    {
+        // if possible, get more accurate code position
+        line = func_call->func->dot_member.line;
+        where = func_call->func->dot_member.where;
+        // set option | 1.5.4.2 (ge) added as part of #special-primitive-member-func-from-literal
+        // this should only be true for special non-primitive functions *from literal value* e.g., @(1,2,3).magnitude();
+        options.transmutingSpecialPrimitiveForMemberFunc = func_call->func->dot_member.isSpecialPrimitiveFunc;
+    }
+
+    // the rest
+    return emit_engine_emit_exp_func_call( emit, func_call->ck_func, func_call->ret_type,
+                                           line, where, spork, &options );
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: emit_engine_emit_exp_func_call()
+// desc: emit function call from necessary information
 //-----------------------------------------------------------------------------
 t_CKBOOL emit_engine_emit_exp_func_call( Chuck_Emitter * emit,
                                          Chuck_Func * func,
                                          Chuck_Type * type,
                                          t_CKUINT line,
                                          t_CKUINT where,
-                                         t_CKBOOL spork )
+                                         t_CKBOOL spork,
+                                         Chuck_FuncCall_Options * options )
 {
     // is a member?
     t_CKBOOL is_member = func->is_member;
     // is a static? (within class)
     t_CKBOOL is_static = func->is_static;
+    // whether to enable the #special-primitive-member-func-from-literal option for member func
+    t_CKBOOL transmuting = options ? options->transmutingSpecialPrimitiveForMemberFunc : FALSE;
 
     // only check dependency violations if we are at a context-top-level
     // or class-top-level scope, i.e., not in a function definition
@@ -4326,7 +4442,7 @@ t_CKBOOL emit_engine_emit_exp_func_call( Chuck_Emitter * emit,
         {
             // is member (1.3.1.0: changed to use kind instead of size)
             if( is_member )
-                emit->append( instr = new Chuck_Instr_Func_Call_Member( kind, func ) );
+                emit->append( instr = new Chuck_Instr_Func_Call_Member( kind, func, CK_FUNC_CALL_THIS_IN_BACK, transmuting ) );
             else if( is_static )
                 emit->append( instr = new Chuck_Instr_Func_Call_Static( kind, func ) );
             else // 1.5.1.5 (ge & andrew) new planes of existence --> this is in global-scope (not global variable)
@@ -4348,71 +4464,6 @@ t_CKBOOL emit_engine_emit_exp_func_call( Chuck_Emitter * emit,
     instr->set_linepos(line);
 
     return TRUE;
-}
-
-
-
-
-//-----------------------------------------------------------------------------
-// name: emit_engine_emit_func_args()
-// desc: ...
-//-----------------------------------------------------------------------------
-t_CKBOOL emit_engine_emit_func_args( Chuck_Emitter * emit,
-                                     a_Exp_Func_Call func_call )
-{
-    // emit the args (TRUE for doAddRef added 1.3.0.0)
-    if( !emit_engine_emit_exp( emit, func_call->args, TRUE ) )
-    {
-        EM_error2( func_call->where,
-                   "(emit): internal error in emitting function call arguments..." );
-        return FALSE;
-    }
-
-    return TRUE;
-}
-
-
-
-
-//-----------------------------------------------------------------------------
-// name: emit_engine_emit_exp_func_call()
-// desc: emit function call from a_Exp_Func_Call
-//-----------------------------------------------------------------------------
-t_CKBOOL emit_engine_emit_exp_func_call( Chuck_Emitter * emit,
-                                         a_Exp_Func_Call func_call,
-                                         t_CKBOOL spork )
-{
-    // note: spork situations are now taken care in exp_spork...
-    // please look at that one before modifying this one!
-
-    // make sure there are args, and not sporking
-    if( func_call->args && !spork )
-    {
-        if( !emit_engine_emit_func_args( emit, func_call ) )
-            return FALSE;
-    }
-
-    // emit func
-    if( !emit_engine_emit_exp( emit, func_call->func ) )
-    {
-        EM_error2( func_call->where,
-                   "(emit): internal error in evaluating function call..." );
-        return FALSE;
-    }
-
-    // line and pos
-    t_CKUINT line = func_call->line;
-    t_CKUINT where = func_call->where;
-    // if possible, get more accurate code position
-    if( func_call->func->s_type == ae_exp_dot_member )
-    {
-        line = func_call->func->dot_member.line;
-        where = func_call->func->dot_member.where;
-    }
-
-    // the rest
-    return emit_engine_emit_exp_func_call( emit, func_call->ck_func, func_call->ret_type,
-                                           line, where, spork );
 }
 
 
@@ -4566,8 +4617,7 @@ check_func:
     // the type of the base
     Chuck_Type * t_base = member->t_base;
     // is the base a class/namespace or a variable
-    t_CKBOOL base_static = type_engine_is_base_static( emit->env, member->t_base );
-    // t_CKBOOL base_static = isa( member->ckt_base, emit->env->ckt_class );
+    t_CKBOOL base_type_static = type_engine_is_base_type_static( emit->env, member->t_base );
     // a function
     Chuck_Func * func = NULL;
     // a non-function value
@@ -4576,7 +4626,7 @@ check_func:
     t_CKUINT offset = 0;
 
     // check error
-    if( base_static )
+    if( base_type_static )
     {
         // should not get here
         EM_error2( member->base->where,
@@ -4597,20 +4647,42 @@ check_func:
     // get the func
     value = type_engine_find_value( t_base, member->xid );
     func = value->func_ref;
-    // make sure it's there
-    assert( func != NULL );
+    if( !func )
+    {
+        // should not get here
+        EM_error2( member->base->where,
+                  "(emit): internal error in lit_special(): expected function not found in value" );
+        // done
+        return FALSE;
+    }
 
     // NOTE: base already emitted earier in this function (and as var)
 
     // check base; 1.3.5.3
     if( member->base->s_meta == ae_meta_value ) // is literal
     {
-        // dup the value as pointer (as faux-'this' pointer)
-        emit->append( new Chuck_Instr_Reg_Dup_Last_As_Pointer( t_base->size / sz_WORD ) );
+        // verify
+        if( !member->isSpecialPrimitiveFunc )
+        {
+            // should not get here
+            EM_error2( member->base->where,
+                      "(emit): internal error in lit_special(): unexpected specialPrimitiveFunc == FALSE" );
+            // done
+            return FALSE;
+        }
+
+        // 1.5.4.2 (ge) #special-primitive-member-func-from-literal
+        // transmute the value as pointer (as faux-'this' pointer)
+        emit->append( new Chuck_Instr_Reg_Transmute_Value_To_Pointer( t_base->size ) );
     }
-    else // normal object
+
+    // check if we are part of a function call vs. function as value
+    // 1.5.4.3 (ge) added as part of #2024-func-call-update
+    if( member->self->emit_as_funccall )
     {
         // dup the base pointer ('this' pointer as argument -- special case primitive)
+        // as of 1.5.4.2 this is emitted for both literals and variables
+        // #special-primitive-member-func-from-literal
         emit->append( new Chuck_Instr_Reg_Dup_Last );
     }
 
@@ -4637,8 +4709,9 @@ t_CKBOOL emit_engine_emit_exp_dot_member( Chuck_Emitter * emit,
     // whether to emit addr or value
     t_CKBOOL emit_addr = member->self->emit_var;
     // is the base a class/namespace or a variable | 1.5.0.0 (ge) modified to func call
-    t_CKBOOL base_static = type_engine_is_base_static( emit->env, member->t_base );
-    // t_CKBOOL base_static = isa( member->ckt_base, emit->env->ckt_class );
+    t_CKBOOL base_type_static = type_engine_is_base_type_static( emit->env, member->t_base );
+    // check if the base exp is static-compatible, e.g., usable to initialize static var | 1.5.4.3 (ge) added as part of #2024-static-init
+    t_CKBOOL base_exp_static = type_engine_is_base_exp_static( emit->env, member );
     // a function
     Chuck_Func * func = NULL;
     // a non-function value
@@ -4667,13 +4740,39 @@ t_CKBOOL emit_engine_emit_exp_dot_member( Chuck_Emitter * emit,
 
     // actual type - if base is class name its type is actually 'class'
     //               to get the actual type use actual_type
-    t_base = base_static ? member->t_base->actual_type : member->t_base;
+    t_base = base_type_static ? member->t_base->actual_type : member->t_base;
 
     // make sure that the base type is object
     assert( t_base->nspc != NULL );
 
+    // get the value to test | 1.5.4.3 (ge) added as part of #2024-static-init
+    // NOTE: this type of check usually resides pre-emisssion, in the type-checker
+    // but in this case, the hasStaticDecl check happens in the type-checker
+    // and this verification needs to be come after that
+    Chuck_Value * v = type_engine_find_value( t_base, member->xid );
+    if( v && (!base_type_static && !base_exp_static)
+          && emit->env->class_def && !emit->env->func
+          && (emit->env->stmt_stack.size() && emit->env->stmt_stack.back()->hasStaticDecl) )
+    {
+        if( v->func_ref )
+        {
+            if( v->is_member )
+            {
+                EM_error2( member->where,
+                           "cannot call non-static function '%s' to initialize a static variable", v->func_ref->signature(FALSE,FALSE).c_str() );
+                return FALSE;
+            }
+        }
+        else if( !v->is_static )
+        {
+            EM_error2( member->where,
+                       "cannot access non-static variable '%s.%s' to initialize a static variable", v->owner_class->name().c_str(), v->name.c_str() );
+            return FALSE;
+        }
+    }
+
     // if base is static?
-    if( !base_static )
+    if( !base_type_static )
     {
         // if is a func
         if( isfunc( emit->env, member->self->type ) )
@@ -4687,10 +4786,15 @@ t_CKBOOL emit_engine_emit_exp_dot_member( Chuck_Emitter * emit,
             // is the func static?
             if( func->is_member )
             {
-                // emit the base (TODO: return on error?)
-                emit_engine_emit_exp( emit, member->base );
-                // dup the base pointer ('this' pointer as argument)
-                emit->append( new Chuck_Instr_Reg_Dup_Last );
+                // emit the base
+                if( !emit_engine_emit_exp( emit, member->base ) ) { return FALSE; }
+                // check if we are part of a function call vs. function as value
+                // 1.5.4.3 (ge) added as part of #2024-func-call-update
+                if( member->self->emit_as_funccall )
+                {
+                    // dup the base pointer ('this' pointer as argument)
+                    emit->append( new Chuck_Instr_Reg_Dup_Last );
+                }
                 // find the offset for virtual table
                 offset = func->vt_index;
                 // emit the function
@@ -4701,6 +4805,13 @@ t_CKBOOL emit_engine_emit_exp_dot_member( Chuck_Emitter * emit,
             {
                 // emit the type
                 emit->append( new Chuck_Instr_Reg_Push_Imm( (t_CKUINT)t_base ) );
+                // check if we are part of a function call vs. function as value
+                // 1.5.4.3 (ge) added as part of #2024-func-call-update
+                if( member->self->emit_as_funccall )
+                {
+                    // dup the base pointer ('this' pointer as argument)
+                    emit->append( new Chuck_Instr_Reg_Dup_Last );
+                }
                 // emit the static function
                 emit->append( new Chuck_Instr_Dot_Static_Func( func ) );
             }
@@ -4758,6 +4869,14 @@ t_CKBOOL emit_engine_emit_exp_dot_member( Chuck_Emitter * emit,
         {
             // emit the type - spencer
             emit->append( new Chuck_Instr_Reg_Push_Imm( (t_CKUINT)t_base ) );
+            // if part of a func call
+            // 1.5.4.3 (ge) added as part of #2024-func-call-update
+            if( member->self->emit_as_funccall )
+            {
+                // dupe the pointer, as Chuck_Instr_Dot_Static_Func will consume it
+                // 1.5.4.3 (ge) added as part of #2024-func-call-update
+                emit->append( new Chuck_Instr_Reg_Dup_Last );
+            }
             // get the func | 1.4.1.0 (ge) added looking in parent
             value = type_engine_find_value( t_base, member->xid );
             // get the function reference
@@ -4880,10 +4999,10 @@ t_CKBOOL emit_engine_emit_exp_if( Chuck_Emitter * emit, a_Exp_If exp_if )
 t_CKBOOL emit_engine_pre_constructor( Chuck_Emitter * emit, Chuck_Type * type, a_Ctor_Call ctor_info )
 {
     // parent first pre constructor
-    if( type->parent != NULL )
+    if( type->parent_type != NULL )
     {
         // first emit parent pre and base constructor
-        emit_engine_pre_constructor( emit, type->parent, NULL );
+        emit_engine_pre_constructor( emit, type->parent_type, NULL );
     }
 
     // pre constructor
@@ -5015,10 +5134,14 @@ t_CKBOOL emit_engine_instantiate_object( Chuck_Emitter * emit, Chuck_Type * type
     else if( !is_ref ) // not array
     {
         // emit object instantiation code, include pre constructor
-        emit->append( new Chuck_Instr_Instantiate_Object( type ) );
+        emit->append( new Chuck_Instr_Instantiate_Object_Start( type ) );
 
         // call pre constructor
         emit_engine_pre_constructor( emit, type, ctor_info );
+
+        // complete object instantiation | 1.5.4.3 (ge) added
+        // see Chuck_Instr_Instantiate_Object_Complete::execute() for explanation
+        emit->append( new Chuck_Instr_Instantiate_Object_Complete( type ) );
     }
 
     return TRUE;
@@ -5693,7 +5816,7 @@ t_CKBOOL emit_engine_emit_func_def( Chuck_Emitter * emit, a_Func_Def func_def )
 
 //-----------------------------------------------------------------------------
 // name: emit_engine_emit_class_def()
-// desc: ...
+// desc: emit bytecode for a class definition
 //-----------------------------------------------------------------------------
 t_CKBOOL emit_engine_emit_class_def( Chuck_Emitter * emit, a_Class_Def class_def )
 {
@@ -5747,6 +5870,19 @@ t_CKBOOL emit_engine_emit_class_def( Chuck_Emitter * emit, a_Class_Def class_def
         return FALSE;
     }
 
+    // static code initializer | 1.5.4.3 (ge) added as part of #2024-static-init
+    if( type->nspc->static_data_size > 0 )
+    {
+        // create code container for emitting
+        type->static_code_emit = new Chuck_Code;
+        // name the code; copy the class code name
+        type->static_code_emit->name = emit->code->name + " (static initializer)";
+        // need this?
+        type->static_code_emit->need_this = FALSE;
+        // keep track of filename; copy the class code filename
+        type->static_code_emit->filename = emit->code->filename;
+    }
+
     // emit the body
     while( body && ret )
     {
@@ -5791,21 +5927,75 @@ t_CKBOOL emit_engine_emit_class_def( Chuck_Emitter * emit, a_Class_Def class_def
         CK_SAFE_REF_ASSIGN( type->nspc->pre_ctor,
                             emit_to_code( emit->code, type->nspc->pre_ctor, emit->dump ) );
 
-        // allocate static
-        type->nspc->class_data = new t_CKBYTE[type->nspc->class_data_size];
-        // verify
-        if( !type->nspc->class_data )
+        // ----------------------
+        // static data and code
+        // check if we have static data?
+        if( type->nspc->static_data_size > 0 )
         {
-            // we have a problem
-            CK_FPRINTF_STDERR(
-                "[chuck](emitter): OutOfMemory: while allocating static data '%s'\n", type->c_name() );
-            // flag
-            ret = FALSE;
-        }
-        else
-        {
-            // zero it out
-            memset( type->nspc->class_data, 0, type->nspc->class_data_size );
+            // allocate static
+            type->nspc->static_data = new t_CKBYTE[type->nspc->static_data_size];
+            // verify
+            if( !type->nspc->static_data )
+            {
+                // we have a problem
+                CK_FPRINTF_STDERR(
+                    "[chuck](emitter): OutOfMemory: while allocating static data '%s'\n", type->c_name() );
+                // flag
+                ret = FALSE;
+            }
+            else
+            {
+                // zero it out
+                memset( type->nspc->static_data, 0, type->nspc->static_data_size );
+            }
+
+            // static initializer code | 1.5.4.3 (ge) added as part of #2024-static-init
+            //-----------------------------------------
+            // STATIC VARAIBLE INITIALIZATION SEMANTICS
+            //-----------------------------------------
+            // static variables must be DECLARED:
+            // a) within a class definition
+            // b) outside of any class function defintion
+            // c) at the outer-most class scope; can not be in nested { }
+            //-----------------------------------------
+            // COMPILE-TIME checks:
+            // 1) a statement containing a static variable declaration
+            //    CANNOT access member data/functions
+            // 2) otherwise, a statement can access both static and member data
+            // 3) a statement containing a static variable declaration
+            //    CANNOT access local (i.e., outside of class def) vars or funcs
+            //    even in non-public classes
+            //-----------------------------------------
+            // RUNTIME checks:
+            // 4) static initialization statements are run in immediate mode
+            //    meaning no time advances; this is enforced at runtime; any
+            //    time advances, including waiting on events, will result in
+            //    a runtime exception
+            //-----------------------------------------
+            // see if there is at least one static init instruction
+            if( type->static_code_emit->code.size() )
+            {
+                // append EOC for the static initializer
+                type->static_code_emit->code.push_back( new Chuck_Instr_EOC );
+                // static itor code => vm code
+                Chuck_VM_Code * static_code = emit_to_code( type->static_code_emit, NULL, emit->dump );
+
+                // make sure NULL
+                assert( type->nspc->static_invoker == NULL );
+                // instantiate an invoker
+                type->nspc->static_invoker = new Chuck_VM_SInitInvoker;
+                // setup
+                type->nspc->static_invoker->setup( type, static_code, emit->env->vm() );
+                // run the static initializer in immediate mode
+                type->nspc->static_invoker->invoke( emit->env->vm()->shreduler()->get_current_shred() );
+                // clean up
+                CK_SAFE_DELETE( type->nspc->static_invoker );
+
+                // TODO: either defer the initializer to when we have a parent shred OR disallow context-level vars and func calls for static
+                // TODO: disallow return in class def body (member and static)
+            }
+            // clean up the code emit structure
+            CK_SAFE_DELETE( type->static_code_emit );
         }
     }
 
@@ -5850,11 +6040,16 @@ t_CKBOOL emit_engine_emit_spork( Chuck_Emitter * emit, a_Exp_Func_Call exp )
     if( !emit_engine_emit_func_args( emit, exp ) )
         return FALSE;
 
+    // need to know here so the func can properly emit
+    // 1.5.4.3 (ge) added as part of #2024-func-call-update
+    exp->func->emit_as_funccall = TRUE;
+
     // emit func pointer on sporker shred
     if( !emit_engine_emit_exp( emit, exp->func ) )
     {
-        EM_error2( exp->where,
-                  "(emit): internal error in evaluating function call..." );
+        // 1.5.4.3 (ge) no longer necessarily an internal error #2024-static-init
+        // EM_error2( exp->where,
+        //            "(emit): internal error in evaluating function call..." );
         return FALSE;
     }
 
@@ -5942,11 +6137,11 @@ t_CKBOOL emit_engine_emit_spork( Chuck_Emitter * emit, a_Exp_Func_Call exp )
 
 //-----------------------------------------------------------------------------
 // name: emit_engine_emit_symbol()
-// desc: ...
+// desc: emit a symbol into code
 //-----------------------------------------------------------------------------
 t_CKBOOL emit_engine_emit_symbol( Chuck_Emitter * emit, S_Symbol symbol,
                                   Chuck_Value * v, t_CKBOOL emit_var,
-                                  t_CKUINT line, t_CKUINT where )
+                                  t_CKUINT line, t_CKUINT where, a_Exp_Primary exp )
 {
     // look up the value
     // Chuck_Value * v = emit->env->curr->lookup_value( symbol, TRUE );
@@ -6029,12 +6224,17 @@ t_CKBOOL emit_engine_emit_symbol( Chuck_Emitter * emit, S_Symbol symbol,
         CK_SAFE_ADD_REF( dot->dot_member.t_base ); // 1.5.1.3
         dot->emit_var = emit_var;
 
+        // propagate whether this should be emitted as a func call (vs. a function value only)
+        // 1.5.4.3 (ge) added as part of #2024-func-call-update
+        dot->emit_as_funccall = exp->self->emit_as_funccall;
+
         // emit it
         if( !emit_engine_emit_exp_dot_member( emit, &dot->dot_member ) )
         {
+            // 1.5.4.3 (ge) no longer necessarily an internal error #2024-static-init
             // internal error
-            EM_error2( where,
-                "(emit): internal error: symbol transformation failed..." );
+            // EM_error2( where,
+            //     "(emit): internal error: symbol transformation failed..." );
             return FALSE;
         }
 
@@ -6047,6 +6247,24 @@ t_CKBOOL emit_engine_emit_symbol( Chuck_Emitter * emit, S_Symbol symbol,
 
         // done
         return TRUE;
+    }
+
+    // 1.5.4.3 (ge) added this check #2024-static-init
+    // static variable declarations cannot access values that
+    if( v && v->is_context_global && !v->is_global
+          && emit->env->class_def && !emit->env->func && (emit->env->stmt_stack.size() && emit->env->stmt_stack.back()->hasStaticDecl) )
+    {
+        if( v->func_ref )
+        {
+            EM_error2( exp->where,
+                       "cannot call local function '%s' to initialize a static variable", v->func_ref->signature(FALSE,FALSE).c_str() );
+        }
+        else
+        {
+            EM_error2( exp->where,
+                       "cannot access local variable '%s' to initialize a static variable", S_name( exp->var ) );
+        }
+        return FALSE;
     }
 
     // var or value

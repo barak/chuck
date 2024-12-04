@@ -761,9 +761,9 @@ std::string expandFilePathWindows( const string & path )
 
 //-----------------------------------------------------------------------------
 // name: get_full_path()
-// desc: get full path to file
+// desc: get full path to file; if treatAsDir is TRUE, then don't auto-match .ck
 //-----------------------------------------------------------------------------
-std::string get_full_path( const std::string & fp )
+std::string get_full_path( const std::string & fp, t_CKBOOL treatAsDir )
 {
 #ifndef __PLATFORM_WINDOWS__
 
@@ -771,13 +771,15 @@ std::string get_full_path( const std::string & fp )
     char * result = realpath(fp.c_str(), buf);
 
     // try with .ck extension
-    if( result == NULL && !extension_matches(fp, ".ck") )
+    if( result == NULL && !treatAsDir && !extension_matches(fp, ".ck") )
         result = realpath((fp + ".ck").c_str(), buf);
 
-    if( result == NULL )
-        return fp;
-    else
-        return buf;
+    // get the return value
+    string ret = result ? buf : fp;
+    // if treat as dir, ensure trailing / 1.5.4.2 (ge & nshaheed) added
+    if( treatAsDir ) ret = normalize_directory_name(ret);
+    // return
+    return ret;
 
 #else // windows
 
@@ -797,7 +799,7 @@ std::string get_full_path( const std::string & fp )
     }
 
     // try with .ck extension
-    if( result == 0 && !extension_matches(fp, ".ck") )
+    if( result == 0 && !treatAsDir && !extension_matches(fp, ".ck") )
     {
 #ifndef __CHUNREAL_ENGINE__
         result = GetFullPathName((fp + ".ck").c_str(), MAX_PATH, buf, NULL);
@@ -807,10 +809,12 @@ std::string get_full_path( const std::string & fp )
 #endif
     }
 
-    if( result == 0 )
-        return fp;
-    else
-        return normalize_directory_separator(buf);
+    // get the return value
+    string ret = result ? normalize_directory_separator(buf) : fp;
+    // if treat as dir, ensure trailing / 1.5.4.2 (ge & nshaheed) added
+    if( treatAsDir ) ret = normalize_directory_name(ret);
+    // return
+    return ret;
 
 #endif // __PLATFORM_WINDOWS__
 }
@@ -1350,11 +1354,13 @@ void tokenize( const std::string & str, std::vector<string> & tokens, const std:
 }
 
 
-// static instantiation
+
+
+//-----------------------------------------------------------------------------
+// TC static instantiation
+//-----------------------------------------------------------------------------
 t_CKBOOL TC::isEnabled = TRUE;
 t_CKBOOL TC::globalBypass = TRUE;
-
-
 //-----------------------------------------------------------------------------
 // on/off switches
 //-----------------------------------------------------------------------------
@@ -1375,7 +1381,6 @@ void TC::globalDisableOverride( t_CKBOOL setTrueToEngage )
     globalBypass = setTrueToEngage;
 }
 
-
 //-----------------------------------------------------------------------------
 // get bold escape sequence
 //-----------------------------------------------------------------------------
@@ -1384,7 +1389,6 @@ std::string TC::bold( const std::string & text )
     if( globalBypass || !isEnabled ) return text;
     return TC::bold() + text + TC::reset();
 }
-
 
 //-----------------------------------------------------------------------------
 // get color escape sequences
@@ -1450,10 +1454,8 @@ std::string TC::set_blue( t_CKBOOL bold )
     return std::string( "\033[38;5;39m" ) + (bold?TC::bold():"");
 }
 
-
 //-----------------------------------------------------------------------------
 // set*() methods -- returns escape sequences o insert into output
-
 //-----------------------------------------------------------------------------
 // set a terminal code
 std::string TC::set( TerminalCode code )

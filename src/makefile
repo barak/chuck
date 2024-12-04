@@ -16,7 +16,7 @@ CK_HOST_DIR=host
 # where to find RtAudio
 RTAUDIO_DIR=RtAudio
 # chuck version
-CK_VERSION=1.5.4.1
+CK_VERSION=1.5.4.3
 
 
 ########################## DEFAULT MAKE TARGET ################################
@@ -105,6 +105,16 @@ LD=$(CXX)
 # note: to compile with a specific c++ version (e.g., c++11) add: -std=c++11
 CFLAGS+=-I. -I$(CK_CORE_DIR) -I$(CK_CORE_DIR)/lo
 
+# Code coverage
+
+# enable chuck debug macros?
+ifneq ($(COVERAGE_REPORT),)
+CFLAGS+=-fprofile-arcs
+CFLAGS+=-ftest-coverage
+LDFLAGS+=-lgcov
+LDFLAGS+=--coverage
+endif
+
 # track stats?
 ifneq ($(CHUCK_STAT),)
 CFLAGS+= -D__CHUCK_STAT_TRACK__
@@ -125,6 +135,12 @@ endif
 # strict error reporting?
 ifneq ($(CHUCK_STRICT),)
 CFLAGS+= -Wall
+endif
+
+# use X11? (Linux)
+ifneq ($(USE_X11),)
+CFLAGS+= -D__USE_X11__
+LDFLAGS+= -lX11
 endif
 
 # ifneq ($(findstring arm,$(shell uname -m)),)
@@ -273,6 +289,12 @@ $(CXXOBJS_HOST): %.o: %.cpp
 test:
 	@make -C test
 
+###################### GENERATE CODE COVERAGE REPORT ###########################
+.PHONY: coverage
+coverage: test
+	lcov --capture --directory . --output-file coverage.info
+	genhtml coverage.info --output-directory report
+
 
 ####################### GENERATE API DOCUMENTATION ############################
 .PHONY: doc ckdoc
@@ -327,7 +349,8 @@ clean-src:
 	$(CK_CORE_DIR)/chuck.tab.h $(CK_CORE_DIR)/chuck.tab.c $(CK_CORE_DIR)/chuck.yy.c \
 	$(DIST_ROOT)/$(DIST_DIR) $(DIST_ROOT)/$(DIST_DIR){,.tgz,.zip} \
 	host-web/webchuck/js/webchuck.js host-web/webchuck/js/webchuck.wasm \
-	Release Debug
+	Release Debug \
+	@rf -rf report/ */*.gcov */*.gcda */*.gcno */*.info
 
 .PHONY: clean
 clean: clean-src
