@@ -226,23 +226,23 @@ public:
     }
 
     // get list of top level
-    void get_toplevel( std::vector<Chuck_VM_Object *> & out, t_CKBOOL includeMangled = TRUE )
+    void get_toplevel( std::vector<Chuck_VM_Object *> & out, t_CKBOOL includeMangled = TRUE ) const
     {
         // pass on
         get_level( 0, out, includeMangled );
     }
 
     // get list of top level
-    void get_level( int level, std::vector<Chuck_VM_Object *> & out, t_CKBOOL includeMangled = TRUE )
+    void get_level( int level, std::vector<Chuck_VM_Object *> & out, t_CKBOOL includeMangled = TRUE ) const
     {
         assert( scope.size() > level );
         // clear the out
         out.clear();
 
         // our iterator
-        std::map<S_Symbol, Chuck_VM_Object *>::iterator iter;
+        std::map<S_Symbol, Chuck_VM_Object *>::const_iterator iter;
         // get func map
-        std::map<S_Symbol, Chuck_VM_Object *> * m = NULL;
+        std::map<S_Symbol, Chuck_VM_Object *> const * m = NULL;
 
         // 1.5.0.5 (ge) modified: actually use level
         m = scope[level];
@@ -373,6 +373,13 @@ struct Chuck_Namespace : public Chuck_VM_Object
     void get_values( std::vector<Chuck_Value *> & out );
     // get top level functions
     void get_funcs( std::vector<Chuck_Func *> & out, t_CKBOOL includeManged = TRUE );
+
+    // check if this namespace contains a particular type at top scope level | 1.5.4.4 (ge) added
+    t_CKBOOL contains( Chuck_Type * target ) const;
+    // check if this namespace contains a particular value at top scope level | 1.5.4.4 (ge) added
+    t_CKBOOL contains( Chuck_Value * target ) const;
+    // check if this namespace contains a particular function at top scope level | 1.5.4.4 (ge) added
+    t_CKBOOL contains( Chuck_Func * target ) const;
 };
 
 
@@ -779,9 +786,14 @@ public:
     // array type cache
     Chuck_ArrayTypeCache * arrayTypeCache() { return &array_types; }
     // retrieve array type based on parameters | 1.5.4.0 (ge, nick, andrew) added
+    Chuck_Type * get_array_type( t_CKUINT depth, Chuck_Type * base_type );
     Chuck_Type * get_array_type( Chuck_Type * array_parent,
                                  t_CKUINT depth, Chuck_Type * base_type /*,
                                  Chuck_Namespace * owner_nspc */ );
+public:
+    // helper: are we currently in a stmt that has been marked for static init?
+    // 1.5.4.4 (ge) added #2024-static-init
+    t_CKBOOL in_static_stmt() { return stmt_stack.size() && stmt_stack.back()->hasStaticDecl; }
 
 protected:
     Chuck_Carrier * m_carrier;
@@ -965,7 +977,8 @@ public:
     void clear();
     // look for a dependency that occurs AFTER a particular code position
     // this function crawls the graph, taking care in the event of cycles
-    const Chuck_Value_Dependency * locate( t_CKUINT pos, Chuck_Type * fromClassDef = NULL );
+    const Chuck_Value_Dependency * locate( t_CKUINT pos,
+                                           Chuck_Type * fromClassDef = NULL );
 
 public:
     // constructor
@@ -1163,8 +1176,8 @@ struct Chuck_Value : public Chuck_VM_Object
     void * addr;
     // const?
     t_CKBOOL is_const;
-    // member?
-    t_CKBOOL is_member;
+    // instanced (non-static) member?
+    t_CKBOOL is_instance_member;
     // static?
     t_CKBOOL is_static; // do something
     // is context-global?
@@ -1438,7 +1451,7 @@ Chuck_Namespace * type_engine_find_nspc( Chuck_Env * env, a_Id_List path );
 // convert a vector of type names to a vector of Types | 1.5.0.0 (ge) added
 void type_engine_names2types( Chuck_Env * env, const std::vector<std::string> & typeNames, std::vector<Chuck_Type *> & types );
 // check and process auto types | 1.5.0.8 (ge) added
-t_CKBOOL type_engine_infer_auto( Chuck_Env * env, a_Exp_Decl decl, Chuck_Type * type );
+t_CKBOOL type_engine_infer_auto( Chuck_Env * env, a_Exp_Decl decl, Chuck_Type * base_type, t_CKUINT array_depth );
 // initialize operator overload subsystem | 1.5.1.5 (ge) added
 t_CKBOOL type_engine_init_op_overload( Chuck_Env * env );
 // verify an operator overload | 1.5.1.5 (ge) added

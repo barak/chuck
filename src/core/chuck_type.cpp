@@ -68,6 +68,7 @@ t_CKBOOL type_engine_check_break( Chuck_Env * env, a_Stmt_Break br );
 t_CKBOOL type_engine_check_continue( Chuck_Env * env, a_Stmt_Continue cont );
 t_CKBOOL type_engine_check_return( Chuck_Env * env, a_Stmt_Return stmt );
 t_CKBOOL type_engine_check_switch( Chuck_Env * env, a_Stmt_Switch stmt );
+t_CKBOOL type_engine_enact_doc( Chuck_Env * env, a_Stmt_Doc doc );
 t_CKTYPE type_engine_check_exp( Chuck_Env * env, a_Exp exp );
 t_CKTYPE type_engine_check_exp_binary( Chuck_Env * env, a_Exp_Binary binary );
 t_CKTYPE type_engine_check_op( Chuck_Env * env, ae_Operator op, a_Exp lhs, a_Exp rhs, a_Exp_Binary binary );
@@ -1201,6 +1202,7 @@ t_CKBOOL type_engine_verify_stmt_static( Chuck_Env * env, a_Stmt stmt )
         case ae_stmt_case:
         case ae_stmt_return:
         case ae_stmt_code:
+        case ae_stmt_doc: // 1.5.4.4 (ge) added
         default:
             // shouldn't get here
             EM_error2( stmt->where,
@@ -1236,9 +1238,13 @@ t_CKBOOL type_engine_check_stmt( Chuck_Env * env, a_Stmt stmt )
     // the type of stmt
     switch( stmt->s_type )
     {
-        case ae_stmt_import: // 1.5.2.5 (ge) added
+        case ae_stmt_import: // 1.5.4.0 (ge) added
             // do nothing here (return true to bypass)
             ret = TRUE;
+            break;
+
+        case ae_stmt_doc: // 1.5.4.4 (ge) added
+            ret = type_engine_enact_doc( env, &stmt->stmt_doc );
             break;
 
         case ae_stmt_if:
@@ -1489,7 +1495,8 @@ t_CKBOOL type_engine_check_foreach( Chuck_Env * env, a_Stmt_ForEach stmt )
     if( stmt->theIter->s_type == ae_exp_decl )
     {
         // process auto before we scan theIter
-        if( !type_engine_infer_auto( env, &stmt->theIter->decl, stmt->theArray->type->array_type ) )
+        // 1.5.4.4 (ge) added array_depth - 1 parameter; also see: type_engine_infer_auto()
+        if( !type_engine_infer_auto( env, &stmt->theIter->decl, type_array->array_type, type_array->array_depth-1 ) )
             return FALSE;
     }
 
@@ -1831,25 +1838,64 @@ t_CKBOOL type_engine_check_return( Chuck_Env * env, a_Stmt_Return stmt )
 
 
 //-----------------------------------------------------------------------------
-// name: type_engine_infer_auto() | 1.5.0.8 (ge) added
-// desc: process auto type
+// name: type_engine_enact_doc()
+// desc: take action for @doc statement
 //-----------------------------------------------------------------------------
-t_CKBOOL type_engine_infer_auto( Chuck_Env * env, a_Exp_Decl decl, Chuck_Type * type )
+t_CKBOOL type_engine_enact_doc( Chuck_Env * env, a_Stmt_Doc doc )
+{
+    // check if we are in a function
+    if( env->func )
+    {
+        // set the documentation string from first
+        env->func->doc = doc->list ? doc->list->desc : "";
+    }
+    else if( env->class_def )
+    {
+        // set the documentation string from first
+        env->class_def->doc = doc->list ? doc->list->desc : "";
+    }
+    else
+    {
+        // error
+        EM_error2( doc->where, "@doc statements used outside class and function definitions");
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: type_engine_infer_auto() | 1.5.0.8 (ge) added
+// desc: process auto type from base_type/array_depth
+//-----------------------------------------------------------------------------
+t_CKBOOL type_engine_infer_auto( Chuck_Env * env, a_Exp_Decl decl, Chuck_Type * base_type, t_CKUINT array_depth )
 {
     // make sure
-    assert( type != NULL );
+    assert( base_type != NULL );
     assert( decl != NULL );
 
     // check first var decl, if not auto, then pass through
     if( !decl->ck_type || !isa(decl->ck_type, env->ckt_auto) )
     { return TRUE; }
     // if RHS is declared as auto, then check for invalid LHS types
-    else if( isa(type,env->ckt_void) || isa(type,env->ckt_null) || isa(type,env->ckt_auto) )
+    else if( isa(base_type,env->ckt_void) || isa(base_type,env->ckt_null) || isa(base_type,env->ckt_auto) )
     {
         EM_error2( decl->where,
             "cannot infer 'auto' type from '%s' type",
-            type->c_name() );
+            base_type->c_name() );
         return FALSE;
+    }
+
+    // the auto type
+    Chuck_Type * type = base_type;
+    // if type is array | 1.5.4.4 (ge) added
+    if( array_depth )
+    {
+        // update type to an an array of base_type
+        type = env->get_array_type( array_depth, base_type );
     }
 
     // replace with inferred type
@@ -2009,12 +2055,21 @@ t_CKTYPE type_engine_check_exp_binary( Chuck_Env * env, a_Exp_Binary binary )
         ( binary->op == ae_op_chuck || binary->op == ae_op_at_chuck ) )
     {
         // get type of the left hand side
-        Chuck_Type * type = left;
-        // if array use actual type
-        if( type->array_depth ) type = type->array_type;
+        Chuck_Type * base_type = left;
+        // get array depth (could be 0)
+        t_CKUINT array_depth = base_type->array_depth;
+        // if array
+        if( array_depth )
+        {
+            // use actual/array type
+            base_type = base_type->array_type;
+            // the auto variable should have one fewer array_depth
+            // 1.5.4.4 (ge) added to pass into type_engine_infer_auto() below
+            array_depth--;
+        }
 
         // process auto before we scan the right hand side
-        if( !type_engine_infer_auto( env, &cr->decl, type ) )
+        if( !type_engine_infer_auto( env, &cr->decl, base_type, array_depth ) )
             return NULL;
     }
 
@@ -2411,7 +2466,7 @@ t_CKTYPE type_engine_check_op( Chuck_Env * env, ae_Operator op, a_Exp lhs, a_Exp
         }
 
         // mark to emit var instead of value
-        rhs->emit_var = 1;
+        rhs->emit_var = TRUE;
 
         break;
 
@@ -3609,7 +3664,7 @@ t_CKTYPE type_engine_check_exp_primary( Chuck_Env * env, a_Exp_Primary exp )
                             if( env->func )
                             {
                                 // if func static, v not
-                                if( env->func->is_static && v->is_member && !v->is_static )
+                                if( env->func->is_static && v->is_instance_member && !v->is_static )
                                 {
                                     EM_error2( exp->where,
                                         "non-static member '%s' used from static function", S_name( exp->var ) );
@@ -3660,13 +3715,31 @@ t_CKTYPE type_engine_check_exp_primary( Chuck_Env * env, a_Exp_Primary exp )
                             S_name(exp->var) );
                         return NULL;
                     }
-                    else if( v->is_member )
+                    else if( v->is_instance_member )
                     {
                         EM_error2( exp->where,
                             "class member '%s' is used before declaration",
                             S_name(exp->var) );
                         return NULL;
                     }
+                }
+
+                // 1.5.4.3 (ge) added this check #2024-static-init
+                // static variable declarations cannot access values that
+                if( v && v->is_context_global && !v->is_global
+                      && env->class_def && !env->func && env->in_static_stmt() )
+                {
+                    if( v->func_ref )
+                    {
+                        EM_error2( exp->where,
+                                   "cannot call local function '%s' to initialize a static variable", v->func_ref->signature(FALSE,FALSE).c_str() );
+                    }
+                    else
+                    {
+                        EM_error2( exp->where,
+                                   "cannot access local variable '%s' to initialize a static variable", S_name( exp->var ) );
+                    }
+                    return FALSE;
                 }
 
                 // dependency tracking
@@ -4404,7 +4477,7 @@ t_CKTYPE type_engine_check_exp_decl_part2( Chuck_Env * env, a_Exp_Decl decl )
         }
 
         // member?
-        if( value->is_member )
+        if( value->is_instance_member )
         {
             // offset
             value->offset = env->curr->offset;
@@ -4425,7 +4498,7 @@ t_CKTYPE type_engine_check_exp_decl_part2( Chuck_Env * env, a_Exp_Decl decl )
             env->curr->offset = type_engine_next_offset( env->curr->offset, type );
             // env->curr->offset += type->size;
         }
-        else if( decl->is_static ) // static
+        else if( value->is_static ) // static
         {
             // base scope
             if( env->class_def == NULL || env->class_scope > 0 )
@@ -4435,19 +4508,10 @@ t_CKTYPE type_engine_check_exp_decl_part2( Chuck_Env * env, a_Exp_Decl decl )
                 return NULL;
             }
 
-            // flag
-            value->is_static = TRUE;
             // offset
             value->offset = env->class_def->nspc->static_data_size;
             // move the size
             env->class_def->nspc->static_data_size += type->size;
-
-            // if we are located inside a statement
-            if( env->stmt_stack.size() )
-            {
-                // mark containing statement as having static decl | 1.5.4.3 (ge) added as part of #2024-static-init
-                env->stmt_stack.back()->hasStaticDecl = TRUE;
-            }
 
             // // if this is an object
             // if( is_obj && !is_ref )
@@ -4795,99 +4859,122 @@ t_CKTYPE type_engine_check_exp_func_call( Chuck_Env * env, a_Exp exp_func, a_Exp
         return NULL;
     }
 
-    // make sure we have a function
+    // is exp_func's type a function?
     if( !isa( f, env->ckt_function ) )
     {
-        EM_error2( exp_func->where,
-            "function call using a non-function value" );
-        // check if f is of type Type | 1.5.2.5 (ge) added
-        if( equals( f, env->ckt_class ) )
+        // check if this() -- for calling another constructor from a constructor | 1.5.4.4 (ge) added #2024-ctor-this
+        if( exp_func->s_type == ae_exp_primary && exp_func->primary.s_type == ae_primary_var && string(S_name(exp_func->primary.var)) == "this" )
         {
-            // provide hopefully helpful hint
-            EM_error2( 0, " |- (hint: creating an Object variable with a constructor?)" );
-            EM_error2( 0, " |- (...if so, try using the form `%s VARNAME(...)` instead)", f->actual_type->name().c_str() );
+            // NOTE should have already checked that we are within a class if `this` was used
+            assert( env->class_def != NULL );
+            // make a temp AST ctor call struct
+            a_Ctor_Call_ ctor_call;
+            // populate the args field
+            ctor_call.args = args;
+            // match constructor by args
+            ctor_call.func = type_engine_check_ctor_call( env, env->class_def, &ctor_call, NULL, exp_func->where );
+            // check for error
+            if( !ctor_call.func ) return NULL;
+            // set the function in question
+            theFunc = ctor_call.func;
+            // remember it as the func alias for `this`
+            exp_func->primary.func_alias = theFunc;
         }
-        return NULL;
-    }
-
-    // copy the func
-    up = f->func_bridge;
-
-    // check the arguments
-    if( args )
-    {
-        a = type_engine_check_exp( env, args );
-        if( !a ) return NULL;
-    }
-
-    // look for a match
-    t_CKBOOL hasError = FALSE;
-    theFunc = find_func_match( env, up, args, hasError, exp_func->where );
-
-    // no func
-    if( !theFunc )
-    {
-        // hasError implies an error has already been printed
-        if( hasError ) return NULL;
-
-        // if primary
-        if( exp_func->s_type == ae_exp_primary && exp_func->primary.s_type == ae_primary_var )
+        else // error case
         {
             EM_error2( exp_func->where,
-                "argument type(s) do not match...\n...for function '%s(...)'...",
-                S_name(exp_func->primary.var) );
+                      "function call using a non-function value" );
+            // check if f is of type Type | 1.5.2.5 (ge) added
+            if( equals( f, env->ckt_class ) )
+            {
+                // provide hopefully helpful hint
+                EM_error2( 0, " |- (hint: creating an Object variable with a constructor?)" );
+                EM_error2( 0, " |- (...if so, try using the form `%s VARNAME(...)` instead)", f->actual_type->name().c_str() );
+            }
+            return NULL;
+        }
+    }
+    else // exp_func's type is a function
+    {
+        // copy the func
+        up = f->func_bridge;
+
+        // check the arguments
+        if( args )
+        {
+            a = type_engine_check_exp( env, args );
+            if( !a ) return NULL;
+        }
+
+        // look for a match
+        t_CKBOOL hasError = FALSE;
+        theFunc = find_func_match( env, up, args, hasError, exp_func->where );
+
+        // no func
+        if( !theFunc )
+        {
+            // hasError implies an error has already been printed
+            if( hasError ) return NULL;
+
+            // if primary
+            if( exp_func->s_type == ae_exp_primary && exp_func->primary.s_type == ae_primary_var )
+            {
+                EM_error2( exp_func->where,
+                          "argument type(s) do not match...\n...for function '%s(...)'...",
+                          S_name(exp_func->primary.var) );
+            }
+            else if( exp_func->s_type == ae_exp_dot_member )
+            {
+                EM_error2( exp_func->dot_member.where,
+                          "argument type(s) do not match...\n...for function '%s(...)'...",
+                          type_engine_print_exp_dot_member( env, &exp_func->dot_member ).c_str() );
+            }
+            else
+            {
+                EM_error2( exp_func->where,
+                          "argument type(s) do not match for function..." );
+            }
+
+            EM_error2( 0,
+                      "...(please check the argument types)" );
+
+            return NULL;
+        }
+
+        // recheck the type with new name
+        if( exp_func->s_type == ae_exp_primary && exp_func->primary.s_type == ae_primary_var )
+        {
+            // set the new name
+            // TODO: clear old
+            exp_func->primary.var = insert_symbol(theFunc->name.c_str());
+            // make sure the type is still the name
+            if( *exp_func->type != *type_engine_check_exp( env, exp_func ) )
+            {
+                // error
+                EM_error2( exp_func->where,
+                          "(internal error) function type different on second check" );
+                return NULL;
+            }
         }
         else if( exp_func->s_type == ae_exp_dot_member )
         {
-            EM_error2( exp_func->dot_member.where,
-                "argument type(s) do not match...\n...for function '%s(...)'...",
-                type_engine_print_exp_dot_member( env, &exp_func->dot_member ).c_str() );
+            // set the new name
+            // TODO: clear old
+            exp_func->dot_member.xid = insert_symbol(theFunc->name.c_str());
+            /*
+             // TODO: figure if this is necessary - it type checks things twice!
+             // make sure the type is still the name
+             if( *exp_func->type != *type_engine_check_exp( env, exp_func ) )
+             {
+             // error
+             EM_error2( exp_func->where,
+             "(internal error) function type different on second check" );
+             return NULL;
+             }
+             */
         }
-        else
-        {
-            EM_error2( exp_func->where,
-                "argument type(s) do not match for function..." );
-        }
-
-        EM_error2( 0,
-            "...(please check the argument types)" );
-
-        return NULL;
+        else assert( FALSE );
     }
-
-    // recheck the type with new name
-    if( exp_func->s_type == ae_exp_primary && exp_func->primary.s_type == ae_primary_var )
-    {
-        // set the new name
-        // TODO: clear old
-        exp_func->primary.var = insert_symbol(theFunc->name.c_str());
-        // make sure the type is still the name
-        if( *exp_func->type != *type_engine_check_exp( env, exp_func ) )
-        {
-            // error
-            EM_error2( exp_func->where,
-                "(internal error) function type different on second check" );
-            return NULL;
-        }
-    }
-    else if( exp_func->s_type == ae_exp_dot_member )
-    {
-        // set the new name
-        // TODO: clear old
-        exp_func->dot_member.xid = insert_symbol(theFunc->name.c_str());
-        /*
-        // TODO: figure if this is necessary - it type checks things twice!
-        // make sure the type is still the name
-        if( *exp_func->type != *type_engine_check_exp( env, exp_func ) )
-        {
-            // error
-            EM_error2( exp_func->where,
-                "(internal error) function type different on second check" );
-            return NULL;
-        }
-        */
-    }
-    else assert( FALSE );
 
     // copy ck_func out (return by reference)
     ck_func = theFunc;
@@ -4905,6 +4992,10 @@ t_CKTYPE type_engine_check_exp_func_call( Chuck_Env * env, a_Exp exp_func, a_Exp
         }
         else if( env->class_def ) // in a class definition
         {
+            // check if a non-static stmt content is calling a static function | 1.5.4.4 (ge) added
+            // if so, no dependency since static is handled out-of-band
+            // t_CKBOOL skip = env->stmt_stack.size() && !env->stmt_stack.back()->hasStaticDecl && ck_func->is_static;
+
             // dependency tracking: add the callee's dependencies
             env->class_def->depends.add( &ck_func->depends );
         }
@@ -5116,7 +5207,8 @@ t_CKTYPE type_engine_check_exp_dot_member( Chuck_Env * env, a_Exp_Dot_Member mem
 {
     Chuck_Value * value = NULL;
     Chuck_Type * the_base = NULL;
-    t_CKBOOL base_static = FALSE;
+    t_CKBOOL base_type_static = FALSE;
+    t_CKBOOL base_exp_static = FALSE;
     string str;
 
     // type check the base
@@ -5137,10 +5229,10 @@ t_CKTYPE type_engine_check_exp_dot_member( Chuck_Env * env, a_Exp_Dot_Member mem
     }
 
     // is the base a class/namespace or a variable
-    base_static = type_engine_is_base_type_static( env, member->t_base );
-    // base_static = isa( member->t_base, env->ckt_class )
+    base_type_static = type_engine_is_base_type_static( env, member->t_base );
+
     // actual type
-    the_base = base_static ? member->t_base->actual_type : member->t_base;
+    the_base = base_type_static ? member->t_base->actual_type : member->t_base;
 
     // have members?
     if( !the_base->nspc )
@@ -5157,7 +5249,7 @@ t_CKTYPE type_engine_check_exp_dot_member( Chuck_Env * env, a_Exp_Dot_Member mem
     if( str == "this" )
     {
         // uh
-        if( base_static )
+        if( base_type_static )
         {
             EM_error2( member->where,
                 "keyword 'this' must be associated with object instance" );
@@ -5186,7 +5278,7 @@ t_CKTYPE type_engine_check_exp_dot_member( Chuck_Env * env, a_Exp_Dot_Member mem
     }
 
     // make sure
-    if( base_static && value->is_member )
+    if( base_type_static && value->is_instance_member )
     {
         // this won't work
         EM_error2( member->where,
@@ -5194,6 +5286,15 @@ t_CKTYPE type_engine_check_exp_dot_member( Chuck_Env * env, a_Exp_Dot_Member mem
             the_base->c_name(), S_name(member->xid) );
         return NULL;
     }
+
+    // FYI verification of static initialization rules reside in the emitter
+    // specifically in emit_engine_emit_exp_dot_member() -- this is due to
+    // the emitter implicitly handling both X.Y and Y (where Y is used inside
+    // X's definition), but the type-checker currently does not do this
+    // FYI this is for detecting things like:
+    // ""cannot call non-static function '%s' to initialize a static variable"
+    // 1.5.4.4 (ge) commented after trying to move the logic to this point
+    // and seeing incorrect unit test behavior | #2024-static-init
 
     return value->type;
 }
@@ -5989,8 +6090,50 @@ void Chuck_Namespace::get_funcs( vector<Chuck_Func *> & out, t_CKBOOL includeMan
 
 
 //-----------------------------------------------------------------------------
+// name: contains()
+// desc: check if a particular type is in this namespace | 1.5.4.4 (ge) added
+//-----------------------------------------------------------------------------
+t_CKBOOL Chuck_Namespace::contains( Chuck_Type * target ) const
+{
+    vector<Chuck_VM_Object *> results;
+    type.get_toplevel( results, FALSE );
+    return std::find( results.begin(), results.end(), target ) != results.end();
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: contains()
+// desc: check if a particular value is in this namespace | 1.5.4.4 (ge) added
+//-----------------------------------------------------------------------------
+t_CKBOOL Chuck_Namespace::contains( Chuck_Value * target ) const
+{
+    vector<Chuck_VM_Object *> results;
+    value.get_toplevel( results, FALSE );
+    return std::find( results.begin(), results.end(), target ) != results.end();
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: contains()
+// desc; check if a particular function is in this namespace | 1.5.4.4 (ge) added
+//-----------------------------------------------------------------------------
+t_CKBOOL Chuck_Namespace::contains( Chuck_Func * target ) const
+{
+    vector<Chuck_VM_Object *> results;
+    func.get_toplevel( results, TRUE );
+    return std::find( results.begin(), results.end(), target ) != results.end();
+}
+
+
+
+
+//-----------------------------------------------------------------------------
 // name: operator ==
-// desc: ...
+// desc: type equivalence
 //-----------------------------------------------------------------------------
 t_CKBOOL operator ==( const Chuck_Type & lhs, const Chuck_Type & rhs )
 {
@@ -6976,7 +7119,7 @@ Chuck_Type * type_engine_import_class_begin( Chuck_Env * env, Chuck_Type * type,
     value->owner = where; CK_SAFE_ADD_REF( value->owner );
     // CK_SAFE_REF_ASSIGN( value->owner, where );
     value->is_const = TRUE;
-    value->is_member = FALSE;
+    value->is_instance_member = FALSE;
 
     // add to env
     where->add_value( value->name, value );
@@ -8213,6 +8356,19 @@ Chuck_Type * Chuck_Env::get_array_type( Chuck_Type * array_parent,
 
 
 //-----------------------------------------------------------------------------
+// name: get_array_type()
+// desc: retrieve array type based on parameters | 1.5.4.3 (ge, nick, andrew) added
+//-----------------------------------------------------------------------------
+Chuck_Type * Chuck_Env::get_array_type( t_CKUINT depth, Chuck_Type * base_type )
+{
+    // call through
+    return get_array_type( this->ckt_array, depth, base_type );
+}
+
+
+
+
+//-----------------------------------------------------------------------------
 // name: commit_namespaces()
 // desc: commit namespace | 1.5.4.3 (ge) added
 //-----------------------------------------------------------------------------
@@ -8317,6 +8473,14 @@ Chuck_Type * Chuck_ArrayTypeCache::getOrCreate( Chuck_Env * env,
                                                 Chuck_Type * base_type /* ,
                                                 Chuck_Namespace * owner_nspc */ )
 {
+    // consistency check | 1.5.4.4 (ge) added
+    if( base_type->array_depth )
+    {
+        // print error message
+        EM_error2( 0, "(internal error) array type cache base_type cannot be an array type" );
+        return NULL;
+    }
+
     // if cache not enabled
     if( !m_enabled )
     {
@@ -9472,7 +9636,7 @@ Chuck_Value::Chuck_Value( Chuck_Type * t, const std::string & n, void * a,
     is_const = c; access = acc;
     owner = o; CK_SAFE_ADD_REF( owner ); // add reference
     owner_class = oc; CK_SAFE_ADD_REF( owner_class ); // add reference
-    addr = a; is_member = FALSE;
+    addr = a; is_instance_member = FALSE;
     is_static = FALSE; is_context_global = FALSE;
     is_decl_checked = TRUE; // only set to false in certain cases
     is_global = FALSE;
@@ -9879,8 +10043,9 @@ const Chuck_Value_Dependency * Chuck_Value_Dependency_Graph::locateLocal(
         {
             // usage NOT from within a class def; value in question NOT a class member OR
             // usage from within a class def; value in question is a class member of the same class
-            if( (fromClassDef==NULL && v->is_member==FALSE) ||
-                (fromClassDef && v->is_member && equals(v->owner_class, fromClassDef)) )
+            // 1.5.4.4 (ge) add is_static to the logic (otherwise this will not work for static variables) #2024-static-init
+            if( (fromClassDef == NULL && !v->is_instance_member && !v->is_static) ||
+                (fromClassDef && equals(v->owner_class, fromClassDef) && (v->is_instance_member|| v->is_static)) )
             {
                 // return dependency
                 return &directs[i];
@@ -10787,8 +10952,8 @@ void Chuck_Type::apropos_vars( std::string & output, const std::string & PREFIX,
             if( value->name.length() == 0 ) continue;
             // see if name is internally reserved
             if( value->name[0] == '@' ) continue;
-            // see if name is a function
-            if( value->type->base_name == "[function]" ) continue;
+            // see if value is a function
+            if( value->func_ref ) continue;
 
             // check for static declaration
             if( value->is_static ) {

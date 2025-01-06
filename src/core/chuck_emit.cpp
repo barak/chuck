@@ -165,7 +165,7 @@ t_CKBOOL emit_engine_shutdown( Chuck_Emitter *& emit )
 
 //-----------------------------------------------------------------------------
 // name: emit_engine_emit_prog()
-// desc: ...
+// desc: emit a chuck program/AST into VM bytecode
 //-----------------------------------------------------------------------------
 Chuck_VM_Code * emit_engine_emit_prog( Chuck_Emitter * emit, a_Program prog,
                                        te_HowMuch how_much )
@@ -208,6 +208,14 @@ Chuck_VM_Code * emit_engine_emit_prog( Chuck_Emitter * emit, a_Program prog,
     // push global scope (added 1.3.0.0)
     emit->push_scope();
 
+    // for separating out function defs and class defs | 1.5.4.4 (ge) added
+    // this is to re-order code emission by stmt_lists -> func defs -> class defs
+    // ensures that local (file-scope) variables have a chance to acquire a stack offset
+    // before their use from functions and classes -- even if the local var declaration
+    // appears after the function or class definintion
+    vector<a_Func_Def> func_defs;
+    vector<a_Class_Def> class_defs;
+
     // loop over the program sections
     while( prog && ret )
     {
@@ -223,17 +231,16 @@ Chuck_VM_Code * emit_engine_emit_prog( Chuck_Emitter * emit, a_Program prog,
         case ae_section_func: // function definition
             // check the compilation criteria | 1.5.2.5 (ge) added
             if( !howMuch_criteria_match( how_much, prog->section->func_def ) ) break;
-            // check function definition
-            ret = emit_engine_emit_func_def( emit, prog->section->func_def );
+            // add function def for emission
+            func_defs.push_back( prog->section->func_def );
             break;
 
         case ae_section_class: // class definition
             // 1.5.2.5 (ge) check the compilation criteria
             // if( !howMuch_criteria_match( how_much, prog->section->class_def ) ) break;
             // 1.5.4.0 (ge) commented out (see type_engine_prog0_scan() for explanation)
-
-            // emit class definition
-            ret = emit_engine_emit_class_def( emit, prog->section->class_def );
+            // add class def for emission
+            class_defs.push_back( prog->section->class_def );
             break;
 
         default: // bad
@@ -250,9 +257,24 @@ Chuck_VM_Code * emit_engine_emit_prog( Chuck_Emitter * emit, a_Program prog,
         prog = prog->next;
     }
 
+    // iterate over func defs, as long as `ret` is true | 1.5.4.4 (ge) moved out to here
+    for( size_t i = 0; ret && (i<func_defs.size()); i++ )
+    {
+        // check function definition
+        ret = emit_engine_emit_func_def( emit, func_defs[i] );
+    }
+
+    // iterate over class defs, as long as `ret` is true | 1.5.4.4 (ge) moved out to here
+    for( size_t i = 0; ret && (i<class_defs.size()); i++ )
+    {
+        // emit class definition
+        ret = emit_engine_emit_class_def( emit, class_defs[i] );
+    }
+
     // 1.4.1.0 (jack): error-checking: was dac-replacement initted?
     // (see chuck_compile.h for an explanation on replacement dacs)
-    if( emit->should_replace_dac )
+    // 1.5.4.4 (ge) added ret check
+    if( ret && emit->should_replace_dac )
     {
         if( !emit->env->vm()->globals_manager()->is_global_ugen_init( emit->dac_replacement ) )
         {
@@ -474,7 +496,7 @@ t_CKBOOL emit_engine_emit_stmt( Chuck_Emitter * emit, a_Stmt stmt, t_CKBOOL pop 
 
         // get associated class
         Chuck_Type * type = emit->env->class_def;
-        // push the current code sequender
+        // push the current code sequencer
         emit->code_stack.push_back( emit->code );
         // set the static code sequencer as the current
         emit->code = type->static_code_emit;
@@ -592,7 +614,12 @@ t_CKBOOL emit_engine_emit_stmt( Chuck_Emitter * emit, a_Stmt stmt, t_CKBOOL pop 
             break;
         }
 
-        case ae_stmt_import: // 1.5.2.5 (ge) added
+        case ae_stmt_import: // 1.5.4.0 (ge) added
+            // do nothing here (return true to bypass)
+            ret = TRUE;
+            break;
+
+        case ae_stmt_doc: // 1.5.4.4 (ge) added
             // do nothing here (return true to bypass)
             ret = TRUE;
             break;
@@ -3414,7 +3441,9 @@ t_CKBOOL emit_engine_emit_op_at_chuck( Chuck_Emitter * emit, a_Exp lhs, a_Exp rh
     if( isa( left, right ) )
     {
         // basic types?
-        if( type_engine_check_primitive( emit->env, left ) || isa( left, emit->env->ckt_string ) )
+        // 1.5.4.4 (ge) updated to isa( right, emit->env->ckt_string ) instead of left
+        // in case left is null; right can't be null since null should be const
+        if( type_engine_check_primitive( emit->env, left ) || isa( right, emit->env->ckt_string ) )
         {
             // assigment?
             if( rhs->s_meta != ae_meta_var )
@@ -3434,7 +3463,9 @@ t_CKBOOL emit_engine_emit_op_at_chuck( Chuck_Emitter * emit, a_Exp lhs, a_Exp rh
                 emit->append( instr = new Chuck_Instr_Time_Advance );
                 instr->set_linepos( lhs->line );
             }
-            else if( isa( left, emit->env->ckt_string ) ) // string
+            // string | 1.5.4.4 (ge) updated to check right instead of left
+            // in case left is null; right can't be null since null should be const
+            else if( isa( right, emit->env->ckt_string ) )
             {
                 // assign string
                 emit->append( new Chuck_Instr_Assign_String );
@@ -3473,6 +3504,7 @@ t_CKBOOL emit_engine_emit_op_at_chuck( Chuck_Emitter * emit, a_Exp lhs, a_Exp rh
     }
 
     // TODO: deal with const
+    // 1.5.4.4 (ge) if RHS is a var, now const is checked in
 
     // no match
     EM_error2( lhs->where,
@@ -4347,6 +4379,17 @@ t_CKBOOL emit_engine_emit_exp_func_call( Chuck_Emitter * emit,
         return FALSE;
     }
 
+    // get the function as exp | 1.5.4.4 (ge) added to support calling this() #2024-ctor-this
+    a_Exp exp_func = func_call->func;
+    // check if this() -- for calling another constructor from a constructor | 1.5.4.4 (ge) added
+    if( exp_func->s_type == ae_exp_primary && exp_func->primary.s_type == ae_primary_var && string(S_name(exp_func->primary.var)) == "this" )
+    {
+        // NOTE should have already checked that we are within a class if `this` was used
+        assert( emit->env->class_def != NULL );
+        // emit the contructor func | (don't need to dup last since we are not resolving from a dot_member
+        emit->append( new Chuck_Instr_Reg_Push_Imm( (t_CKUINT)exp_func->primary.func_alias ) );
+    }
+
     // line and pos
     t_CKUINT line = func_call->line;
     t_CKUINT where = func_call->where;
@@ -4400,6 +4443,12 @@ t_CKBOOL emit_engine_emit_exp_func_call( Chuck_Emitter * emit,
     // should help prevent confusing crashes; removing check for spork
     if( !emit->env->func /* && !spork */ )
     {
+        // check if we should check for dependency | 1.5.4.4 (ge) added #2024-static-init
+        // can skip check if 1) we are in a class def 2) not in a stmt marked for static init 3) the function we are calling is static
+        // actually, this doesn't work for cases where static functions actually depend (implicitly) on instance members / pre-ctor
+        // for example through the use of new; see test/06-Errors/error-depend-class-extend.ck
+        // t_CKBOOL skip = ( emit->env->class_def && !emit->env->in_static_stmt() && func->is_static );
+
         // dependency tracking: check if we invoke func before all its deps are initialized | 1.5.0.8 (ge) added
         // NOTE if func originates from another file, this should behave correctly and return NULL | 1.5.1.1 (ge) fixed
         // NOTE passing in emit->env->class_def, to differentiate dependencies across class definitions | 1.5.2.0 (ge) fixed
@@ -4747,16 +4796,16 @@ t_CKBOOL emit_engine_emit_exp_dot_member( Chuck_Emitter * emit,
 
     // get the value to test | 1.5.4.3 (ge) added as part of #2024-static-init
     // NOTE: this type of check usually resides pre-emisssion, in the type-checker
-    // but in this case, the hasStaticDecl check happens in the type-checker
-    // and this verification needs to be come after that
+    // but in this case, dot_member() emission also implicitly covers symbol X
+    // if X is a member of a class (type-checker does not do this implicit conversion at the moment)
     Chuck_Value * v = type_engine_find_value( t_base, member->xid );
     if( v && (!base_type_static && !base_exp_static)
           && emit->env->class_def && !emit->env->func
-          && (emit->env->stmt_stack.size() && emit->env->stmt_stack.back()->hasStaticDecl) )
+          && emit->env->in_static_stmt() )
     {
         if( v->func_ref )
         {
-            if( v->is_member )
+            if( v->is_instance_member )
             {
                 EM_error2( member->where,
                            "cannot call non-static function '%s' to initialize a static variable", v->func_ref->signature(FALSE,FALSE).c_str() );
@@ -4828,7 +4877,7 @@ t_CKBOOL emit_engine_emit_exp_dot_member( Chuck_Emitter * emit,
             offset = value->offset;
 
             // is the value static?
-            if( value->is_member )
+            if( value->is_instance_member )
             {
                 // emit the base (TODO: return on error?)
                 emit_engine_emit_exp( emit, member->base );
@@ -5363,7 +5412,7 @@ t_CKBOOL emit_engine_emit_exp_decl( Chuck_Emitter * emit, a_Exp_Decl decl,
         // put in the value
 
         // member
-        if( value->is_member )
+        if( value->is_instance_member )
         {
             // zero out location in object, and leave addr on operand stack
             // added 1.3.1.0: iskindofint -- on some 64-bit systems, sz_int == sz_FLOAT
@@ -6199,7 +6248,7 @@ t_CKBOOL emit_engine_emit_symbol( Chuck_Emitter * emit, S_Symbol symbol,
     }
 
     // if part of class - this only works because x.y is handled separately
-    if( v->owner_class && (v->is_member || v->is_static) )
+    if( v->owner_class && (v->is_instance_member || v->is_static) )
     {
         // make sure talking about the same class
         // this doesn't work since the owner class could be a super class
@@ -6249,27 +6298,17 @@ t_CKBOOL emit_engine_emit_symbol( Chuck_Emitter * emit, S_Symbol symbol,
         return TRUE;
     }
 
-    // 1.5.4.3 (ge) added this check #2024-static-init
-    // static variable declarations cannot access values that
-    if( v && v->is_context_global && !v->is_global
-          && emit->env->class_def && !emit->env->func && (emit->env->stmt_stack.size() && emit->env->stmt_stack.back()->hasStaticDecl) )
-    {
-        if( v->func_ref )
-        {
-            EM_error2( exp->where,
-                       "cannot call local function '%s' to initialize a static variable", v->func_ref->signature(FALSE,FALSE).c_str() );
-        }
-        else
-        {
-            EM_error2( exp->where,
-                       "cannot access local variable '%s' to initialize a static variable", S_name( exp->var ) );
-        }
-        return FALSE;
-    }
-
     // var or value
     if( emit_var )
     {
+        // check for const | 1.5.4.4 (ge) added
+        if( v->is_const )
+        {
+            EM_error2( exp->where,
+                       "cannot modify constant variable '%s'", S_name( exp->var ) );
+            return FALSE;
+        }
+
         // emit as addr
         if( v->is_global )
         {
@@ -6301,6 +6340,14 @@ t_CKBOOL emit_engine_emit_symbol( Chuck_Emitter * emit, S_Symbol symbol,
                 new Chuck_Instr_Reg_Push_Global( v->name, global_type );
             instr->set_linepos( line );
             emit->append( instr );
+        }
+        else if( isa(v->type, emit->env->ckt_class) &&
+                 v->owner->lookup_type( v->name, 0, TRUE ) ) // 1.5.4.4 (ge) if the value is of type Type (e.g., <<< SinOsc >>>;)
+        {
+            // look up the type by name in the value's owner namespace, climb==0, stayWithinClassDef==TRUE
+            Chuck_Type * type = v->owner->lookup_type( v->name, 0, TRUE );
+            // append the value pointer directly | 1.5.4.4 (ge) added
+            emit->append( new Chuck_Instr_Reg_Push_Imm( (t_CKUINT)type ) );
         }
         // check size
         // (added 1.3.1.0: iskindofint -- since in some 64-bit systems, sz_INT == sz_FLOAT)
