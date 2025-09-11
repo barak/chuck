@@ -9,17 +9,20 @@ export CFLAGS:=$(CPPFLAGS) $(CFLAGS)
 %:
 	dh $@ --sourcedirectory=src
 
-# The build targets "linux" generates a single chuck executable with
+# The build target "linux" generates a single chuck executable with
 # support for multiple sound systems: alsa, pulse, and jack.
 #
 # CHUCK_STRICT=1 just turns on -Wall.
 #
-# Can add CHUCK_DEBUG=y here if desired; it no longer breaks the
-# build. It does three things: include -g, turn off -O3, and turn on
-# some debugging stuff in memory allocation.
-override_dh_auto_build:
+# Can add CHUCK_DEBUG=y here if desired. It does three things:
+#  - include -g
+#  - do not include -O3
+#  - enable memory allocation debugging support
+override_dh_auto_build: debian/chuck.1
 	dh_auto_build -- CHUCK_STRICT=1 linux
-	docbook-to-man debian/chuck.sgml > debian/chuck.1
+
+debian/chuck.1: debian/chuck.sgml
+	docbook-to-man $< > $@
 
 override_dh_installchangelogs:
 	dh_installchangelogs VERSIONS
