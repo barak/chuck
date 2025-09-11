@@ -8,7 +8,7 @@
 manpage.1: manpage.sgml
 	docbook-to-man $< > $@
 
-    
+
 	The docbook-to-man binary is found in the docbook-to-man package.
 	Please remember that if you create the nroff version in one of the
 	debian/rules file targets (such as build), you will need to include
@@ -20,7 +20,7 @@ manpage.1: manpage.sgml
   <!ENTITY dhfirstname "<firstname>Paul</firstname>">
   <!ENTITY dhsurname   "<surname>Brossier</surname>">
   <!-- Please adjust the date whenever revising the manpage. -->
-  <!ENTITY dhdate      "<date>20051214</date>">
+  <!ENTITY dhdate      "<date>20250911</date>">
   <!-- SECTION should be 1-8, maybe w/ subsection other parameters are
        allowed: see man(7), man(1). -->
   <!ENTITY dhsection   "<manvolnum>1</manvolnum>">
@@ -71,7 +71,7 @@ manpage.1: manpage.sgml
 chuck version: 1.2.0.4 (dracula)
    http://chuck.cs.princeton.edu/
 -->
-  
+
   <refsynopsisdiv>
     <cmdsynopsis>
       <command>&dhpackage;</command>
@@ -94,7 +94,7 @@ chuck version: 1.2.0.4 (dracula)
       <arg><option>--probe</option></arg>
       <arg><option>--blocking</option></arg>
       <arg><option>--callback</option></arg>
-      
+
       <arg><option>--add</option></arg>
       <arg><option>--remove</option></arg>
       <arg><option>--replace</option></arg>
@@ -118,7 +118,7 @@ chuck version: 1.2.0.4 (dracula)
   <refsect1>
     <title>DESCRIPTION</title>
 
-    <para>This manual page documents briefly the <command>&dhpackage;</command>
+    <para>This manual page briefly documents the <command>&dhpackage;</command>
 commands.</para>
 
     <para><command>&dhpackage;</command> is a new audio programming language
@@ -130,9 +130,8 @@ programming model, which supports multiple, simultaneous, dynamic control
 rates, and the ability to add, remove, and modify code, on-the-fly, while the
 program is running, without stopping or restarting.</para>
 
-    <para>Use <command>&dhpackage;</command> for jack audio interfaces,
-    <command>&dhpackage;.alsa</command> to access alsa devices,
-    and <command>&dhpackage;.pulse</command> to access pulse devices.</para>
+    <para>The <command>&dhpackage;</command> program is built with support for
+three audio back ends: jack, alsa, and pulse.</para>
 
   </refsect1>
   <refsect1>
@@ -141,7 +140,7 @@ program is running, without stopping or restarting.</para>
     <para>A summary of options is included below.</para>
 
     <variablelist>
-      
+
       <varlistentry><term><option>--add <replaceable>file.ck</replaceable></option></term>
         <listitem><para>Add a file to a running chuck server.</para></listitem>
       </varlistentry>
@@ -249,8 +248,9 @@ detected otherwise).</para></listitem>
 
     <para>This manual page was written by &dhusername;
 <command>&dhemail;</command>.  Permission is granted to copy, distribute and/or
-modify this document under the terms of the &gnu; General Public License,
-Version 2 any later version published by the Free Software Foundation.  </para>
+modify this document under the terms of the &gnu; General Public License; either
+version 2 of the License, or (at your option) any later version published by the
+Free Software Foundation.</para>
 
 	<para>
 	  On Debian systems, the complete text of the GNU General Public
@@ -276,5 +276,3 @@ sgml-local-catalogs:nil
 sgml-local-ecat-files:nil
 End:
 -->
-
-
