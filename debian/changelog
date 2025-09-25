@@ -1,9 +1,10 @@
-chuck (1.5.5.2-2) UNRELEASED; urgency=medium
+chuck (1.5.5.5-1) unstable; urgency=medium
 
   * Update man page source debian/chuck.sgml
   * Tweak debian/rules
+  * New upstream version
 
- -- Barak A. Pearlmutter <bap@debian.org>  Thu, 11 Sep 2025 08:51:51 +0100
+ -- Barak A. Pearlmutter <bap@debian.org>  Thu, 25 Sep 2025 16:01:54 +0100
 
 chuck (1.5.5.2-1) unstable; urgency=medium
 
