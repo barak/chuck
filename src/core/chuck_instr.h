@@ -1666,6 +1666,45 @@ public:
 
 
 //-----------------------------------------------------------------------------
+// name: struct Chuck_Instr_Negate_vec2
+// desc: ...
+//-----------------------------------------------------------------------------
+struct Chuck_Instr_Negate_vec2 : public Chuck_Instr
+{
+public:
+    virtual void execute( Chuck_VM * vm, Chuck_VM_Shred * shred );
+};
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: struct Chuck_Instr_Negate_vec3
+// desc: ...
+//-----------------------------------------------------------------------------
+struct Chuck_Instr_Negate_vec3 : public Chuck_Instr
+{
+public:
+    virtual void execute( Chuck_VM * vm, Chuck_VM_Shred * shred );
+};
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: struct Chuck_Instr_Negate_vec4
+// desc: ...
+//-----------------------------------------------------------------------------
+struct Chuck_Instr_Negate_vec4 : public Chuck_Instr
+{
+public:
+    virtual void execute( Chuck_VM * vm, Chuck_VM_Shred * shred );
+};
+
+
+
+
+//-----------------------------------------------------------------------------
 // name: struct Chuck_Instr_Lt_double
 // desc: ...
 //-----------------------------------------------------------------------------
@@ -3796,6 +3835,33 @@ public:
 
 protected:
     t_CKUINT m_offset;
+};
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: struct Chuck_Instr_Dot_Member_Func_Super | 1.5.5.6 (niccolo) added
+// desc: access the super member function of object by offset and type
+//-----------------------------------------------------------------------------
+struct Chuck_Instr_Dot_Member_Func_Super : public Chuck_Instr
+{
+public:
+    Chuck_Instr_Dot_Member_Func_Super( t_CKUINT offset, const Chuck_Type * type )
+    { m_offset = offset; m_type = type; }
+
+public:
+    virtual void execute( Chuck_VM * vm, Chuck_VM_Shred * shred );
+    virtual const char * params() const
+    { static char buffer[CK_PRINT_BUF_LENGTH];
+      snprintf( buffer, CK_PRINT_BUF_LENGTH, "offset=%ld super='%s'",
+                (long)m_offset, m_type ? m_type->base_name.c_str() : "[NULL]" );
+      return buffer; }
+
+protected:
+    t_CKUINT m_offset;
+    const Chuck_Type * m_type; // not const so we can get name
+    Chuck_Func * get_func( Chuck_Object * obj ) const;
 };
 
 
