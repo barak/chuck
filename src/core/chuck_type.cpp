@@ -3449,8 +3449,13 @@ t_CKTYPE type_engine_check_exp_unary( Chuck_Env * env, a_Exp_Unary unary )
         break;
 
         case ae_op_minus:
-            // float
-            if( isa( t, env->ckt_float ) ) return t;
+            // float, vec2
+            if( 
+                isa( t, env->ckt_float ) ||
+                isa( t, env->ckt_vec2 ) ||
+                isa( t, env->ckt_vec3 ) ||
+                isa( t, env->ckt_vec4 )
+            ) return t;
         case ae_op_tilda:
         case ae_op_exclamation:
             // int
@@ -3631,6 +3636,37 @@ t_CKTYPE type_engine_check_exp_primary( Chuck_Env * env, a_Exp_Primary exp )
                 exp->self->s_meta = ae_meta_value;
                 // whatever the class is
                 t = env->class_def;
+            }
+            else if( str == "super" ) // 1.5.5.6 (niccolo) added
+            {
+                // in class def
+                if( !env->class_def )
+                {
+                    EM_error2( exp->where,
+                        "keyword 'super' cannot used outside class definition" );
+                    return NULL;
+                }
+
+                // in member func
+                if( env->func && !env->func->is_member )
+                {
+                    EM_error2( exp->where,
+                        "keyword 'super' cannot be used inside static functions" );
+                    return NULL;
+                }
+                
+                // class is the base Object class
+                if( env->class_def->base_name == "Object" )
+                {
+                    EM_error2( exp->where,
+                        "keyword 'super' cannot be used from within the Object class" );
+                    return NULL;
+                }
+
+                // not assignable
+                exp->self->s_meta = ae_meta_value;
+                // parent class type
+                t = env->class_def->parent_type;
             }
             else if( str == "me" ) // me
             {
@@ -5950,7 +5986,7 @@ Chuck_Namespace::~Chuck_Namespace()
 void Chuck_Namespace::add_type( const std::string & xid, Chuck_Type * theType )
 {
     // log it
-    EM_log( CK_LOG_DEBUG, "namespace '%s' adding type '%s'->'%s'", this->name.c_str(), xid.c_str(), theType->name().c_str() );
+    EM_log( CK_LOG_FINER, "namespace '%s' adding type '%s'->'%s'", this->name.c_str(), xid.c_str(), theType->name().c_str() );
     // add it
     this->type.add( xid, theType );
 }
@@ -5965,7 +6001,7 @@ void Chuck_Namespace::add_type( const std::string & xid, Chuck_Type * theType )
 void Chuck_Namespace::add_value( const std::string & xid, Chuck_Value * theValue )
 {
     // log it
-    EM_log( CK_LOG_DEBUG, "namespace '%s' adding value '%s'->'%s'", this->name.c_str(), xid.c_str(), theValue->name.c_str() );
+    EM_log( CK_LOG_FINER, "namespace '%s' adding value '%s'->'%s'", this->name.c_str(), xid.c_str(), theValue->name.c_str() );
     // add it
     this->value.add( xid, theValue );
 }
@@ -5980,7 +6016,7 @@ void Chuck_Namespace::add_value( const std::string & xid, Chuck_Value * theValue
 void Chuck_Namespace::add_func( const std::string & xid, Chuck_Func * theFunc )
 {
     // log it
-    EM_log( CK_LOG_DEBUG, "namespace '%s' adding func '%s'->'%s'", this->name.c_str(), xid.c_str(), theFunc->base_name.c_str() );
+    EM_log( CK_LOG_FINER, "namespace '%s' adding func '%s'->'%s'", this->name.c_str(), xid.c_str(), theFunc->base_name.c_str() );
     // add it
     this->func.add( xid, theFunc );
 }
@@ -6285,7 +6321,7 @@ t_CKBOOL operator !=( const Chuck_Type & lhs, const Chuck_Type & rhs )
 // name: equals()
 // desc: type equivalence test
 //-----------------------------------------------------------------------------
-t_CKBOOL equals( Chuck_Type * lhs, Chuck_Type * rhs ) { return (*lhs) == (*rhs); }
+t_CKBOOL equals( const Chuck_Type * lhs, const Chuck_Type * rhs ) { return (*lhs) == (*rhs); }
 
 
 
@@ -8157,6 +8193,9 @@ void type_engine_init_op_overload_builtin( Chuck_Env * env )
     registry->reserve( NULL, ae_op_minusminus, env->ckt_float );
     registry->reserve( NULL, ae_op_minus, env->ckt_int );
     registry->reserve( NULL, ae_op_minus, env->ckt_float );
+    registry->reserve( NULL, ae_op_minus, env->ckt_vec2 );
+    registry->reserve( NULL, ae_op_minus, env->ckt_vec3 );
+    registry->reserve( NULL, ae_op_minus, env->ckt_vec4 );
     registry->reserve( NULL, ae_op_tilda, env->ckt_int );
     registry->reserve( NULL, ae_op_exclamation, env->ckt_int );
     registry->reserve( NULL, ae_op_new, env->ckt_object );

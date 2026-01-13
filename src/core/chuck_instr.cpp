@@ -3236,6 +3236,51 @@ void Chuck_Instr_Negate_double::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
 // name: execute()
 // desc: ...
 //-----------------------------------------------------------------------------
+void Chuck_Instr_Negate_vec2::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
+{
+    t_CKVEC2* sp = (t_CKVEC2 *)shred->reg->sp;
+    (sp-1)->x *= -1;
+    (sp-1)->y *= -1;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: execute()
+// desc: ...
+//-----------------------------------------------------------------------------
+void Chuck_Instr_Negate_vec3::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
+{
+    t_CKVEC3* sp = (t_CKVEC3 *)shred->reg->sp;
+    (sp-1)->x *= -1;
+    (sp-1)->y *= -1;
+    (sp-1)->z *= -1;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: execute()
+// desc: ...
+//-----------------------------------------------------------------------------
+void Chuck_Instr_Negate_vec4::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
+{
+    t_CKVEC4* sp = (t_CKVEC4 *)shred->reg->sp;
+    (sp-1)->x *= -1;
+    (sp-1)->y *= -1;
+    (sp-1)->z *= -1;
+    (sp-1)->w *= -1;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: execute()
+// desc: ...
+//-----------------------------------------------------------------------------
 void Chuck_Instr_Branch_Lt_double::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
 {
     t_CKFLOAT *& sp = (t_CKFLOAT *&)shred->reg->sp;
@@ -7753,6 +7798,67 @@ error:
     // do something!
     shred->is_running = FALSE;
     shred->is_done = TRUE;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: execute()
+// desc: call super class member function | 1.5.5.6 (niccolo) added
+//-----------------------------------------------------------------------------
+void Chuck_Instr_Dot_Member_Func_Super::execute( Chuck_VM * vm, Chuck_VM_Shred * shred )
+{
+    // register stack pointer
+    t_CKUINT *& sp = (t_CKUINT *&)shred->reg->sp;
+    // the pointer
+    t_CKUINT data;
+
+    // pop the object pointer
+    pop_( sp, 1 );
+    // get the object pointer
+    Chuck_Object * obj = (Chuck_Object *)(*sp);
+    // check
+    if( !obj ) goto error;
+    // make sure we are in range
+    assert( m_offset < obj->vtable->funcs.size() );
+    // calculate the data pointer
+    data = (t_CKUINT)get_func( obj );
+    
+    // push the address
+    push_( sp, data );
+
+    return;
+
+error:
+    // we have a problem
+    EM_exception(
+        "NullPointer: on line[%lu] in shred[id=%lu:%s]",
+        m_linepos, shred->xid, shred->name.c_str() );
+
+    // do something!
+    shred->is_running = FALSE;
+    shred->is_done = TRUE;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+// name: get_func() | 1.5.5.6 (niccolo) added
+// desc: recursively, move up until the function from the correct type is found
+//-----------------------------------------------------------------------------
+Chuck_Func * Chuck_Instr_Dot_Member_Func_Super::get_func( Chuck_Object * obj ) const
+{
+    // current func and type
+    Chuck_Func * func = obj->vtable->funcs[m_offset];
+    // move up until the type matches, or we it can no longer go up
+    while( !equals( func->value_ref->owner_class, m_type) && func->up )
+    {
+        // super class function
+        func = func->up->owner->obj_v_table.funcs[m_offset];
+    }
+    return func;
 }
 
 
