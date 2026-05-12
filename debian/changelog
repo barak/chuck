@@ -1,8 +1,9 @@
-chuck (1.5.5.7-2) unstable; urgency=medium
+chuck (1.5.5.8-1) unstable; urgency=medium
 
   * Bump policy
+  * New upstream version
 
- -- Barak A. Pearlmutter <bap@debian.org>  Tue, 12 May 2026 08:28:27 +0100
+ -- Barak A. Pearlmutter <bap@debian.org>  Tue, 12 May 2026 08:31:58 +0100
 
 chuck (1.5.5.7-1) unstable; urgency=medium
 
