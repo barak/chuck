@@ -1,0 +1,55 @@
+ChucK HID input on Debian
+=========================
+
+ChucK's Hid class can read joysticks/gamepads, keyboards, and mice.
+Examples are in /usr/share/doc/chuck-data/examples/hid/ (package
+chuck-data).
+
+Joysticks and gamepads
+----------------------
+
+These work out of the box.  ChucK reads them via /dev/input/js*, which
+Debian makes readable by all users.
+
+Keyboards and mice
+------------------
+
+ChucK reads keyboards and mice via /dev/input/event*.  These are
+readable only by root and group "input", so by default this fails with:
+
+  hid: please verify you have read permissions to input device ...
+
+This restriction is deliberate.  Reading a keyboard's event device
+captures every keystroke on the system regardless of which window has
+focus, including passwords typed into a lock screen or sudo.  That is
+also why you should NOT add yourself to the "input" group: it lets any
+program you run log all your keystrokes.
+
+Alternatives, safest first:
+
+ 1. For keyboard input, use ChucK's KBHit class instead of Hid.  It reads
+    keys typed into the terminal running chuck, needs no permissions,
+    and cannot see input to other windows.  See the examples in
+    /usr/share/doc/chuck-data/examples/hid/kbhit/.
+
+ 2. To use a keyboard-like or mouse-like device as a controller, use a
+    separate, dedicated device (a USB numeric keypad, a spare mouse, a
+    foot pedal, ...) and grant access to that one device only.  Find its
+    USB vendor and product IDs with lsusb (shown as ID vvvv:pppp), then
+    create /etc/udev/rules.d/70-chuck-hid.rules containing, e.g.:
+
+      SUBSYSTEM=="input", KERNEL=="event*", ATTRS{idVendor}=="vvvv", ATTRS{idProduct}=="pppp", TAG+="uaccess"
+
+    The file name must sort before 73-seat-late.rules for the uaccess
+    tag to take effect.  Then run
+
+      sudo udevadm control --reload
+      sudo udevadm trigger
+
+    or replug the device.  systemd-logind will then give the user at the
+    active local seat (and only that user) read access to that device.
+
+    Do not do this for the keyboard you normally type on, as that
+    re-opens the keystroke logging hole described above.
+
+ -- Barak A. Pearlmutter <bap@debian.org>  Thu, 15 Oct 2026 12:00:00 +0100

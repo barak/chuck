@@ -1,3 +1,9 @@
+chuck (1.5.5.8-3) UNRELEASED; urgency=medium
+
+  * Add README.Debian explaining HID keyboard/mouse device permissions
+
+ -- Barak A. Pearlmutter <bap@debian.org>  Thu, 15 Oct 2026 11:59:02 +0100
+
 chuck (1.5.5.8-2) unstable; urgency=medium
 
   * Fix race at shutdown that made chuck segfault on exit, causing
