@@ -5,7 +5,7 @@ Homepage: https://chuck.cs.princeton.edu
 Standards-Version: 4.7.4
 Vcs-Git: https://salsa.debian.org/debian/chuck.git
 Vcs-Browser: https://salsa.debian.org/debian/chuck
-Build-Depends: debhelper-compat (= 13),
+Build-Depends: debhelper-compat (= 14),
     bison,
     docbook-to-man,
     flex,
@@ -15,12 +15,11 @@ Build-Depends: debhelper-compat (= 13),
     libsndfile1-dev,
     python3,
     jdupes,
-Priority: optional
 Section: sound
 
 Package: chuck
 Architecture: any
-Depends: ${misc:Depends}, ${shlibs:Depends},
+Depends:
     chuck-data,
 Suggests:
     jackd,
@@ -36,7 +35,6 @@ Description: Concurrent, On-the-fly Audio Programming Language
 Package: chuck-data
 Architecture: all
 Multi-Arch: foreign
-Depends: ${misc:Depends},
 Description: Examples and data files for ChucK
  This package provides the examples, documentation and other
  architecture-independent files for ChucK, the concurrent, on-the-fly

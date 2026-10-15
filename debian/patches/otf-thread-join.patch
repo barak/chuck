@@ -1,0 +1,27 @@
+Description: join OTF server thread before freeing its socket at shutdown
+ ChucK::shutdown() called pthread_cancel() on the OTF listener thread and
+ then immediately closed/freed carrier->otf_socket and set it to NULL,
+ without waiting for the thread to terminate.  When a script finishes
+ quickly the thread may not yet have reached accept() (a cancellation
+ point), so it then calls ck_accept() on a freed or NULL socket and
+ segfaults.  The script output is correct but chuck exits with SIGSEGV,
+ causing random test suite failures (worst on ppc64el, where it made the
+ build fail).  Join the thread after cancelling it.
+Author: Barak A. Pearlmutter <bap@debian.org>
+Forwarded: https://github.com/ccrma/chuck/pull/555
+Last-Update: 2026-10-15
+
+--- a/src/core/chuck.cpp
++++ b/src/core/chuck.cpp
+@@ -1047,6 +1047,11 @@
+         {
+ #if !defined(__PLATFORM_WINDOWS__) || defined(__WINDOWS_PTHREAD__)
+             pthread_cancel( m_carrier->otf_thread );
++            // wait for the thread to actually exit before freeing the socket
++            // it may be about to use; otherwise a short-lived VM can shut down
++            // before the otf thread reaches accept() and it then dereferences
++            // a freed or NULL socket, crashing on exit
++            pthread_join( m_carrier->otf_thread, NULL );
+ #else
+             CloseHandle( m_carrier->otf_thread ); // doesn't cancel thread
+ #endif
