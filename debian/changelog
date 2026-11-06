@@ -1,8 +1,10 @@
-chuck (1.5.5.8-3) UNRELEASED; urgency=medium
+chuck (1.5.5.9-1) unstable; urgency=medium
 
   * Add README.Debian explaining HID keyboard/mouse device permissions
+  * New upstream version
+  * Remove upstreamed race at shutdown patch
 
- -- Barak A. Pearlmutter <bap@debian.org>  Thu, 15 Oct 2026 11:59:02 +0100
+ -- Barak A. Pearlmutter <bap@debian.org>  Fri, 06 Nov 2026 08:53:11 +0000
 
 chuck (1.5.5.8-2) unstable; urgency=medium
 
